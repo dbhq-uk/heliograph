@@ -138,9 +138,6 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
-[ -n "$BRANCH" ] && [ "$BRANCH" != "HEAD" ] || { echo "station: not on a branch - checkout the task branch first" >&2; exit 2; }
-
 # --- the transport -----------------------------------------------------------
 # Every command that crosses the gap lives behind tp_*, so this loop no longer
 # knows what it is talking to. TRANSPORT selects one; git is the default and
@@ -156,6 +153,17 @@ TP_FILE="$REPO_ROOT/transports/${TRANSPORT}.sh"
 # a working station; one that discovers it when an update is needed and nobody
 # is there is a wasted round trip.
 TP_CAPS=" $(tp_capabilities) "
+
+# tp_init validates whatever this transport needs locally and resolves SCOPE:
+# the thing a run is bound to. For git that is a branch, for the blob transport
+# a lane. The loop does not care which, and neither should its output.
+tp_init || exit 2
+SCOPE="$(tp_scope)"
+[ -n "$SCOPE" ] || { echo "station: the transport reported no scope" >&2; exit 2; }
+
+# Kept as `branch:` in the published status because the far side reads that key
+# and a station in the field must stay readable by a control that predates this.
+BRANCH="$SCOPE"
 
 # One agent per checkout. Two would double-run every request and race on push.
 #
@@ -404,13 +412,19 @@ while :; do
   # Bring a newer payload in, if this transport can. 0 = something changed,
   # 1 = nothing to do, 2 = it could not be done. A 2 is not fatal: a station
   # that cannot update itself is still a working station.
-  tp_fetch_self; TP_SELF=$?
+  # Only if this transport offers it. A station that cannot self-update is a
+  # working station, and calling a verb a transport has declared it does not
+  # have would be asking a question whose answer is already known.
+  case "$TP_CAPS" in
+    *" self "*) tp_fetch_self; TP_SELF=$? ;;
+    *)          TP_SELF=1 ;;
+  esac
   if [ "$TP_SELF" = "2" ]; then
     say "pull --rebase failed - working tree may be dirty; leaving it alone"
     sleep "$INTERVAL"; continue
   fi
   if [ "$TP_SELF" = "0" ]; then
-    say "pulled $(git log --oneline -1)"
+    say "updated: $(tp_revision)"
 
     # Self-update. Without this, a fix to station.sh cannot take effect while the
     # agent is running it, and the operator has to be told to restart - which
@@ -565,6 +579,13 @@ while :; do
     # Read the request from the REMOTE ref, never by pulling: the step is writing
     # to this working tree right now, and a rebase underneath a running step is
     # how you corrupt a run you were only trying to observe.
+    # A mid-run read is optional. Without it a cancel waits for the step to
+    # finish or for the next poll, which is a real cost and a smaller one than
+    # a transport billing per operation being polled every few seconds.
+    case "$TP_CAPS" in
+      *" live "*) : ;;
+      *) sleep "$INTERVAL"; continue ;;
+    esac
     REMOTE_REQ="$(tp_fetch_request_live)" || continue
     [ -n "$REMOTE_REQ" ] || continue
     WANT_CANCEL="$(printf '%s\n' "$REMOTE_REQ" | sed -n 's/^cancel:[[:space:]]*//p' | head -1)"
