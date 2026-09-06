@@ -84,7 +84,7 @@ reads as clearly as a successful one and a round trip is never wasted.
 ### Any agent (Cursor, Copilot, Windsurf, Gemini, Cline and more)
 
 ```bash
-npx skills add dbhq-uk/heliograph
+npx skills add dbhq-uk/heliograph-skill
 ```
 
 The [skills.sh](https://skills.sh) CLI installs into whichever agent directories
@@ -93,8 +93,8 @@ it finds, so this works outside Claude Code and Codex too.
 ### Local install (Claude Code or Codex)
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph.git
-cd heliograph
+git clone https://github.com/dbhq-uk/heliograph-skill.git
+cd heliograph-skill
 ./install.sh          # Claude Code: symlinks into ~/.claude/skills (edits are live)
 ./install-codex.sh    # Codex: installs into ~/.codex/skills
 ```
@@ -105,8 +105,8 @@ The toolkit is plain bash and stands on its own. Copy it into a fresh private
 repo and drive it by hand:
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph.git
-./heliograph/skills/heliograph/scripts/bootstrap.sh ~/my-investigation
+git clone https://github.com/dbhq-uk/heliograph-skill.git
+./heliograph-skill/skills/heliograph/scripts/bootstrap.sh ~/my-investigation
 ```
 
 Bash 4+, git and GNU coreutils. No packages, no credentials, no network beyond
@@ -209,6 +209,22 @@ the only thing that crosses the gap is a git commit.
 It will not resolve a merge conflict, force a push, or discard the operator's
 local work either. When the loop cannot proceed it says so, keeps the log, and
 carries on polling.
+
+## Related: heliograph, the product
+
+This repository is **the skill and its bash toolkit**, and it stays that way:
+plain bash, no interpreter, no packages, nothing to install on the far side.
+That constraint is the point, and nothing here will erode it.
+
+[**dbhq-uk/heliograph**](https://github.com/dbhq-uk/heliograph) is the larger
+product built around the same idea: a control-side CLI, a hosted relay so an
+estate needs no git host or storage account at all, more transports, and a
+documentation site. It is a separate repository precisely so that this one can
+go on being answerable to a single question - will it run, unchanged, on a
+locked-down box where installing anything is a change request.
+
+Use this if you want the skill. Use that if you want the product. They share a
+method, not a dependency.
 
 ## Development
 

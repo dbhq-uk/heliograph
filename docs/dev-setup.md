@@ -16,7 +16,7 @@ anything is a change request.
 ## 1. Clone
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph.git ~/dbhq-heliograph
+git clone https://github.com/dbhq-uk/heliograph-skill.git ~/dbhq-heliograph
 cd ~/dbhq-heliograph
 ```
 
