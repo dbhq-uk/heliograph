@@ -807,7 +807,7 @@ tests, and do not weaken a property to make a driver pass.
 cd /home/devops/dbhq-heliograph
 bash -n tests/conformance/*.sh tests/conformance/drivers/*.sh tests/test-conformance.sh
 shellcheck -S warning tests/conformance/*.sh tests/conformance/drivers/*.sh tests/test-conformance.sh
-grep -n '—' AGENTS.md tests/conformance/*.sh tests/conformance/drivers/*.sh || echo "no em dashes"
+grep -n "$(printf '\xe2\x80\x94')" AGENTS.md tests/conformance/*.sh tests/conformance/drivers/*.sh || echo "no em dashes"
 ./tests/run-tests.sh
 git add tests AGENTS.md
 git commit -m "conformance: a suite that cannot fail is decoration, so prove it fails
