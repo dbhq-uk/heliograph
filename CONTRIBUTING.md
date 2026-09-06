@@ -4,14 +4,14 @@ Thanks for your interest - contributions are welcome.
 
 ## Ways to help
 
-- Report a bug or request a feature via [issues](https://github.com/dbhq-uk/heliograph-skill/issues)
+- Report a bug or request a feature via [issues](https://github.com/dbhq-uk/heliograph/issues)
 - Add a generic step, a `lib/` helper, or a hard-won lesson to `references/method.md`, via a pull request
 
 ## Local development
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph-skill.git
-cd heliograph-skill
+git clone https://github.com/dbhq-uk/heliograph.git
+cd heliograph
 ./install.sh          # symlinks into ~/.claude/skills (edits are live)
 ```
 
