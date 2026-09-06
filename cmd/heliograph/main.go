@@ -110,16 +110,45 @@ func resolve(name string) (estate.Estate, error) {
 	}
 }
 
-func open(name string) (estate.Estate, *transport.Git, error) {
+// opened is what a command needs: the transport, plus the two facts every
+// command prints. Returning the interface rather than *Git is what stops each
+// command growing a switch of its own.
+type opened struct {
+	estate.Estate
+	transport.Transport
+	Dir    string
+	Scope  string
+	Origin string // what the far side would clone; empty where that has no meaning
+}
+
+func open(name string) (opened, error) {
 	e, err := resolve(name)
 	if err != nil {
-		return e, nil, err
+		return opened{}, err
 	}
-	g, err := transport.NewGit(e.Dir)
-	if err != nil {
-		return e, nil, err
+	switch e.Transport {
+	case "git":
+		g, err := transport.NewGit(e.Dir)
+		if err != nil {
+			return opened{}, err
+		}
+		url, _ := g.RemoteURL()
+		return opened{Estate: e, Transport: g, Dir: g.Dir(), Scope: g.Branch(), Origin: url}, nil
+	case "share":
+		s, err := transport.NewShare(e.Dir, e.Scope)
+		if err != nil {
+			return opened{}, err
+		}
+		return opened{Estate: e, Transport: s, Dir: s.Dir(), Scope: s.Branch()}, nil
+	case "bundle":
+		b, err := transport.NewBundle(e.Dir)
+		if err != nil {
+			return opened{}, err
+		}
+		return opened{Estate: e, Transport: b, Dir: b.Dir(), Scope: b.Branch()}, nil
+	default:
+		return opened{}, fmt.Errorf("estate %q names transport %q, which this build does not know", e.Name, e.Transport)
 	}
-	return e, g, nil
 }
 
 // parse handles flags and positional arguments in any order.
@@ -153,7 +182,9 @@ func estateFlag(fs *flag.FlagSet) *string {
 
 func cmdInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
-	dir := fs.String("dir", "", "the working clone of the transport repo")
+	dir := fs.String("dir", "", "the working clone, share directory, or bundle directory")
+	kind := fs.String("transport", "git", "git | share | bundle")
+	scopeFlag := fs.String("scope", "", "with --transport share: one directory per investigation")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -170,20 +201,44 @@ func cmdInit(args []string) error {
 		return err
 	}
 
-	// Attach before saving. An estate that names a directory which is not a
-	// transport repo is worse than no estate at all: it fails later, from a
+	// Attach BEFORE saving. An estate that names a directory which is not a
+	// usable transport is worse than no estate at all: it fails later, from a
 	// command that had every reason to expect it to work.
-	g, err := transport.NewGit(abs)
-	if err != nil {
-		return err
+	var tp transport.Transport
+	var scope string
+	switch *kind {
+	case "git":
+		g, err := transport.NewGit(abs)
+		if err != nil {
+			return err
+		}
+		tp, scope = g, g.Branch()
+	case "share":
+		if *scopeFlag == "" {
+			return fmt.Errorf("--scope is required for a share: one directory per investigation, so two do not overwrite each other")
+		}
+		sh, err := transport.NewShare(abs, *scopeFlag)
+		if err != nil {
+			return err
+		}
+		tp, scope = sh, sh.Branch()
+	case "bundle":
+		b, err := transport.NewBundle(abs)
+		if err != nil {
+			return err
+		}
+		tp, scope = b, b.Branch()
+	default:
+		return fmt.Errorf("unknown transport %q: this build knows git, share and bundle", *kind)
 	}
-	e := estate.Estate{Name: name, Transport: "git", Dir: abs, Branch: g.Branch()}
+
+	e := estate.Estate{Name: name, Transport: *kind, Dir: abs, Branch: scope, Scope: *scopeFlag}
 	if err := e.Save(); err != nil {
 		return err
 	}
-	fmt.Printf("estate %s -> %s on %s\n", name, abs, g.Branch())
-	fmt.Printf("  %s\n", g.Describe())
-	if err := g.Check(); err != nil {
+	fmt.Printf("estate %s -> %s on %s\n", name, abs, scope)
+	fmt.Printf("  %s\n", tp.Describe())
+	if err := tp.Check(); err != nil {
 		// Saved anyway. Knowing the estate is configured but unreachable is
 		// more useful than refusing to record it, and the reason is printed.
 		fmt.Printf("  warn: %v\n", err)
@@ -206,7 +261,7 @@ func cmdEstates() error {
 			fmt.Printf("%-16s (unreadable: %v)\n", n, err)
 			continue
 		}
-		fmt.Printf("%-16s %s  %s\n", e.Name, e.Transport, e.Dir)
+		fmt.Printf("%-16s %-7s %s\n", e.Name, e.Transport, e.Dir)
 	}
 	return nil
 }
@@ -231,10 +286,10 @@ func cmdSend(args []string) error {
 		if !strings.Contains(a, "=") {
 			return fmt.Errorf("%q is not KEY=VALUE: environment for the run goes after the step name", a)
 		}
-		env = append(env, a)
+		env = append(env, shellQuote(a))
 	}
 
-	_, g, err2 := open(*name)
+	op, err2 := open(*name)
 	if err2 != nil {
 		return err2
 	}
@@ -245,7 +300,7 @@ func cmdSend(args []string) error {
 		Env:     strings.Join(env, " "),
 		Note:    *note,
 	}
-	if err := g.PutRequest(req); err != nil {
+	if err := op.PutRequest(req); err != nil {
 		return err
 	}
 	fmt.Printf("sent %s\n", req.ID)
@@ -263,11 +318,11 @@ func cmdStatus(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, g, err := open(*name)
+	op, err := open(*name)
 	if err != nil {
 		return err
 	}
-	s, err := g.FetchStatus()
+	s, err := op.FetchStatus()
 	if err != nil {
 		return err
 	}
@@ -315,13 +370,13 @@ func cmdLogs(args []string) error {
 	if err != nil {
 		return err
 	}
-	_, g, err := open(*name)
+	op, err := open(*name)
 	if err != nil {
 		return err
 	}
 
 	if len(pos) == 0 && !*last {
-		names, err := g.ListLogs()
+		names, err := op.ListLogs()
 		if err != nil {
 			return err
 		}
@@ -340,7 +395,7 @@ func cmdLogs(args []string) error {
 		target = pos[0]
 	}
 	if *last {
-		names, err := g.ListLogs()
+		names, err := op.ListLogs()
 		if err != nil {
 			return err
 		}
@@ -349,7 +404,7 @@ func cmdLogs(args []string) error {
 		}
 		target = names[0]
 	}
-	b, err := g.ReadLog(target)
+	b, err := op.ReadLog(target)
 	if err != nil {
 		return err
 	}
@@ -403,7 +458,7 @@ func cmdWatch(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, g, err := open(*name)
+	op, err := open(*name)
 	if err != nil {
 		return err
 	}
@@ -414,7 +469,7 @@ func cmdWatch(args []string) error {
 	}
 	var lastLine string
 	for {
-		s, err := g.FetchStatus()
+		s, err := op.FetchStatus()
 		if err != nil {
 			// A fetch failure is a blip, not a death. The station's own loop
 			// treats it that way and so does this: reporting and carrying on
@@ -470,26 +525,25 @@ func cmdDoctor(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	e, g, err := open(*name)
+	op, err := open(*name)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("estate:   %s\n", e.Name)
-	fmt.Printf("dir:      %s\n", g.Dir())
-	fmt.Printf("branch:   %s\n", g.Branch())
-	fmt.Printf("%s\n", g.Describe())
+	fmt.Printf("estate:   %s\n", op.Estate.Name)
+	fmt.Printf("dir:      %s\n", op.Dir)
+	fmt.Printf("scope:    %s\n", op.Scope)
+	fmt.Printf("%s\n", op.Describe())
 
 	problems := 0
-	if err := g.Check(); err != nil {
+	if err := op.Check(); err != nil {
 		problems++
 		fmt.Printf("FAIL      %v\n", err)
-		fmt.Printf("          check the remote URL and that this account may read it:\n")
-		fmt.Printf("          git -C %s remote -v\n", g.Dir())
+		fmt.Printf("          check that %s is correct and this account may use it\n", op.Dir)
 	} else {
-		fmt.Println("ok        origin is reachable")
+		fmt.Println("ok        the transport is reachable")
 	}
 
-	s, err := g.FetchStatus()
+	s, err := op.FetchStatus()
 	switch {
 	case err != nil:
 		problems++
@@ -508,7 +562,7 @@ func cmdDoctor(args []string) error {
 		fmt.Println()
 	}
 
-	logs, err := g.ListLogs()
+	logs, err := op.ListLogs()
 	if err != nil {
 		problems++
 		fmt.Printf("FAIL      cannot list logs: %v\n", err)
@@ -535,15 +589,15 @@ func cmdPlant(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, g, err := open(*name)
+	op, err := open(*name)
 	if err != nil {
 		return err
 	}
-	url, err := g.RemoteURL()
-	if err != nil {
-		return err
+	if op.Origin == "" {
+		return fmt.Errorf("estate %q uses the %s transport, which has nothing for the far side to clone: plant it by carrying the toolkit there",
+			op.Estate.Name, op.Estate.Transport)
 	}
-	t := plant.Target{RepoURL: url, Branch: g.Branch(), Service: *service}
+	t := plant.Target{RepoURL: op.Origin, Branch: op.Scope, Service: *service}
 	var out string
 	if *script {
 		out, err = t.Script()
@@ -555,4 +609,29 @@ func cmdPlant(args []string) error {
 	}
 	fmt.Print(out)
 	return nil
+}
+
+// shellQuote re-quotes a KEY=VALUE pair whose value needs it.
+//
+// The station splits the env line the way a shell would, and the shell that
+// invoked THIS command has already eaten the quotes: by the time
+// `HOSTS="sql01 sql02"` arrives here it is one argument with a space in it.
+// Joining those with spaces produces `env: HOSTS=sql01 sql02`, which the far
+// side reads as HOSTS=sql01 followed by an attempt to run `sql02`.
+//
+// So the quoting has to be put back. Single quotes, with the standard escape
+// for an embedded one, because inside single quotes a shell interprets nothing
+// at all - and this string is about to be split by one on a machine nobody can
+// reach.
+func shellQuote(kv string) string {
+	i := strings.IndexByte(kv, '=')
+	if i < 0 {
+		return kv
+	}
+	k, v := kv[:i], kv[i+1:]
+	// An empty value is already unambiguous, and A='' reads like a mistake.
+	if v == "" || !strings.ContainsAny(v, " \t\n\"'\\$`&|;<>()*?[]#~!") {
+		return kv
+	}
+	return k + "='" + strings.ReplaceAll(v, "'", `'\''`) + "'"
 }

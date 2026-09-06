@@ -21,7 +21,8 @@ A free, open-source tool by [DBHQ](https://dbhq.uk)
 |---|---|
 | control CLI over git | works, tested end to end against a stock station |
 | `--gaps` | works |
-| relay, object store, file share, bundle | designed, not built |
+| file share, bundle | work |
+| relay, object store | designed, not built |
 | documentation site | not built |
 
 The far side is [**dbhq-uk/heliograph-skill**](https://github.com/dbhq-uk/heliograph-skill),
@@ -44,7 +45,9 @@ A single static binary, no runtime. Checksums are published with each release.
 ## Use
 
 ```bash
-heliograph init payments --dir ~/transport/payments   # remember a transport repo
+heliograph init payments --dir ~/transport/payments   # git, the default
+heliograph init ops --transport share --dir /mnt/ops --scope dns
+heliograph init air --transport bundle --dir ~/bundles
 heliograph plant                                      # what to send the operator
 heliograph send net-probe HOSTS="sql01 sql02"         # publish a request
 heliograph watch                                      # follow it

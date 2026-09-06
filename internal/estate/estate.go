@@ -21,11 +21,12 @@ type Estate struct {
 	Transport string `json:"transport"` // git, for now
 	Dir       string `json:"dir"`       // the working clone
 	Branch    string `json:"branch"`    // recorded for reporting; the checkout decides
+	Scope     string `json:"scope"`     // share: one directory per investigation
 }
 
 // known transports. A name that is not here is refused at save time rather
 // than at send time, when somebody is already waiting on a far side.
-var known = map[string]bool{"git": true}
+var known = map[string]bool{"git": true, "share": true, "bundle": true}
 
 func configDir() (string, error) {
 	base := os.Getenv("XDG_CONFIG_HOME")

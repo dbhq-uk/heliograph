@@ -1,0 +1,271 @@
+package transport
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/dbhq-uk/heliograph/internal/wire"
+)
+
+// Share carries the documents through a directory both sides can see: an SMB
+// mount, an NFS export, a shared volume, a folder on a jump host.
+//
+// It is the cheapest transport there is and it covers a real population. An
+// estate that will not open an egress path, will not provision a storage
+// account and will not permit a git host will quite often already have a share
+// that both machines mount, because that is how everything else in the estate
+// moves files.
+//
+// It needs no credential of its own: the mount is the credential, which is
+// also its whole security model and worth being plain about. Anyone who can
+// write to the share can queue a request, so the share must be as tightly
+// scoped as the account the station runs as.
+type Share struct {
+	dir   string // the shared directory, as this side sees it
+	scope string // subdirectory: one investigation per scope
+}
+
+// NewShare attaches to a shared directory.
+//
+// It requires the directory to exist and to be writable, checked by writing,
+// because a share that is mounted read-only looks identical to one that is
+// mounted properly until the first log fails to arrive.
+func NewShare(dir, scope string) (*Share, error) {
+	if scope == "" {
+		return nil, errors.New("a share needs a scope: one directory per investigation, so two do not overwrite each other")
+	}
+	if strings.ContainsAny(scope, `/\`) || scope == "." || scope == ".." {
+		return nil, fmt.Errorf("%q is not a usable scope: it becomes a directory name", scope)
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	fi, err := os.Stat(abs)
+	if err != nil {
+		return nil, fmt.Errorf("cannot see %s: %w", abs, err)
+	}
+	if !fi.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory", abs)
+	}
+	s := &Share{dir: abs, scope: scope}
+	if err := os.MkdirAll(s.path("ops-logs"), 0o755); err != nil {
+		return nil, fmt.Errorf("cannot write to %s: %w", abs, err)
+	}
+	return s, nil
+}
+
+func (s *Share) path(parts ...string) string {
+	return filepath.Join(append([]string{s.dir, s.scope}, parts...)...)
+}
+
+func (s *Share) Dir() string    { return s.dir }
+func (s *Share) Branch() string { return s.scope }
+
+func (s *Share) Describe() string {
+	return fmt.Sprintf("file share %s, scope %s, credential: the mount itself", s.dir, s.scope)
+}
+
+func (s *Share) Check() error {
+	// Written rather than stat'ed. A share mounted read-only, or one whose
+	// server has gone away leaving a stale handle, stats perfectly and fails
+	// on the first write - which would be the log, an hour later, with nobody
+	// left to tell.
+	probe := s.path(".heliograph-write-check")
+	if err := os.WriteFile(probe, []byte("heliograph write check\n"), 0o644); err != nil {
+		return fmt.Errorf("cannot write to the share at %s: %w", s.path(), err)
+	}
+	return os.Remove(probe)
+}
+
+func (s *Share) FetchStatus() (wire.Status, error) {
+	b, err := os.ReadFile(s.path("status"))
+	if err != nil {
+		// A station that has never run has published nothing. Not a fault.
+		return wire.Status{}, nil
+	}
+	return wire.ParseStatus(b)
+}
+
+// PutRequest writes the request atomically.
+//
+// Write-then-rename, because a station polling this directory can read it at
+// any instant. A partially written request is a request with no `id:` yet, or
+// worse a truncated `env:`, and the station would act on it. Rename within a
+// directory is atomic on every filesystem worth running this on.
+func (s *Share) PutRequest(r wire.Request) error {
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	final := s.path("request")
+	tmp := final + ".tmp"
+	if err := os.MkdirAll(filepath.Dir(final), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(tmp, r.Marshal(), 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, final); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func (s *Share) ListLogs() ([]string, error) {
+	ents, err := os.ReadDir(s.path("ops-logs"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var names []string
+	for _, e := range ents {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".txt") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	return names, nil
+}
+
+func (s *Share) ReadLog(name string) ([]byte, error) {
+	clean, err := safeLogName(name)
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(s.path("ops-logs", clean))
+	if err != nil {
+		return nil, fmt.Errorf("no log named %q on the share", clean)
+	}
+	return b, nil
+}
+
+var _ Transport = (*Share)(nil)
+
+// --- bundle ------------------------------------------------------------------
+
+// Bundle is the transport for a gap nothing crosses: a request is exported to a
+// file, carried by hand, and the reply is imported the same way.
+//
+// This is the only thing that makes "air-gapped" literally true rather than
+// nearly true. Everything else here still needs some path between the two
+// machines, even if it is a storage account nobody can route to directly.
+//
+// It is not a loop and does not pretend to be. A run takes as long as it takes
+// somebody to walk, and the value is that the format, the gates and the log are
+// identical to every other transport - the method survives the walk.
+type Bundle struct {
+	dir string // where bundles are written and read
+}
+
+func NewBundle(dir string) (*Bundle, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		return nil, err
+	}
+	return &Bundle{dir: abs}, nil
+}
+
+func (b *Bundle) Dir() string    { return b.dir }
+func (b *Bundle) Branch() string { return "bundle" }
+
+func (b *Bundle) Describe() string {
+	return fmt.Sprintf("bundle in %s, carried by hand", b.dir)
+}
+
+// Check reports what a bundle can and cannot do, rather than pretending to
+// reach something. There is nothing to reach: that is the point.
+func (b *Bundle) Check() error {
+	probe := filepath.Join(b.dir, ".heliograph-write-check")
+	if err := os.WriteFile(probe, []byte("x"), 0o644); err != nil {
+		return fmt.Errorf("cannot write bundles to %s: %w", b.dir, err)
+	}
+	return os.Remove(probe)
+}
+
+// PutRequest writes a request bundle for somebody to carry.
+//
+// The name carries the id, so a stack of them on a USB stick is self-describing
+// and sorts into the order they were made.
+func (b *Bundle) PutRequest(r wire.Request) error {
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	name := fmt.Sprintf("request-%s.hgb", safeFileComponent(r.ID))
+	path := filepath.Join(b.dir, name)
+	if err := os.WriteFile(path, r.Marshal(), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("bundle written: %s\n", path)
+	fmt.Println("  carry it to the station and run: ./station.sh --bundle <file>")
+	return nil
+}
+
+// FetchStatus reads a reply bundle that has been carried back.
+func (b *Bundle) FetchStatus() (wire.Status, error) {
+	c, err := os.ReadFile(filepath.Join(b.dir, "status"))
+	if err != nil {
+		return wire.Status{}, nil
+	}
+	return wire.ParseStatus(c)
+}
+
+func (b *Bundle) ListLogs() ([]string, error) {
+	ents, err := os.ReadDir(b.dir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range ents {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".txt") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	return names, nil
+}
+
+func (b *Bundle) ReadLog(name string) ([]byte, error) {
+	clean, err := safeLogName(name)
+	if err != nil {
+		return nil, err
+	}
+	return os.ReadFile(filepath.Join(b.dir, clean))
+}
+
+var _ Transport = (*Bundle)(nil)
+
+// safeFileComponent makes a string usable as one path element.
+//
+// An id reaches a filename, and an id is partly caller-supplied. A separator in
+// it would write somewhere nobody asked for.
+func safeFileComponent(s string) string {
+	if s == "" {
+		return time.Now().UTC().Format("20060102T150405Z")
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '-', r == '_', r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	out := strings.Trim(b.String(), ".-")
+	if out == "" {
+		return time.Now().UTC().Format("20060102T150405Z")
+	}
+	return out
+}
