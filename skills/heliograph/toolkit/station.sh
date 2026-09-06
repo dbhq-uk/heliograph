@@ -278,7 +278,7 @@ cap_refuse_root || { rm -f "$LOCK"; exit 5; }
 # indistinguishable from an agent that never woke up.
 publish_status() {
   local state="$1" id="$2" step="$3" extra="${4:-}" alsofile="${5:-}"
-  mkdir -p agent
+  mkdir -p "$(dirname "$STATUS")"
   # A killed step leaves its log modified in the working tree, and progress
   # pushes have made that file TRACKED - so unless it is committed here, every
   # later `pull --rebase` refuses on a dirty tree and the station wedges with the
@@ -296,8 +296,8 @@ publish_status() {
   } > "$STATUS"
   git add -f "$STATUS" ${alsofile:+"$alsofile"} >/dev/null 2>&1
   git diff --cached --quiet -- "$STATUS" ${alsofile:+"$alsofile"} >/dev/null 2>&1 && return 0
-  git -c user.name="${GIT_AUTHOR_NAME:-agent}" \
-      -c user.email="${GIT_AUTHOR_EMAIL:-agent@$(hostname)}" \
+  git -c user.name="${GIT_AUTHOR_NAME:-station}" \
+      -c user.email="${GIT_AUTHOR_EMAIL:-station@$(hostname)}" \
       commit -q -m "station: $state ($id) ***NO_CI***" -- "$STATUS" ${alsofile:+"$alsofile"} 2>/dev/null
   cap_git pull --rebase --quiet >/dev/null 2>&1
   cap_git push --quiet >/dev/null 2>&1 || cap_git push --quiet -u origin HEAD >/dev/null 2>&1 || \
@@ -326,7 +326,7 @@ publish_progress() {
   # The last non-blank, non-divider line says more about where a step is than a
   # line count does - it is usually the probe currently in flight.
   last="$(grep -vE '^[[:space:]]*$|^-{5,}|^={5,}' "$logfile" 2>/dev/null | tail -1 | cut -c1-160)"
-  mkdir -p agent
+  mkdir -p "$(dirname "$STATUS")"
   {
     echo "state:    running"
     echo "id:       $id"
@@ -341,8 +341,8 @@ publish_progress() {
   } > "$STATUS"
   git add -f "$STATUS" "$logfile" >/dev/null 2>&1
   git diff --cached --quiet -- "$STATUS" "$logfile" >/dev/null 2>&1 && return 0
-  git -c user.name="${GIT_AUTHOR_NAME:-agent}" \
-      -c user.email="${GIT_AUTHOR_EMAIL:-agent@$(hostname)}" \
+  git -c user.name="${GIT_AUTHOR_NAME:-station}" \
+      -c user.email="${GIT_AUTHOR_EMAIL:-station@$(hostname)}" \
       commit -q -m "station: progress ($id) ${lines} lines ***NO_CI***" -- "$STATUS" "$logfile" 2>/dev/null
   cap_git push --quiet >/dev/null 2>&1 ||
     say "progress push rejected (remote moved) - will retry; the final push reconciles"
