@@ -68,9 +68,13 @@ Each transport is one file under `station/transports/<name>.sh`. The loop never 
 
 `intercom.sh` ships the script it wants run, so `heliograph-mode` degrades from a control into a claim the caller makes about its own file. The current design says so honestly rather than dressing it up, which was right, but the hole is still there.
 
-Under the interface, shipping a step becomes `transport_fetch_payload`: an explicit capability behind its own `--allow-payload` flag, rather than an accident of which transport was chosen. Any transport may offer it, no transport does so by default.
+Under the interface, shipping a step becomes `transport_fetch_payload`: a named capability that **every** transport gains, rather than a property of one.
 
-**This is a breaking change for anyone using intercom today**, not a refactor. It needs a deprecation note and a version bump, not a changelog line.
+This is a capability gain, not a loss. Today only intercom can ship a script, which is why it is the only transport with the fast write-a-probe, run-it, read-it loop. Afterwards a git or relay station can do the same. What changes is that the capability is declared and gated rather than implied by the transport you happened to pick, so `heliograph-mode` stops silently degrading from a control into a claim.
+
+`--allow-payload` defaults **off**, consistent with `ALLOW_ACTIONS` and every other gate here failing closed. A station started without it runs only steps already present on the far side.
+
+**This is still a breaking change for anyone using intercom today**, because the flag must now be passed. It needs a deprecation note and a version bump, not a changelog line.
 
 ### Wire protocol v1
 
