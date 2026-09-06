@@ -1,0 +1,61 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'internal/site/**', 'cmd/heliograph-site/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and a newer one wins. A queue of doc builds racing
+# each other publishes whichever finished last, which is not necessarily the
+# latest.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          check-latest: true
+
+      - name: build
+        run: go run ./cmd/heliograph-site
+
+      - name: serve index.html at the root
+        # The generator emits index.html, which Pages already serves at /. The
+        # per-page URLs are /install rather than /install.html, so each page
+        # also needs a directory form. Copied rather than redirected: a
+        # redirect costs every agent an extra round trip on every read.
+        run: |
+          set -euo pipefail
+          cd site/dist
+          for f in *.html; do
+            slug="${f%.html}"
+            [ "$slug" = index ] && continue
+            mkdir -p "$slug"
+            cp "$f" "$slug/index.html"
+            cp "$slug.md" "$slug/index.md" 2>/dev/null || true
+          done
+          # CNAME so the custom domain survives a deploy.
+          echo "heliograph.dbhq.uk" > CNAME
+          ls -la
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+      - id: deploy
+        uses: actions/deploy-pages@v4
