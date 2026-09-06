@@ -15,13 +15,62 @@ A free, open-source tool by [DBHQ](https://dbhq.uk)
 
 ## Status
 
-**In design. Nothing here works yet.** The specifications are written and
-reviewed; the code is not. See [`docs/specs/`](docs/specs/) for what is being
-built and why, and the roadmap in the master design for the order.
+**Early. The CLI works against a real station; the relay does not exist yet.**
 
-If you want something that works today, you want
-[**dbhq-uk/heliograph-skill**](https://github.com/dbhq-uk/heliograph-skill).
-It is complete, tested and in use.
+| | |
+|---|---|
+| control CLI over git | works, tested end to end against a stock station |
+| `--gaps` | works |
+| relay, object store, file share, bundle | designed, not built |
+| documentation site | not built |
+
+The far side is [**dbhq-uk/heliograph-skill**](https://github.com/dbhq-uk/heliograph-skill),
+which is complete and in use. This CLI drives it **unmodified** - if you already
+run heliograph, this works against what you have today.
+
+## Install
+
+```bash
+# Linux and macOS, from a release
+curl -sSL https://github.com/dbhq-uk/heliograph/releases/latest/download/heliograph-linux-amd64 \
+  -o /usr/local/bin/heliograph && chmod +x /usr/local/bin/heliograph
+
+# or from source
+go install github.com/dbhq-uk/heliograph/cmd/heliograph@latest
+```
+
+A single static binary, no runtime. Checksums are published with each release.
+
+## Use
+
+```bash
+heliograph init payments --dir ~/transport/payments   # remember a transport repo
+heliograph plant                                      # what to send the operator
+heliograph send net-probe HOSTS="sql01 sql02"         # publish a request
+heliograph watch                                      # follow it
+heliograph logs --last                                # read the whole log
+heliograph logs --last --gaps                         # where it stalled
+heliograph doctor                                     # will this work from here
+```
+
+`--gaps` is the one worth knowing about. *"Scan the timestamp column for gaps
+before reading the content"* is the most valuable instruction in the method, and
+it has always been a discipline somebody has to remember. It is arithmetic:
+
+```
+$ heliograph logs --last --gaps
+demo-20260906T183628Z.txt
+5 captured lines
+
+1 interval(s) of 10s or more, longest first.
+Each is attributed to the line BEFORE it, which is what was running.
+
+   3m12s  after  09:14:02 | Refreshing state...
+```
+
+The gap belongs to the line **before** it: the stamp on a line is when that line
+was produced, so a long interval means the operation named on the preceding line
+is what took the time.
 
 ## What this is
 
