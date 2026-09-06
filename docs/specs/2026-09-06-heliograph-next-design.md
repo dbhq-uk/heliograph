@@ -76,6 +76,29 @@ This is a capability gain, not a loss. Today only intercom can ship a script, wh
 
 **This is still a breaking change for anyone using intercom today**, because the flag must now be passed. It needs a deprecation note and a version bump, not a changelog line.
 
+### The verb list is incomplete, and self-update is why
+
+Found by reading `station.sh` to plan the extraction rather than by designing it, which is the only reason it was found at all.
+
+The loop **self-updates**. When a pull brings a newer `station.sh`, it re-executes itself into it. That is not a nicety: without it a fix to the station cannot take effect while the station is running, and the operator has to be told to restart, which defeats the whole point of them starting it once and walking away.
+
+It is also **git-specific and does not generalise**. Under the relay there is no repository to pull and no working tree to replace. Under the bundle transport there is no live channel at all. A five-verb interface that quietly drops self-update would ship a relay station that can never be fixed without finding a human on the far side, which is the exact failure mode the product exists to remove.
+
+So the contract gains a sixth verb and an honest admission that not every transport can implement it:
+
+```
+transport_fetch_self      -> fetch a newer copy of the station payload, or nothing
+```
+
+- **git** implements it as it does today: a pull brings the new file, and the loop re-executes
+- **object store and file share** can implement it: the payload is a blob like any other
+- **relay** implements it as a signed payload message, which is the same `--allow-payload` capability with the station itself as the payload, and therefore off by default
+- **bundle** cannot, and says so: an air-gapped station is updated by carrying a new bundle
+
+`transport_capabilities` reports which verbs a transport actually offers, so the loop can say "this station cannot self-update, you will need to re-plant it to change it" at **start** time rather than discovering it when an update is needed and nobody is there.
+
+The general lesson, worth stating because it will recur: an interface derived from one implementation will be missing whatever that implementation happened to get for free. Git gave self-update away free, so the design never noticed it was a feature.
+
 ### Wire protocol v1
 
 The `key: value` request and status documents stay. An operator being able to read `station/request` and understand it without tooling is a real property, and losing it to JSON would buy nothing. They become a versioned protocol, because stations live in the field and the CLI will update faster than they do:
