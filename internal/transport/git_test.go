@@ -242,3 +242,37 @@ func TestDescribeNeverPrintsACredential(t *testing.T) {
 		t.Errorf("Describe leaked the credential: %q", d)
 	}
 }
+
+// A control machine where git has never been configured is entirely ordinary:
+// a fresh laptop, a container, a CI runner. Git refuses to commit there with
+// "Author identity unknown", which reads like a fault in this tool rather than
+// a missing setting.
+//
+// This is the test that was missing. It passed everywhere it was run by hand,
+// because the machine running it had an identity, and failed the moment CI
+// touched it.
+func TestPutRequestWorksWhereGitHasNoIdentity(t *testing.T) {
+	work, origin := newRepo(t)
+
+	// No global config, no user config, no environment identity.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "nonexistent"))
+	t.Setenv("GIT_CONFIG_SYSTEM", filepath.Join(t.TempDir(), "nonexistent"))
+	t.Setenv("GIT_AUTHOR_NAME", "")
+	t.Setenv("GIT_AUTHOR_EMAIL", "")
+	t.Setenv("GIT_COMMITTER_NAME", "")
+	t.Setenv("GIT_COMMITTER_EMAIL", "")
+
+	g, err := NewGit(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.PutRequest(wire.Request{Version: wire.Version, ID: "no-identity"}); err != nil {
+		t.Fatalf("a machine with no git identity must still be able to send: %v", err)
+	}
+	out := run(t, origin, "git", "show", "main:station/request")
+	if !strings.Contains(out, "id: no-identity") {
+		t.Errorf("the request did not reach origin:\n%s", out)
+	}
+}

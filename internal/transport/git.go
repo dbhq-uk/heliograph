@@ -19,6 +19,7 @@ import (
 type Git struct {
 	dir    string // a working clone of the transport repo
 	branch string
+	extra  []string // environment added to every git call, may be nil
 }
 
 const (
@@ -53,6 +54,8 @@ func NewGit(dir string) (*Git, error) {
 	if g.branch == "" || g.branch == "HEAD" {
 		return nil, fmt.Errorf("%s is not on a branch: check out the task branch first", abs)
 	}
+	// Resolved once, here, so it cannot vary between calls within one run.
+	g.extra = g.identityEnv()
 	return g, nil
 }
 
@@ -68,6 +71,7 @@ func (g *Git) git(args ...string) (string, error) {
 	// Never prompt. A credential prompt from a CLI that may be running
 	// unattended hangs forever and says nothing about why.
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat")
+	cmd.Env = append(cmd.Env, g.extra...)
 
 	done := make(chan struct{})
 	var out []byte
@@ -89,6 +93,48 @@ func (g *Git) git(args ...string) (string, error) {
 		return string(out), fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
+}
+
+// identityEnv returns environment entries that give git an author, for a
+// machine where one has never been configured.
+//
+// A fresh laptop, a container and a CI runner all lack `user.email`, and git
+// refuses to commit with "Author identity unknown" - which reads like a fault
+// in this tool rather than a missing setting. The station supplies one for the
+// same reason.
+//
+// The environment rather than `-c user.name=`, because GIT_AUTHOR_NAME takes
+// precedence over config even when it is set to the empty string, and an empty
+// one fails differently ("empty ident name") without being any more configured.
+// Setting the variables covers both.
+//
+// A real identity always wins: this returns nothing at all when git can
+// already name an author, because a person's own name in the history is more
+// useful than ours.
+func (g *Git) identityEnv() []string {
+	if v, err := g.git("config", "user.email"); err == nil && strings.TrimSpace(v) != "" {
+		if n, err := g.git("config", "user.name"); err == nil && strings.TrimSpace(n) != "" {
+			return nil
+		}
+	}
+	name := os.Getenv("GIT_AUTHOR_NAME")
+	if strings.TrimSpace(name) == "" {
+		name = "heliograph"
+	}
+	email := os.Getenv("GIT_AUTHOR_EMAIL")
+	if strings.TrimSpace(email) == "" {
+		host, err := os.Hostname()
+		if err != nil || strings.TrimSpace(host) == "" {
+			host = "localhost"
+		}
+		email = "heliograph@" + host
+	}
+	return []string{
+		"GIT_AUTHOR_NAME=" + name,
+		"GIT_AUTHOR_EMAIL=" + email,
+		"GIT_COMMITTER_NAME=" + name,
+		"GIT_COMMITTER_EMAIL=" + email,
+	}
 }
 
 // FetchStatus reads the station's published status from the remote ref.
@@ -136,6 +182,14 @@ func (g *Git) PutRequest(r wire.Request) error {
 	if _, err := g.git("diff", "--cached", "--quiet", "--", requestPath); err == nil {
 		return errors.New("the request is unchanged, so no run would start: change the id")
 	}
+	// Supply an identity rather than relying on one being configured.
+	//
+	// A control machine with no `user.email` is entirely ordinary - a fresh
+	// laptop, a container, a CI runner - and git refuses to commit with
+	// "Author identity unknown", which reads like a fault in this tool. The
+	// station does the same thing for the same reason. An identity that IS
+	// configured still wins, because a real name in the history is better
+	// than ours.
 	if _, err := g.git("commit", "--quiet", "-m",
 		"request: "+r.ID+" ***NO_CI***", "--", requestPath); err != nil {
 		return err
