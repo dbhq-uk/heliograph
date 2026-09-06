@@ -45,7 +45,7 @@ run_start "$TMP/good" --check
 assert_eq "--check exits 0 on a sound machine" "0" "$RC"
 assert_contains "--check says the preflight is clear" "preflight: clear" "$OUT"
 assert_contains "it reports the sed -u result" "sed -u" "$OUT"
-assert_contains "it reports base64 -w0" "base64 -w0" "$OUT"
+assert_contains "it reports the base64 result" "base64" "$OUT"
 assert_contains "it proves read access rather than assuming it" "git read" "$OUT"
 assert_contains "it proves write access rather than assuming it" "git write" "$OUT"
 
@@ -65,9 +65,16 @@ run_start "$TMP/good" --help
 assert_eq "--help exits 0" "0" "$RC"
 assert_contains "--help shows the usage" "start.sh" "$OUT"
 
-# --- a sed without -u is the failure this check exists for --------------------
-# busybox sed has no -u, and the damage is silent: every captured line gets the
-# same timestamp, which reads like a working log.
+# --- a sed without -u no longer blocks, and that is a deliberate change -------
+# It used to, and the reason was sound at the time: the timestamp was applied
+# AFTER sed, so a buffered sed gave every line in a block the same time and a
+# hang became invisible while the log still read perfectly.
+#
+# cap_run now stamps each line before any sed runs, so the timestamps are honest
+# whatever sed does. What is left is real but much smaller: redaction is still a
+# sed stage and cannot be skipped, so a run killed mid-flight loses whatever sed
+# was holding. That is a warning with the trade named, not a refusal - refusing
+# would keep Alpine and busybox stations off a toolkit that now works on them.
 mkdir -p "$TMP/badbin"
 real_sed="$(command -v sed)"
 cat > "$TMP/badbin/sed" <<EOF
@@ -82,9 +89,25 @@ chmod +x "$TMP/badbin/sed"
 make_repo "$TMP/badsed"
 RC=0
 OUT="$( cd "$TMP/badsed" && PATH="$TMP/badbin:$PATH" ./start.sh --check 2>&1 )" || RC=$?
-assert_eq "a sed without -u is a blocking failure" "1" "$RC"
-assert_contains "and it names the problem" "sed -u" "$OUT"
-assert_contains "and it says what to do about it" "GNU sed" "$OUT"
+assert_eq "a sed without -u does not block, because the timestamps survive it" "0" "$RC"
+assert_contains "it is reported as a warning" "warn  sed -u" "$OUT"
+assert_contains "and says the timestamps are unaffected, which is the load-bearing part" \
+  "Timestamps are unaffected" "$OUT"
+assert_contains "and names what IS given up" "CANCELLED run will lose its partial log" "$OUT"
+assert_contains "and says how to get it back" "GNU sed" "$OUT"
+
+# The claim above is worth more than the warning text, so it is measured rather
+# than trusted: capture through the busybox-like sed and check the stamps really
+# do differ.
+cat > "$TMP/badsed/steps/slow3.sh" <<'EOS'
+#!/usr/bin/env bash
+# heliograph-mode: read-only
+echo one; sleep 1.2; echo two; sleep 1.2; echo three
+EOS
+chmod +x "$TMP/badsed/steps/slow3.sh"
+( cd "$TMP/badsed" && PATH="$TMP/badbin:$PATH" PUSH=0 ./run.sh steps/slow3.sh ) >/dev/null 2>&1
+distinct="$(grep ' | ' "$TMP"/badsed/ops-logs/*.txt 2>/dev/null | sed 's/ | .*//' | sort -u | wc -l | tr -d ' ')"
+assert_eq "and through that sed the stamps really are distinct" "3" "$distinct"
 
 # --- detached HEAD -----------------------------------------------------------
 make_repo "$TMP/detached"

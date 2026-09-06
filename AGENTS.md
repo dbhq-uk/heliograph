@@ -40,7 +40,11 @@ the dot on the way out. Do not "fix" the name.
 
 Everything else here is a preference. These are not.
 
-**1. Every captured line carries a UTC timestamp.** After the fact, in an untimed
+**1. Every captured line carries a UTC timestamp.** The stamp is applied by a
+pure-bash read loop reading straight from the command, BEFORE any sed runs.
+That ordering is load-bearing: it used to be applied last, which made the whole
+property depend on `sed -u`, and a sed without it gave every line in a block the
+same time while the log still read perfectly. Do not move the stamping stage. After the fact, in an untimed
 log, a hang and slow progress are indistinguishable, and a gap in the timestamp
 column is the only way to tell which operation stalled and for how long. It is
 the single most useful property of these logs. Do not strip it for tidiness, do
