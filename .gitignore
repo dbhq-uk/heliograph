@@ -1,0 +1,22 @@
+# Go
+/heliograph
+/heliograph-relay
+*.exe
+*.test
+/dist/
+/vendor/
+
+# site
+/site/node_modules/
+/site/dist/
+/site/.astro/
+
+# local
+.env
+*.local
+.DS_Store
+
+# never
+*.key
+*.pem
+.git-token

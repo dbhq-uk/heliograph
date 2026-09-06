@@ -1,0 +1,119 @@
+<div align="center">
+
+# heliograph
+
+**Remote, captured, auditable execution on a machine you cannot log into**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-in%20design-orange)]()
+
+A free, open-source tool by [DBHQ](https://dbhq.uk)
+
+</div>
+
+---
+
+## Status
+
+**In design. Nothing here works yet.** The specifications are written and
+reviewed; the code is not. See [`docs/specs/`](docs/specs/) for what is being
+built and why, and the roadmap in the master design for the order.
+
+If you want something that works today, you want
+[**dbhq-uk/heliograph-skill**](https://github.com/dbhq-uk/heliograph-skill).
+It is complete, tested and in use.
+
+## What this is
+
+Someone can reach the machine. You cannot, and you are the one who knows what to
+ask it. heliograph runs that gap as a loop rather than a relay: you push a step,
+it runs on the far side, and the whole run comes back as a log with every line
+timestamped in UTC, whether it passed or failed.
+
+Three components:
+
+| | |
+|---|---|
+| **control** | your machine: the `heliograph` CLI, the skill family, you |
+| **transport** | the channel: git, relay, object store, file share, bundle |
+| **station** | the far side: the box, and the loop running on it |
+
+## Why this is a separate repository
+
+[`heliograph-skill`](https://github.com/dbhq-uk/heliograph-skill) is the skill
+and its bash toolkit. Plain bash, no interpreter, no packages, nothing to
+install on the far side. That single constraint is what lets it run on a
+locked-down box where installing anything is its own change request, and it is
+the entire proposition.
+
+This product adds Go, a release pipeline, a web build and a cryptographic
+dependency. None of those belong in a repository whose promise is *"plain bash,
+you can read it before you run it"* - not because they would break it by
+argument, but because they would erode it by proximity. The next person reading
+that repo would have to work out which half they were looking at.
+
+So the boundary between the two repositories is the gap itself:
+
+| | |
+|---|---|
+| `heliograph-skill` | the far side. Bash and PowerShell, zero dependencies, the method |
+| `heliograph` | the near side. Go CLI, relay server, transports, site |
+
+**No Go will ever be added to `heliograph-skill`.** If something here needs a
+change over there, it goes as a PR on its own merits, and it is bash.
+
+## What is being built
+
+**A control CLI.** A single static Go binary. `init`, `plant`, `send`, `watch`,
+`logs`, `doctor`. `logs --gaps` computes inter-line deltas and prints the
+outliers, which turns "scan the timestamp column for gaps" from a discipline
+you have to remember into a feature.
+
+**A relay.** The flagship. Both sides dial out over ordinary HTTPS, so an
+estate needs no git host, no storage account and no VNet. Hosted, and
+self-hostable from the same binary.
+
+**The relay cannot read your logs, and cannot make a station run anything.**
+That second half is the one that matters: a relay able to forge a request would
+be code execution inside every estate at once, which is a far worse position
+than any disclosure. Content is end-to-end encrypted with keys the relay never
+holds, and every message is signed. Nothing bespoke -
+[age](https://age-encryption.org/v1) primitives plus Ed25519. The full account,
+including what DBHQ can and cannot honestly claim, is in
+[`docs/specs/2026-09-06-relay-encryption-design.md`](docs/specs/2026-09-06-relay-encryption-design.md).
+
+**More transports.** Generic object store (S3-compatible), a mounted file share,
+and a signed bundle for a true air gap - all behind one interface, so the read-only
+gates live in one place and cannot drift per transport.
+
+**A documentation site**, at `heliograph.dbhq.uk`.
+
+## What it will not do
+
+Give you access you do not have. It does not tunnel, proxy or hold a connection
+open to a host you control, and there is nothing here to punch through a
+firewall with. A raw TCP transport was considered and **dropped** for exactly
+that reason: a persistent reverse connection is a C2 channel by any blue team's
+definition, and that sentence is a large part of why this class of tool is
+permitted in regulated estates.
+
+Every command runs on the far side because someone with legitimate access chose
+to run it.
+
+## Layout
+
+```
+cmd/heliograph/         the control CLI                     (Go)
+cmd/heliograph-relay/   the relay server                    (Go)
+internal/transport/     git | relay | objstore | share | bundle
+station/                station-side transport adapters
+station/conformance/    the suite every adapter must pass
+hosts/                  the host contract, and the proven templates
+skills/                 the skill family
+site/                   the documentation site
+docs/specs/             the designs, written before the code
+```
+
+## Licence
+
+[MIT](LICENSE) (c) 2026 DBHQ Consulting Ltd
