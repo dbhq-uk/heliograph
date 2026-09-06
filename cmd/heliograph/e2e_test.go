@@ -133,3 +133,59 @@ func TestCLIDrivesAStockStation(t *testing.T) {
 		t.Errorf("the log has no footer:\n%s", body)
 	}
 }
+
+// --gaps is the reason the binary is worth installing, so it is proved against
+// a real captured log rather than a fixture we wrote. The step sleeps, and the
+// gap has to appear attributed to the line before it.
+func TestGapsFindsARealStall(t *testing.T) {
+	skill := skillDir(t)
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("no bash")
+	}
+
+	base := t.TempDir()
+	origin := filepath.Join(base, "origin.git")
+	work := filepath.Join(base, "work")
+	cfg := filepath.Join(base, "config")
+
+	sh(t, base, filepath.Join(skill, "skills", "heliograph", "scripts", "bootstrap.sh"), work)
+	sh(t, base, "git", "init", "-q", "-b", "main", "--bare", origin)
+	sh(t, work, "git", "init", "-q", "-b", "main")
+	sh(t, work, "git", "remote", "add", "origin", origin)
+
+	step := "#!/usr/bin/env bash\n# heliograph-mode: read-only\n" +
+		"echo STARTING-THE-SLOW-THING\nsleep 4\necho DONE\n"
+	if err := os.WriteFile(filepath.Join(work, "steps", "slow.sh"), []byte(step), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sh(t, work, "git", "add", "-A")
+	sh(t, work, "git", "commit", "-qm", "init")
+	sh(t, work, "git", "push", "-q", "-u", "origin", "main")
+
+	bin := filepath.Join(base, "heliograph")
+	sh(t, ".", "go", "build", "-o", bin, "github.com/dbhq-uk/heliograph/cmd/heliograph")
+	hg := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(bin, args...)
+		cmd.Dir = base
+		cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+cfg)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("heliograph %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+
+	hg("init", "gaps", "--dir", work)
+	hg("send", "steps/slow.sh")
+	sh(t, work, "bash", "./station.sh", "--once", "--interval", "1")
+
+	out := hg("logs", "--last", "--gaps", "--min", "3s")
+	if !strings.Contains(out, "STARTING-THE-SLOW-THING") {
+		t.Errorf("the gap was not attributed to the line that was running:\n%s", out)
+	}
+	// And the ordinary intervals must not be reported, or the signal is buried.
+	if strings.Contains(out, "| DONE") {
+		t.Errorf("a line that did not stall was reported as a gap:\n%s", out)
+	}
+}

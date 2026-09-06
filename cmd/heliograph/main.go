@@ -6,12 +6,15 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/dbhq-uk/heliograph/internal/logfile"
 
 	"github.com/dbhq-uk/heliograph/internal/estate"
 	"github.com/dbhq-uk/heliograph/internal/transport"
@@ -24,9 +27,11 @@ const usage = `heliograph - run things on a machine you cannot log into
   heliograph estates                        what is configured here
   heliograph send <step> [K=V ...]          publish a request, and return
   heliograph status                         what the station is doing now
+  heliograph watch                          follow a run until it ends
   heliograph logs                           list the captured logs
   heliograph logs <name>                    print one, whole
-  heliograph check                          will this work from here
+  heliograph logs --last --gaps             where the last run stalled
+  heliograph doctor                         will this work from here, in full
 
 Common flags:
   -e, --estate <name>   which estate (default: the only one, if there is one)
@@ -51,8 +56,10 @@ func main() {
 		err = cmdStatus(os.Args[2:])
 	case "logs":
 		err = cmdLogs(os.Args[2:])
-	case "check":
-		err = cmdCheck(os.Args[2:])
+	case "watch":
+		err = cmdWatch(os.Args[2:])
+	case "check", "doctor":
+		err = cmdDoctor(os.Args[2:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return
@@ -288,7 +295,9 @@ func printIf(label, v string) {
 func cmdLogs(args []string) error {
 	fs := flag.NewFlagSet("logs", flag.ExitOnError)
 	name := estateFlag(fs)
-	last := fs.Bool("last", false, "print the most recent log")
+	last := fs.Bool("last", false, "the most recent log")
+	gaps := fs.Bool("gaps", false, "where it stalled, instead of the whole log")
+	min := fs.Duration("min", 10*time.Second, "with --gaps, the shortest interval worth reporting")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -331,13 +340,119 @@ func cmdLogs(args []string) error {
 	if err != nil {
 		return err
 	}
+	if *gaps {
+		return printGaps(target, b, *min)
+	}
 	// Whole, always. The line somebody truncates is the line they needed.
 	_, err = os.Stdout.Write(b)
 	return err
 }
 
-func cmdCheck(args []string) error {
-	fs := flag.NewFlagSet("check", flag.ExitOnError)
+// printGaps turns the timestamp column into an answer.
+//
+// "Scan the timestamp column for gaps before reading the content" has always
+// been a discipline somebody has to remember. It is arithmetic, and a hang
+// shows up here as a gap or it does not show up at all.
+func printGaps(name string, body []byte, min time.Duration) error {
+	n, err := logfile.CountStamped(bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	found, err := logfile.Gaps(bytes.NewReader(body), min)
+	if err != nil {
+		// A capture where every line carries the same stamp is broken, and
+		// reporting "no gaps" about it would look like a clean run.
+		return err
+	}
+	fmt.Printf("%s\n%d captured lines\n\n", name, n)
+	if len(found) == 0 {
+		fmt.Printf("no interval of %s or more: nothing stalled\n", min)
+		return nil
+	}
+	fmt.Printf("%d interval(s) of %s or more, longest first.\n", len(found), min)
+	fmt.Printf("Each is attributed to the line BEFORE it, which is what was running.\n\n")
+	for _, g := range found {
+		fmt.Println(g.Format())
+	}
+	return nil
+}
+
+// cmdWatch follows a run to its end.
+//
+// Without this the choice is polling `status` by hand or waiting blind, and
+// "running for forty minutes" and "wedged" look identical from here until a
+// log appears.
+func cmdWatch(args []string) error {
+	fs := flag.NewFlagSet("watch", flag.ExitOnError)
+	name := estateFlag(fs)
+	every := fs.Duration("interval", 10*time.Second, "how often to poll")
+	timeout := fs.Duration("timeout", 0, "give up after this long (0 waits indefinitely)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	_, g, err := open(*name)
+	if err != nil {
+		return err
+	}
+
+	deadline := time.Time{}
+	if *timeout > 0 {
+		deadline = time.Now().Add(*timeout)
+	}
+	var lastLine string
+	for {
+		s, err := g.FetchStatus()
+		if err != nil {
+			// A fetch failure is a blip, not a death. The station's own loop
+			// treats it that way and so does this: reporting and carrying on
+			// is right for a link that flaps.
+			fmt.Printf("%s  fetch failed, still watching: %v\n", stamp(), err)
+		} else {
+			line := s.State
+			if s.Progress != "" {
+				line += "  " + s.Progress
+			}
+			if s.Last != "" {
+				line += "\n           last: " + s.Last
+			}
+			// Print transitions, not every poll. A watch that reprints the
+			// same line every ten seconds buries the change it exists to show.
+			if line != lastLine {
+				fmt.Printf("%s  %s\n", stamp(), line)
+				lastLine = line
+			}
+			if s.Done() {
+				fmt.Println()
+				if s.Refused() {
+					fmt.Println("refused: the station would not run this.")
+					fmt.Println("  an action step needs the station started with --allow-actions,")
+					fmt.Println("  and the request to carry CONFIRM=yes.")
+					return nil
+				}
+				if s.Log != "" {
+					fmt.Printf("log: %s\n", s.Log)
+					fmt.Printf("  heliograph logs --last          to read it\n")
+					fmt.Printf("  heliograph logs --last --gaps   to see where it stalled\n")
+				}
+				return nil
+			}
+		}
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			return fmt.Errorf("still running after %s: the run continues, this stopped watching", *timeout)
+		}
+		time.Sleep(*every)
+	}
+}
+
+func stamp() string { return time.Now().UTC().Format("15:04:05Z") }
+
+// cmdDoctor answers "will this work from here" and changes nothing.
+//
+// Every line that reports a problem also says what to do about it. A preflight
+// line that names a fault without a remedy is a defect: the person reading it
+// usually cannot ask anybody.
+func cmdDoctor(args []string) error {
+	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
 	name := estateFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -350,9 +465,46 @@ func cmdCheck(args []string) error {
 	fmt.Printf("dir:      %s\n", g.Dir())
 	fmt.Printf("branch:   %s\n", g.Branch())
 	fmt.Printf("%s\n", g.Describe())
+
+	problems := 0
 	if err := g.Check(); err != nil {
-		return err
+		problems++
+		fmt.Printf("FAIL      %v\n", err)
+		fmt.Printf("          check the remote URL and that this account may read it:\n")
+		fmt.Printf("          git -C %s remote -v\n", g.Dir())
+	} else {
+		fmt.Println("ok        origin is reachable")
 	}
-	fmt.Println("origin:   reachable")
+
+	s, err := g.FetchStatus()
+	switch {
+	case err != nil:
+		problems++
+		fmt.Printf("FAIL      cannot read the station's status: %v\n", err)
+	case s.State == "":
+		// Not a failure. A station that has never run is the ordinary state
+		// of a repo that was set up an hour ago, and saying so plainly beats
+		// a warning that reads like something is wrong.
+		fmt.Println("note      the station has published no status yet")
+		fmt.Println("          it may not have been started: the operator runs ./start.sh once")
+	default:
+		fmt.Printf("ok        the station last published %q", s.State)
+		if s.UTC != "" {
+			fmt.Printf(" at %s", s.UTC)
+		}
+		fmt.Println()
+	}
+
+	logs, err := g.ListLogs()
+	if err != nil {
+		problems++
+		fmt.Printf("FAIL      cannot list logs: %v\n", err)
+	} else {
+		fmt.Printf("ok        %d log(s) on this branch\n", len(logs))
+	}
+
+	if problems > 0 {
+		return fmt.Errorf("%d blocking problem(s) above", problems)
+	}
 	return nil
 }
