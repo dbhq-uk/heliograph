@@ -345,4 +345,83 @@ if [ "$say_mech" != "systemd --user" ]; then
   echo
 fi
 
+
+# --- launchd, for macOS -------------------------------------------------------
+# There is no systemd on a Mac and the setsid fallback does not survive a
+# reboot, so a Mac control node lost its loop on every restart. A LaunchAgent
+# has the three properties the systemd path was chosen for: survives logout,
+# survives reboot, restarts on failure, and needs no root.
+#
+# CI runs on Linux, so the plist cannot be loaded here. What CAN be asserted is
+# the document itself, and the one setting in it that has already been learned
+# the hard way once.
+plist_of() {  # plist_of <repo> [args...] - render without touching launchctl
+  local repo="$1"; shift
+  ( set -uo pipefail
+    SERVICE_NAME="test-$$"
+    LAUNCH_LABEL="uk.dbhq.heliograph.${SERVICE_NAME}"
+    # Unused by this renderer, set because the real one reads them and a
+    # divergence between the two would make this test assert a document
+    # service.sh does not produce.
+    # shellcheck disable=SC2034
+    REPO_ROOT="$repo"
+    # shellcheck disable=SC2034
+    LOG_FILE="$repo/.station-service.log"
+    xml_escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+    args_xml=""
+    for a in "$repo/start.sh" "$@"; do
+      args_xml="${args_xml}        <string>$(xml_escape "$a")</string>
+"
+    done
+    cat <<PLIST
+    <key>Label</key><string>${LAUNCH_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+${args_xml}    </array>
+    <key>KeepAlive</key>
+    <dict><key>SuccessfulExit</key><false/></dict>
+PLIST
+  )
+}
+
+sv_src="$HERE/../skills/heliograph/toolkit/service.sh"
+
+assert_contains "service.sh knows about launchd" "launchd_ok()" "$(cat "$sv_src")"
+assert_contains "it installs a LaunchAgent, where a Mac looks for one" \
+  "Library/LaunchAgents" "$(cat "$sv_src")"
+
+# THE SETTING THAT MATTERS. `stop: yes` in station/request is how the far side
+# ends a loop it can no longer reach, and station.sh honours it by exiting 0.
+# Under an unconditional KeepAlive, launchd restarts it, it reads the same stop
+# flag, exits again, and round it goes - every cycle a commit pushed to the
+# transport repo. That exact loop was observed on systemd and is why the unit
+# uses Restart=on-failure. The plist must not repeat it.
+assert_contains "KeepAlive fires on a non-zero exit only, so 'stop: yes' sticks" \
+  "<key>SuccessfulExit</key><false/>" "$(cat "$sv_src")"
+assert_eq "and KeepAlive is never unconditional" "0" \
+  "$(grep -c '<key>KeepAlive</key>[[:space:]]*<true/>' "$sv_src")"
+
+assert_contains "it survives a reboot, which the setsid fallback does not" \
+  "RunAtLoad" "$(cat "$sv_src")"
+
+# The label carries the service name for the same reason the unit name does:
+# one transport repo per investigation is ordinary, and a fixed label would
+# mean the second install silently replaced the first.
+assert_contains "the label carries SERVICE_NAME, so two repos do not collide" \
+  'LAUNCH_LABEL="uk.dbhq.heliograph.${SERVICE_NAME}"' "$(cat "$sv_src")"
+
+# stop must unload rather than `launchctl stop`: with KeepAlive set, a stop is
+# followed by launchd starting it straight back up, which looks exactly like a
+# stop that did not work.
+assert_contains "stop unloads rather than stopping, or KeepAlive undoes it" \
+  "launchctl unload" "$(cat "$sv_src")"
+
+# A repo path containing & or < is rare and produces an invalid plist whose
+# complaint names the file rather than the character.
+out="$(plist_of "/tmp/a&b" --once)"
+assert_contains "a path with an ampersand is escaped" "/tmp/a&amp;b/start.sh" "$out"
+assert_eq "and no raw ampersand survives into the document" "0" \
+  "$(printf '%s' "$out" | grep -c '&[^a-z]')"
+
 t_summary
