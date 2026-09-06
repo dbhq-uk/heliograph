@@ -1,0 +1,112 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go builds, vets and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          check-latest: true
+
+      - name: gofmt
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "::error::gofmt would change these files:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: unit tests
+        run: go test ./... -count=1
+
+      - name: no dependencies crept in
+        # The sibling repository promises none, and this one starts with none.
+        # Every addition should be argued for in the PR that makes it, which
+        # cannot happen if they arrive unnoticed.
+        run: |
+          if [ -f go.sum ]; then
+            echo "::error::go.sum exists. A dependency was added; say why in the PR and delete this check if that is now the plan."
+            exit 1
+          fi
+
+  e2e:
+    name: The CLI drives a real station
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: heliograph
+
+      # The only test that can catch this repo and the skill repo drifting
+      # apart. Everything else checks each half against our own idea of the
+      # shared format, which both halves can satisfy while disagreeing.
+      - uses: actions/checkout@v4
+        with:
+          repository: dbhq-uk/heliograph-skill
+          path: heliograph-skill
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          check-latest: true
+
+      - name: run it
+        working-directory: heliograph
+        env:
+          HELIOGRAPH_SKILL_DIR: ${{ github.workspace }}/heliograph-skill
+        run: go test ./cmd/heliograph/ -run TestCLIDrivesAStockStation -v -count=1
+
+      - name: it must not have skipped
+        # A silently skipped end-to-end test is the same shape of problem as a
+        # green suite that checked nothing. If the variable is set but wrong
+        # the test fails on its own; this catches the case where the step above
+        # passes without having run.
+        working-directory: heliograph
+        env:
+          HELIOGRAPH_SKILL_DIR: ${{ github.workspace }}/heliograph-skill
+        run: |
+          out="$(go test ./cmd/heliograph/ -run TestCLIDrivesAStockStation -v -count=1)"
+          echo "$out"
+          if echo "$out" | grep -q 'SKIP'; then
+            echo "::error::the end-to-end test skipped. It is the only test that checks the two repositories agree."
+            exit 1
+          fi
+
+  style:
+    name: House style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: no em dashes
+        run: |
+          if grep -rn "$(printf '\xe2\x80\x94')" --include='*.md' --include='*.go' . ; then
+            echo "::error::Em dash found. House style is a plain hyphen."
+            exit 1
+          fi
+          echo "No em dashes."
+
+      - name: the specs are still there
+        # They are the only thing in this repository that is finished, and a
+        # PR that removes one should have to say so out loud.
+        run: |
+          for f in docs/specs/2026-09-06-heliograph-next-design.md \
+                   docs/specs/2026-09-06-relay-encryption-design.md; do
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+          done
