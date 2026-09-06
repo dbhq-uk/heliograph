@@ -143,7 +143,7 @@ reads the logs. What you decide is which question to ask next.
 |---|---|
 | `start.sh` | the first command on a new machine: proves it can capture and push, then starts the agent |
 | `run.sh` | the step runner. The operator's one command |
-| `agent.sh` | the unattended loop: watches for a request, runs it, pushes. Cancellable mid-run |
+| `station.sh` | the unattended loop: watches for a request, runs it, pushes. Cancellable mid-run |
 | `caprun.sh` | wrap any ad-hoc command in the same capture and push |
 | `caplib.sh` | the shared capture, log and push functions |
 | `azure/` | eight templates for running the agent in Azure: ACI, Web App for Containers, Container Apps Job and a VM, each in bicep and Terraform |

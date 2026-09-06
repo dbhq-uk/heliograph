@@ -62,14 +62,14 @@ assert_eq "an unknown step is still reported as unknown, even as root" "2" "$RC"
 RC=0; OUT="$(as_root ./caprun.sh label -- echo hello)" || RC=$?
 assert_eq "caprun.sh refuses too - it is the same capture, without the step table" "5" "$RC"
 
-# --- agent.sh -----------------------------------------------------------------
+# --- station.sh -----------------------------------------------------------------
 # The worst place to discover this is an unattended loop, so the agent checks at
 # startup rather than per request: a loop that would refuse everything should
 # say so before the operator walks away.
-RC=0; OUT="$(as_root ./agent.sh --once --interval 1)" || RC=$?
+RC=0; OUT="$(as_root ./station.sh --once --interval 1)" || RC=$?
 assert_eq "the agent refuses at startup" "5" "$RC"
 assert_contains "and names the override rather than leaving it to be guessed" "ALLOW_ROOT=1" "$OUT"
 assert_eq "and leaves no lock behind, so the next run is not blocked by a corpse" "0" \
-  "$( [ -e "$TR/.agent.lock" ] && echo 1 || echo 0 )"
+  "$( [ -e "$TR/.station.lock" ] && echo 1 || echo 0 )"
 
 t_summary

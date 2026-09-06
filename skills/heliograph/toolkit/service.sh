@@ -4,27 +4,27 @@
 # =============================================================================
 #     ./service.sh install                      # survive logout, and start now
 #     ./service.sh install --branch task/foo    # ...on a task branch
-#     ./service.sh install -- --once            # ...args after -- go to agent.sh
+#     ./service.sh install -- --once            # ...args after -- go to station.sh
 #     ./service.sh status      # is it running, and where are the logs
 #     ./service.sh logs        # follow them
 #     ./service.sh stop
 #     ./service.sh uninstall
 #
-#  WHY THIS EXISTS. agent.sh says "run this ONCE on the control node and walk
+#  WHY THIS EXISTS. station.sh says "run this ONCE on the control node and walk
 #  away" and that was not true. sshd sends SIGHUP to the session's process group
-#  when the connection closes, agent.sh traps INT and TERM but not HUP, and the
+#  when the connection closes, station.sh traps INT and TERM but not HUP, and the
 #  default action for HUP is to die. Measured: the shell reports
 #
-#      Hangup    PUSH=0 ./agent.sh --interval 3
+#      Hangup    PUSH=0 ./station.sh --interval 3
 #
 #  and the loop is gone. Every host added since - the container, the Azure four,
 #  AKS, the pipelines - gets this free from a restart policy, which is exactly
 #  why it went unnoticed for so long. The plainest case, somebody with a shell on
 #  a box who wants to close the laptop, was the one still broken.
 #
-#  THE DIVISION OF LABOUR is unchanged. start.sh decides WHERE, agent.sh decides
+#  THE DIVISION OF LABOUR is unchanged. start.sh decides WHERE, station.sh decides
 #  WHEN, run.sh owns the log. This decides only HOW THE LOOP OUTLIVES THE
-#  SESSION, and it starts start.sh rather than agent.sh so the preflight still
+#  SESSION, and it starts start.sh rather than station.sh so the preflight still
 #  runs. It reimplements none of them.
 #
 #  TWO MECHANISMS, and the first is much better:
@@ -51,7 +51,7 @@ UNIT_NAME="$SERVICE_NAME.service"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT_PATH="$UNIT_DIR/$UNIT_NAME"
 PID_FILE="$REPO_ROOT/.agent-service.pid"
-LOG_FILE="$REPO_ROOT/.agent-service.log"
+LOG_FILE="$REPO_ROOT/.station-service.log"
 
 START_ARGS=()
 
@@ -87,7 +87,7 @@ systemd_user_ok() {
 
 # --- the credential, which is where an unattended loop actually fails ---------
 # A detached process does not inherit the shell's environment. GIT_TOKEN typed
-# before ./agent.sh reaches agent.sh; GIT_TOKEN typed before ./service.sh install
+# before ./station.sh reaches station.sh; GIT_TOKEN typed before ./service.sh install
 # does NOT reach the service. The loop then starts perfectly, polls happily, and
 # cannot push a single log - which is the expensive failure this toolkit exists
 # to prevent, discovered hours later by somebody waiting on the far side.
@@ -134,7 +134,7 @@ credential_check() {
       else
         say "note: origin is an SSH remote and there is no agent in this shell, so the service will"
         say "      depend on a key ssh can find by itself. './start.sh --check' proves it in one step,"
-        say "      and the service's own preflight will refuse to start the agent if it cannot push."
+        say "      and the service's own preflight will refuse to start the station if it cannot push."
       fi
       return 0 ;;
     other)
@@ -177,21 +177,21 @@ write_unit() {
   #
   # Restart=on-failure, NOT always, and this was learned the hard way.
   #
-  # `stop: yes` in agent/request is how the far side ends a loop it can no longer
-  # reach, and agent.sh honours it by exiting 0. Under Restart=always systemd then
+  # `stop: yes` in station/request is how the far side ends a loop it can no longer
+  # reach, and station.sh honours it by exiting 0. Under Restart=always systemd then
   # started it straight back up, it read the same stop flag, exited 0 again, and
-  # round it went: measured at four "agent: stopped" commits in eighty seconds,
+  # round it went: measured at four "station: stopped" commits in eighty seconds,
   # each one PUSHED TO THE TRANSPORT REPO, until StartLimitBurst tripped and left
-  # the unit `failed` - which reads like a breakage when the agent had in fact
+  # the unit `failed` - which reads like a breakage when the station had in fact
   # done exactly what it was told.
   #
-  # agent.sh runs forever unless it is deliberately stopped, so exit 0 means "I
+  # station.sh runs forever unless it is deliberately stopped, so exit 0 means "I
   # was told to stop" and must stick. A crash, or a preflight that refuses a bad
   # credential, is non-zero and still restarts, which is the case Restart existed
   # for. The limit stays so a genuinely broken start does not retry forever.
   cat > "$UNIT_PATH" <<EOF
 [Unit]
-Description=heliograph agent loop ($REPO_ROOT)
+Description=heliograph station loop ($REPO_ROOT)
 Documentation=https://github.com/dbhq-uk/heliograph
 After=network-online.target
 Wants=network-online.target
@@ -222,7 +222,7 @@ EOF
 #
 # --force is consumed here because it is this script's own escape hatch for the
 # credential check. Anything else belongs to start.sh, which already knows how to
-# forward its own tail to agent.sh.
+# forward its own tail to station.sh.
 cmd_install() {
   [ -f "$REPO_ROOT/start.sh" ] || die "no start.sh beside this script. Run it from inside a transport repo."
 
@@ -349,7 +349,7 @@ cmd_stop() {
   if [ -s "$PID_FILE" ]; then
     local pid; pid="$(cat "$PID_FILE")"
     if kill -0 "$pid" 2>/dev/null; then
-      # TERM the whole process group: setsid gave it its own, and agent.sh's own
+      # TERM the whole process group: setsid gave it its own, and station.sh's own
       # cleanup trap handles the rest.
       kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
       say "stopped pid $pid"

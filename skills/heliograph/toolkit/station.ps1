@@ -1,9 +1,9 @@
 # =============================================================================
-#  agent.ps1 - start the heliograph loop on a Windows control node
+#  station.ps1 - start the heliograph loop on a Windows control node
 # =============================================================================
-#     .\agent.ps1                 # preflight, then run the agent
-#     .\agent.ps1 --check         # preflight only, change nothing
-#     .\agent.ps1 -- --once       # everything after -- goes to agent.sh
+#     .\station.ps1                 # preflight, then run the station
+#     .\station.ps1 --check         # preflight only, change nothing
+#     .\station.ps1 -- --once       # everything after -- goes to station.sh
 #
 #  THIS IS A LAUNCHER, NOT A PORT. It finds the bash that Git for Windows
 #  already installed and hands over to start.sh. It reimplements nothing.
@@ -68,7 +68,7 @@ function Find-GitBash {
     if ($onPath -and $onPath.Source -notmatch '\\System32\\') { return $onPath.Source }
 
     throw @"
-agent.ps1: cannot find the bash that Git for Windows installs.
+station.ps1: cannot find the bash that Git for Windows installs.
 
 heliograph runs its steps in bash, and git is its transport, so a control node
 needs Git for Windows either way. Install it from https://git-scm.com/download/win
@@ -84,13 +84,13 @@ says nothing about heliograph.
 }
 
 $bash = Find-GitBash
-Write-Host "agent.ps1: using $bash"
+Write-Host "station.ps1: using $bash"
 
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 if (-not (Test-Path (Join-Path $repoRoot 'start.sh'))) {
     throw @"
-agent.ps1: no start.sh beside this script.
+station.ps1: no start.sh beside this script.
 
 This has to run from inside a transport repo. Clone the repo the far side gave
 you and run it from there, or bootstrap one with
@@ -99,7 +99,7 @@ skills/heliograph/scripts/bootstrap.sh.
 }
 
 # Hand over. start.sh owns the preflight, the credential checks, the branch
-# checkout and the handover to agent.sh, exactly as on any other host.
+# checkout and the handover to station.sh, exactly as on any other host.
 #
 # The path is converted to the form bash understands, and every argument is
 # passed through untouched.

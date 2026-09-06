@@ -3,7 +3,7 @@
 Three separate things, and they are worth keeping apart because they fail in
 different places:
 
-- **Running the loop on a Windows machine.** `agent.ps1` does this. It is a
+- **Running the loop on a Windows machine.** `station.ps1` does this. It is a
   launcher, not a port.
 - **Writing a step in PowerShell.** `ps_step` in `run.sh` does this. It works on
   any control node that has PowerShell, including Linux.
@@ -17,14 +17,14 @@ quoted, it came from a run rather than from reasoning.
 ## Running the loop on Windows
 
 ```powershell
-.\agent.ps1                 # preflight, then run the agent
-.\agent.ps1 --check         # preflight only, change nothing
-.\agent.ps1 -- --once       # everything after -- goes to agent.sh
+.\station.ps1                 # preflight, then run the agent
+.\station.ps1 --check         # preflight only, change nothing
+.\station.ps1 -- --once       # everything after -- goes to station.sh
 ```
 
-`agent.ps1` finds the bash that Git for Windows installed and hands over to
+`station.ps1` finds the bash that Git for Windows installed and hands over to
 `start.sh`. It reimplements nothing. `start.sh` then owns the preflight, the
-credential checks, the branch checkout and the handover to `agent.sh`, exactly
+credential checks, the branch checkout and the handover to `station.sh`, exactly
 as it does on every other host.
 
 ### Why a launcher and not a PowerShell port
@@ -57,7 +57,7 @@ Measured on a clean Server 2022 with Git 2.55 installed and nothing else:
 | `base64 -w0` | present |
 | `sha256sum` | present |
 | `date -u` | present |
-| `setsid` | **absent**, which only warns: `agent.sh` falls back to `set -m` |
+| `setsid` | **absent**, which only warns: `station.sh` falls back to `set -m` |
 
 ### How bash gets found
 
@@ -139,7 +139,7 @@ passes. The check only reports a blocking failure when this bash cannot tolerate
 CR **and** CRLF files are present. A blanket check would refuse to start a
 Windows control node that works perfectly, which is worse than not checking.
 
-An older draft of `agent.ps1` carried a guard that did exactly that. It was
+An older draft of `station.ps1` carried a guard that did exactly that. It was
 removed once the behaviour was measured.
 
 ### Fixing a checkout that already has committed CRLF

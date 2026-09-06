@@ -76,7 +76,7 @@ variable "image" {
 }
 
 variable "startArgs" {
-  description = "Arguments for start.sh, and after --, for agent.sh. The repo URL is NOT one of these: it travels as REPO_URL. Space-joined into the Startup Command."
+  description = "Arguments for start.sh, and after --, for station.sh. The repo URL is NOT one of these: it travels as REPO_URL. Space-joined into the Startup Command."
   type        = list(string)
   default     = []
 }

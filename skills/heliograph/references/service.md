@@ -1,6 +1,6 @@
 # Surviving logout
 
-`agent.sh` says "run this ONCE on the control node and walk away". Until
+`station.sh` says "run this ONCE on the control node and walk away". Until
 `service.sh` existed that was not true.
 
 ```bash
@@ -20,7 +20,7 @@ do anything `./start.sh` can:
 
 ```bash
 ./service.sh install --branch task/dns-timeouts    # run on a task branch
-./service.sh install -- --interval 15              # after -- goes to agent.sh
+./service.sh install -- --interval 15              # after -- goes to station.sh
 ```
 
 This is not a nicety. **Branch per task is how the whole skill works**, and the
@@ -35,13 +35,13 @@ actually on, so nobody has to infer which task a running loop is serving.
 ## The bug
 
 `sshd` sends `SIGHUP` to the session's process group when the connection closes.
-`agent.sh` traps `INT` and `TERM` but not `HUP`, and the default action for `HUP`
+`station.sh` traps `INT` and `TERM` but not `HUP`, and the default action for `HUP`
 is to terminate. Measured:
 
 ```
-$ PUSH=0 ./agent.sh --interval 3 &
+$ PUSH=0 ./station.sh --interval 3 &
 $ kill -HUP %1
-Hangup    PUSH=0 ./agent.sh --interval 3
+Hangup    PUSH=0 ./station.sh --interval 3
 ```
 
 The loop is gone. Close the laptop, and the machine nobody can log into stops
@@ -62,7 +62,7 @@ they are not equivalent.
 | survives logout | yes, with lingering | yes |
 | survives reboot | yes | **no** |
 | restarts on failure | yes, 5 tries per 5 minutes | no |
-| logs | `journalctl --user` | `.agent-service.log` |
+| logs | `journalctl --user` | `.station-service.log` |
 | needs root | no | no |
 
 The fallback is used only where there is no user systemd to talk to. It is a
@@ -74,8 +74,8 @@ output says so rather than letting you assume otherwise.
 The unit uses `Restart=on-failure`, **not** `Restart=always`, and that was learned
 by running one.
 
-`stop: yes` in `agent/request` is how the far side ends a loop it can no longer
-reach, and `agent.sh` honours it by exiting 0. Under `Restart=always` systemd
+`stop: yes` in `station/request` is how the far side ends a loop it can no longer
+reach, and `station.sh` honours it by exiting 0. Under `Restart=always` systemd
 started it straight back up, it read the same stop flag, exited again, and round
 it went. Measured on a live control node:
 
@@ -91,7 +91,7 @@ Every one of those is a commit **pushed to the transport repo**, and it only end
 when `StartLimitBurst` trips and leaves the unit `failed` - which reads like a
 breakage when the agent had done exactly what it was told.
 
-`agent.sh` runs forever unless deliberately stopped, so exit 0 means "I was told
+`station.sh` runs forever unless deliberately stopped, so exit 0 means "I was told
 to stop" and must stick. A crash, or a preflight refusing a bad credential, is
 non-zero and still restarts.
 
@@ -141,7 +141,7 @@ for a broken unit that was never written. The directory exists regardless, so
 ## The credential is where an unattended loop actually fails
 
 **A detached process inherits no environment.** `GIT_TOKEN` typed before
-`./agent.sh` reaches the agent. `GIT_TOKEN` typed before `./service.sh install`
+`./station.sh` reaches the agent. `GIT_TOKEN` typed before `./service.sh install`
 does **not** reach the service. The loop then starts perfectly, polls happily,
 and cannot push a single log, which is discovered hours later by whoever is
 waiting on the far side.
@@ -177,7 +177,7 @@ would report a key git never uses. What settles it is the write check, which
 `start.sh` runs at every service start and which refuses to start the agent if
 the push would fail.
 
-## agent.sh deliberately does NOT trap HUP
+## station.sh deliberately does NOT trap HUP
 
 This looks like the obvious one-line fix and it is the wrong one.
 
@@ -186,7 +186,7 @@ This looks like the obvious one-line fix and it is the wrong one.
 plan destroyed because somebody's wifi blinked is far worse than the agent
 exiting while the step finishes and pushes its log on its own.
 
-The stale lock this leaves behind is not a problem either. `agent.sh` already
+The stale lock this leaves behind is not a problem either. `station.sh` already
 detects and clears it:
 
 ```
@@ -214,7 +214,7 @@ somebody is relying on.
 `service.ps1` registers a scheduled task rather than a service: a service needs
 installation rights and a wrapper for a script, a task needs neither.
 
-It registers the task against **`agent.ps1`**, not against a bash path, so the
+It registers the task against **`station.ps1`**, not against a bash path, so the
 registry lookup that finds `bash.exe` stays in one place. See
 [windows.md](windows.md).
 

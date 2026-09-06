@@ -51,7 +51,7 @@ drv_step() {
 }
 
 # Start a capture in its own process group, so a cancel can signal the whole
-# group the way agent.sh does rather than only the wrapper. Echoes the pid,
+# group the way station.sh does rather than only the wrapper. Echoes the pid,
 # which is also the process group id because setsid made it a leader.
 drv_capture_bg() {
   local out="$1" script="$2"

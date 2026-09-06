@@ -102,7 +102,7 @@ resource back. The exit code is the weakest evidence in the log.
 
 Two runners on one transport repo will both answer the same request, and there
 is no lock that stops them. Each agent records the last id it handled in
-`.agent-state`, which is gitignored because it is a fact about one machine, so
+`.station-state`, which is gitignored because it is a fact about one machine, so
 neither can see what the other has done. A build agent makes it worse: a
 pipeline that cleans its workspace starts every job with no state file at all,
 so it answers whatever id it finds, every time.
@@ -113,7 +113,7 @@ says what *one* machine saw. You will not notice until two logs disagree and you
 cannot tell which one is about the box you care about.
 
 Bind each runner to its own branches, so they read different copies of
-`agent/request` and have nothing to race on:
+`station/request` and have nothing to race on:
 
 ```
 main, pipeline/*  ->  the build agent   (trigger.branches.include)

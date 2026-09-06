@@ -11,7 +11,7 @@
 #     ./intercom.sh watch <taskId>          # until it settles
 #     ./intercom.sh logs  <taskId>          # just the log, to stdout
 #
-#  WHEN TO USE THIS INSTEAD OF THE PIGEONHOLE. Only when the agent's endpoint is
+#  WHEN TO USE THIS INSTEAD OF THE PIGEONHOLE. Only when the station's endpoint is
 #  reachable from here. That is unusual - the whole skill exists because it
 #  normally is not - but an Azure Function App has a public HTTPS endpoint while
 #  sitting inside the VNet, and when that is true the blob drop is indirection
@@ -35,7 +35,7 @@ LOG_DIR="${LOG_DIR:-$HERE/ops-logs}"
 
 # python3 for JSON, and this is not laziness. A step file contains quotes,
 # backslashes and newlines by definition, and hand-rolled JSON escaping in bash
-# gets one of them wrong eventually - producing a 400 that looks like the agent
+# gets one of them wrong eventually - producing a 400 that looks like the station
 # refusing the step rather than the client mangling it. jq would do as well but
 # is present on fewer machines.
 PY="${PY:-python3}"
@@ -70,7 +70,7 @@ api() {   # api <method> <path> [body-file]
 field() {   # field <name> <<< json
   # `is None` rather than `or ""`, because the truthiness shortcut turned an
   # exit code of 0 into the empty string - so a step that SUCCEEDED reported
-  # "exit none", which reads like the agent losing the result of the one run
+  # "exit none", which reads like the station losing the result of the one run
   # that worked.
   "$PY" -c '
 import json, sys
@@ -91,7 +91,7 @@ cmd_run() {
 
   local name wait_for="${INTERCOM_WAIT:-25}"
   name="$(basename "$script")"; name="${name%.sh}"
-  # The agent's own rule, applied here so a bad name is a local error rather
+  # The station's own rule, applied here so a bad name is a local error rather
   # than a round trip: lowercase, and nothing that could be a path.
   name="$(printf '%s' "$name" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9._-' '-')"
 
@@ -148,7 +148,7 @@ get_task() {   # get_task <id> [offset]
   code="$(printf '%s' "$response" | tail -1)"
   body="$(printf '%s' "$response" | sed '$d')"
   if [ "$code" != "200" ]; then
-    printf 'intercom: HTTP %s from the agent: %s\n' "$code" "$body" >&2
+    printf 'intercom: HTTP %s from the station: %s\n' "$code" "$body" >&2
     return 1
   fi
   # NOT JSON IS NOT A LOG. App Service answers "The service is unavailable."
@@ -157,7 +157,7 @@ get_task() {   # get_task <id> [offset]
   # and the client exited 0. A file that looks like evidence and is not is
   # worse than no file: the next reader has no way to tell.
   if ! printf '%s' "$body" | "$PY" -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
-    printf 'intercom: the agent did not return JSON (HTTP %s): %s\n' "$code" "$body" >&2
+    printf 'intercom: the station did not return JSON (HTTP %s): %s\n' "$code" "$body" >&2
     return 1
   fi
   printf '%s' "$body"
@@ -185,7 +185,7 @@ cmd_watch() {
   done
 }
 
-# THE WHOLE LOG, PAGED. `offset` walks it because the agent refuses to truncate:
+# THE WHOLE LOG, PAGED. `offset` walks it because the station refuses to truncate:
 # a log that came back short would be a log missing exactly the part worth
 # reading, and there is no way for the reader to tell.
 #

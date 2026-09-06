@@ -313,7 +313,7 @@ jobs:
   # PATH, which is right on a Linux developer box and wrong to let pass here.
   #
   # It matters more than usual because NOTHING ELSE IN CI READS A .ps1 AT ALL.
-  # bash -n and shellcheck sweep *.sh and step straight over agent.ps1 and the
+  # bash -n and shellcheck sweep *.sh and step straight over station.ps1 and the
   # PowerShell steps, so without this job a syntax error in one of them would
   # go green here and only surface on a Windows control node, which is the one
   # machine nobody can log in to. That is the exact failure this repo exists to
@@ -385,7 +385,7 @@ jobs:
   # the whole of CI while the toolkit grew a Windows control node. That left the
   # parts that ONLY exist on Windows running nowhere:
   #
-  #   - agent.ps1's bash discovery, including the registry lookup that is the
+  #   - station.ps1's bash discovery, including the registry lookup that is the
   #     only thing which finds bash.exe on a default Git for Windows install,
   #     and the System32 exclusion that keeps WSL out of it
   #   - ps_step against Windows PowerShell 5.1. The Linux job uses pwsh 7, and
@@ -452,7 +452,7 @@ jobs:
           fi
           echo "every file is byte-identical to its blob, so eol=lf held against core.autocrlf=$(git config --get core.autocrlf)"
 
-      - name: agent.ps1 finds bash and hands over
+      - name: station.ps1 finds bash and hands over
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -462,13 +462,13 @@ jobs:
           git init -q .
           git config user.email ci@example.invalid
           git config user.name ci
-          $out = & powershell.exe -NoProfile -File .\agent.ps1 --check 2>&1 | Out-String
+          $out = & powershell.exe -NoProfile -File .\station.ps1 --check 2>&1 | Out-String
           Pop-Location
           Write-Output $out
           # The launcher must locate bash. On a default install bash.exe is NOT
           # on PATH, so this failing means the registry lookup broke.
-          if ($out -notmatch 'agent\.ps1: using .*bash\.exe') {
-            Write-Output "::error::agent.ps1 did not report the bash it selected"; exit 1
+          if ($out -notmatch 'station\.ps1: using .*bash\.exe') {
+            Write-Output "::error::station.ps1 did not report the bash it selected"; exit 1
           }
           # And having found it, the preflight must actually have run.
           foreach ($needle in 'sed -u', 'base64 -w0', 'line endings') {
@@ -476,10 +476,10 @@ jobs:
               Write-Output "::error::preflight did not report '$needle', so handover did not happen"; exit 1
             }
           }
-          Write-Output "agent.ps1 found bash and start.sh ran its preflight"
+          Write-Output "station.ps1 found bash and start.sh ran its preflight"
           # start.sh --check exits non-zero here ON PURPOSE: this throwaway repo
           # has no origin, so the credential and push checks cannot pass and
-          # should not. What this step tests is that agent.ps1 located bash and
+          # should not. What this step tests is that station.ps1 located bash and
           # handed over, which the assertions above have just proved from the
           # preflight's own output. Whether the preflight reaches the right
           # verdict about a credential is tested on Linux, where a remote exists.

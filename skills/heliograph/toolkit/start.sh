@@ -2,10 +2,10 @@
 # =============================================================================
 #  start.sh - one command that gets the loop running on this machine
 # =============================================================================
-#     ./start.sh                     # check this machine, then run the agent
+#     ./start.sh                     # check this machine, then run the station
 #     ./start.sh --check             # check only, change nothing, exit
 #     ./start.sh --branch task/foo   # check that branch out first
-#     ./start.sh -- --once           # everything after -- goes to agent.sh
+#     ./start.sh -- --once           # everything after -- goes to station.sh
 #
 #  Three jobs, and nothing else:
 #
@@ -18,7 +18,7 @@
 #    2. Prove git can PUSH from here, before an hour-long step discovers that it
 #       cannot. Read access is not write access, and a token that works against
 #       a host's REST API says nothing about the git path.
-#    3. Hand over to agent.sh.
+#    3. Hand over to station.sh.
 #
 #  IT DOES NOT CLONE. This file ships inside the transport repo, so by the time
 #  it runs the clone has already happened. Whoever cloned owns that step.
@@ -207,9 +207,9 @@ preflight() {
   fi
 
   if command -v sha256sum >/dev/null 2>&1; then
-    report ok sha256sum "agent.sh can detect its own updates"
+    report ok sha256sum "station.sh can detect its own updates"
   else
-    report warn sha256sum "absent, so agent.sh cannot detect its own updates: a pushed fix to agent.sh will not take effect until someone restarts it by hand"
+    report warn sha256sum "absent, so station.sh cannot detect its own updates: a pushed fix to station.sh will not take effect until someone restarts it by hand"
   fi
 
   if date -u +%Y-%m-%dT%H:%M:%SZ >/dev/null 2>&1; then
@@ -221,7 +221,7 @@ preflight() {
   if command -v setsid >/dev/null 2>&1; then
     report ok setsid "cancel can signal the step's whole process group"
   else
-    report warn setsid "absent, so agent.sh falls back to 'set -m' job control"
+    report warn setsid "absent, so station.sh falls back to 'set -m' job control"
   fi
 
   # Asked here as well as in the runners, because this file exists to answer
@@ -241,7 +241,7 @@ preflight() {
   if [ -n "$br" ] && [ "$br" != "HEAD" ]; then
     report ok branch "$br"
   else
-    report FAIL branch "detached HEAD, and agent.sh refuses to start on one. Check out the task branch first"
+    report FAIL branch "detached HEAD, and station.sh refuses to start on one. Check out the task branch first"
   fi
 
   if [ -d ops-logs ] && [ -w ops-logs ]; then
@@ -394,7 +394,7 @@ credential() {
 # The name is fixed rather than generated: it is greppable in a git host's audit
 # log, it carries the tool's name so nobody mistakes it for someone's work, and a
 # deterministic check is one an operator can reproduce by hand. It sits in
-# refs/heads/ because that is the namespace agent.sh actually pushes to, and some
+# refs/heads/ because that is the namespace station.sh actually pushes to, and some
 # hosts refuse a namespace they do not recognise - testing the path we depend on
 # is the point.
 #
@@ -434,7 +434,7 @@ verify() {
   elif printf '%s\n' "$out" | grep -qiE 'fast-forward|fetch first|behind'; then
     # Classify rather than blaming the credential for every refusal. A
     # fast-forward refusal is a statement about history, not about authorisation.
-    report warn "git write" "the remote refused a fast-forward, so write access is unproven rather than denied. That is history, not the credential: the sync below pulls, and agent.sh keeps retrying. If it persists, run 'git pull --rebase' by hand"
+    report warn "git write" "the remote refused a fast-forward, so write access is unproven rather than denied. That is history, not the credential: the sync below pulls, and station.sh keeps retrying. If it persists, run 'git pull --rebase' by hand"
   else
     # Every clause here has to name something this check can actually detect. It
     # used to end on "a remote that restricts which branch names may be created
@@ -443,7 +443,7 @@ verify() {
     # operator at a red herring in the one message they read when they cannot
     # push. The read check above passed with the same credential, so the URL, the
     # host and the network are already ruled out and the message says so.
-    report FAIL "git write" "push --dry-run of HEAD:$WRITE_CHECK_REF was refused: $(git_detail "$out"). The agent would capture logs it could not deliver. The read check above passed with this same credential, so the remote URL and the network are not the problem: it is git-receive-pack refusing the write. Check the credential reported above has write access and not just read - a read-only deploy key and a token missing the write scope both look exactly like this - and, on a host that requires it separately, that the token has been authorised for the organisation"
+    report FAIL "git write" "push --dry-run of HEAD:$WRITE_CHECK_REF was refused: $(git_detail "$out"). The station would capture logs it could not deliver. The read check above passed with this same credential, so the remote URL and the network are not the problem: it is git-receive-pack refusing the write. Check the credential reported above has write access and not just read - a read-only deploy key and a token missing the write scope both look exactly like this - and, on a host that requires it separately, that the token has been authorised for the organisation"
   fi
 }
 
@@ -455,7 +455,7 @@ verify
 echo
 
 if [ "$FAILED" -gt 0 ]; then
-  echo "preflight: $FAILED blocking problem(s) above. Not starting the agent."
+  echo "preflight: $FAILED blocking problem(s) above. Not starting the station."
   exit 1
 fi
 
@@ -469,7 +469,7 @@ fi
 # the first thing here that touches the working tree.
 #
 # It never resolves a conflict, never forces and never discards the operator's
-# work, for the same reason agent.sh does not: their local state may be the
+# work, for the same reason station.sh does not: their local state may be the
 # evidence, and destroying it to make a poll succeed is never the right trade.
 if [ -n "$WANT_BRANCH" ]; then
   cap_git fetch --quiet origin >/dev/null 2>&1
@@ -478,7 +478,7 @@ if [ -n "$WANT_BRANCH" ]; then
   else
     report FAIL checkout "cannot check out '$WANT_BRANCH'. It may not exist here yet, or the working tree may be dirty"
     echo
-    echo "preflight: 1 blocking problem above. Not starting the agent."
+    echo "preflight: 1 blocking problem above. Not starting the station."
     exit 1
   fi
 fi
@@ -490,12 +490,12 @@ else
   # auth header in this process's argv for nothing - visible to anyone else on
   # the box via ps. Do not "helpfully" wrap it back up.
   git rebase --abort >/dev/null 2>&1
-  report warn pull "pull --rebase did not succeed, so the tree is being left alone. agent.sh will keep retrying"
+  report warn pull "pull --rebase did not succeed, so the tree is being left alone. station.sh will keep retrying"
 fi
 
 echo
-echo "preflight: clear. Handing over to agent.sh."
+echo "preflight: clear. Handing over to station.sh."
 echo
-# exec, not a child: the operator's Ctrl-C has to reach the agent so its
+# exec, not a child: the operator's Ctrl-C has to reach the station so its
 # cleanup trap runs and a mid-run step gets signalled rather than orphaned.
-exec ./agent.sh ${AGENT_ARGS[@]+"${AGENT_ARGS[@]}"}
+exec ./station.sh ${AGENT_ARGS[@]+"${AGENT_ARGS[@]}"}

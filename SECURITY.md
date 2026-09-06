@@ -28,7 +28,7 @@ nobody has to infer it from the code.
 its own: no cloud auth, no API keys, no tokens beyond the git remote. So the
 honest answer to "what could this do to the estate" is "whatever the account
 running it could do", and that is the boundary to write down before an
-evaluation. `run.sh`, `caprun.sh`, `agent.sh` and `pigeonhole.sh` all **refuse to
+evaluation. `run.sh`, `caprun.sh`, `station.sh` and `pigeonhole.sh` all **refuse to
 run as root** unless `ALLOW_ROOT=1` says the image has no other user.
 
 **A step declares what it is, in its own file.** Every step carries
@@ -42,18 +42,18 @@ is not a sandbox: an author can declare `read-only` and then write `rm -rf`, and
 nothing in a shell runner can prevent that. It makes the classification explicit
 and machine-checked rather than inferred from a filename.
 
-**The unattended loop is read-only by default.** `agent.sh` and `pigeonhole.sh`
+**The unattended loop is read-only by default.** `station.sh` and `pigeonhole.sh`
 refuse an action step unless started with `--allow-actions` /
-`PIGEONHOLE_ALLOW_ACTIONS=1`. The refusal is published to `agent/status` with its
+`PIGEONHOLE_ALLOW_ACTIONS=1`. The refusal is published to `station/status` with its
 reason, so the far side learns within one poll rather than waiting out a round
 trip.
 
 **Optional pinning, for an estate that wants an allowlist.** `REQUIRE_PIN=1
-./agent.sh` runs only files whose sha256 the operator approved with
-`./agent.sh --pin`; a new or edited step is refused until it is approved again.
+./station.sh` runs only files whose sha256 the operator approved with
+`./station.sh --pin`; a new or edited step is refused until it is approved again.
 It is off by default because it makes every new step wait for the operator,
 which is the relaying the loop exists to remove. It covers `run.sh`,
-`caplib.sh`, `lib/*.sh` and `steps/*`. It does **not** cover `agent.sh`, which
+`caplib.sh`, `lib/*.sh` and `steps/*`. It does **not** cover `station.sh`, which
 self-updates on pull.
 
 ### Evaluating it without giving it anything

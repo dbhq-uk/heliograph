@@ -6,7 +6,7 @@
 # (declared at the foot of this file): it clones a transport repo and hands
 # over to that repo's own start.sh, which bootstrap.sh copies into every
 # transport repo and which already owns the preflight, the credential
-# resolution, the branch checkout and the handover to agent.sh. Duplicating
+# resolution, the branch checkout and the handover to station.sh. Duplicating
 # any of that here would leave no answer to "which copy of the preflight is
 # authoritative", so neither this file nor the entrypoint tries.
 #
@@ -147,7 +147,7 @@ RUN useradd --create-home --uid "${HELIOGRAPH_UID}" --shell /bin/bash heliograph
 # core.fileMode off - might not). entrypoint.sh: clone the
 # transport repo the container is given, then hand over to that repo's own
 # start.sh. It owns none of start.sh's job - the preflight, the credential
-# table, the branch checkout, the handover to agent.sh - only the clone that
+# table, the branch checkout, the handover to station.sh - only the clone that
 # has to happen before start.sh (and caplib.sh with it) exists to be run.
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 

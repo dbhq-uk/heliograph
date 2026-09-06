@@ -56,7 +56,7 @@ param statusPort int = 8080
 @description('Image to run.')
 param image string = 'ghcr.io/dbhq-uk/heliograph-toolkit:1.0.0-rc2'
 
-@description('Arguments for start.sh, and after --, for agent.sh. The repo URL is NOT one of these: it travels as REPO_URL. Space-joined into the container\'s Startup Command, so no argument here may itself contain a space.')
+@description('Arguments for start.sh, and after --, for station.sh. The repo URL is NOT one of these: it travels as REPO_URL. Space-joined into the container\'s Startup Command, so no argument here may itself contain a space.')
 param startArgs array = []
 
 @description('Accepted for parameter parity with the other hosts in this PR, but NOT actionable here: a Web App has no per-container cpu/memory request. Sizing comes entirely from the App Service Plan\'s own SKU (planName above), so change the plan to change this app\'s resources.')

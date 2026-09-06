@@ -116,7 +116,7 @@
 #         --volume HOSTDIR   persistence across a restart (decision 3, above)
 #         --token-file PATH  the credential mitigation docker inspect cannot
 #                             see (see CREDENTIAL HANDLING below)
-#         --ssh              the agent socket transport.md prefers (see SSH
+#         --ssh              the station socket transport.md prefers (see SSH
 #                             FORWARDING below) - the one mount this file does
 #                             not treat as optional, because Dockerfile task 1
 #                             ships openssh-client on the stated understanding
@@ -737,12 +737,12 @@ if [ "$FORWARD_SSH" -eq 1 ]; then
   if [ -z "${SSH_AUTH_SOCK:-}" ]; then
     echo "heliograph.sh: --ssh was given but SSH_AUTH_SOCK is not set in this shell." >&2
     echo "  Start or forward an agent first - 'eval \$(ssh-agent) && ssh-add' locally," >&2
-    echo "  or 'ssh -A' onto this host if the agent lives elsewhere." >&2
+    echo "  or 'ssh -A' onto this host if the station lives elsewhere." >&2
     exit 1
   fi
   if [ ! -S "$SSH_AUTH_SOCK" ]; then
     echo "heliograph.sh: --ssh was given but SSH_AUTH_SOCK ($SSH_AUTH_SOCK) is not a" >&2
-    echo "  socket. Confirm the agent is still running." >&2
+    echo "  socket. Confirm the station is still running." >&2
     exit 1
   fi
   SSH_AUTH_SOCK_HOST="$SSH_AUTH_SOCK"

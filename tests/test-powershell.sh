@@ -174,7 +174,7 @@ if [ -z "$PS_BIN" ]; then
   echo "  - the step's OWN exit code is reported, not one leaked from a native"
   echo "    command inside it"
   echo "  - the capture stays unbuffered, so a hang is still visible"
-  echo "  - agent.ps1 and the shipped .ps1 files parse"
+  echo "  - station.ps1 and the shipped .ps1 files parse"
   echo "Install PowerShell 7 (https://aka.ms/powershell) to run them."
   echo
   t_summary

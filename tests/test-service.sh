@@ -3,8 +3,8 @@
 #  test-service.sh - the loop outliving the session that started it
 # =============================================================================
 # The bug first, because everything here follows from it: sshd sends SIGHUP to
-# the session's process group when a connection closes, agent.sh traps INT and
-# TERM but not HUP, and the default action for HUP is to die. `./agent.sh` said
+# the session's process group when a connection closes, station.sh traps INT and
+# TERM but not HUP, and the default action for HUP is to die. `./station.sh` said
 # "run this ONCE and walk away" and did not survive walking away.
 #
 # service.sh fixes it with one of two mechanisms, and the assertions below care
@@ -64,10 +64,10 @@ else
   t_no "service.sh missing or not executable in a bootstrapped repo"
 fi
 
-# The pid and log files sit at the repo root next to .agent.lock. agent/ holds
+# The pid and log files sit at the repo root next to .station.lock. agent/ holds
 # request and status, which ARE committed - that directory is the transport - so
 # a pid file there would be pushed to the far side on every start.
-for f in .agent-service.pid .agent-service.log; do
+for f in .agent-service.pid .station-service.log; do
   if git -C "$TR" check-ignore -q "$f"; then
     t_ok "$f is ignored, so the service's runtime state is never committed"
   else
@@ -243,8 +243,8 @@ pid="$(cat "$TR/.agent-service.pid" 2>/dev/null || true)"
 # =============================================================================
 #  4c. a deliberate stop must stick
 # =============================================================================
-# `stop: yes` in agent/request is how the far side ends a loop it can no longer
-# reach, and agent.sh honours it by exiting 0. Under Restart=always systemd
+# `stop: yes` in station/request is how the far side ends a loop it can no longer
+# reach, and station.sh honours it by exiting 0. Under Restart=always systemd
 # started it straight back up, it read the same stop flag, exited again, and
 # round it went: four "agent: stopped" commits in eighty seconds, each one
 # PUSHED TO THE TRANSPORT REPO, until StartLimitBurst tripped and left the unit
@@ -264,8 +264,8 @@ fi
 # And the behaviour, not just the setting. A clean exit must leave it stopped.
 ( cd "$TR" && ./service.sh stop >/dev/null 2>&1; ./service.sh uninstall >/dev/null 2>&1 )
 git -C "$TR" checkout -q main 2>/dev/null
-printf 'id: stoptest\nstop: yes\n' > "$TR/agent/request"
-git -C "$TR" add agent/request >/dev/null 2>&1
+printf 'id: stoptest\nstop: yes\n' > "$TR/station/request"
+git -C "$TR" add station/request >/dev/null 2>&1
 git -C "$TR" commit -qm "request: stop" >/dev/null 2>&1
 git -C "$TR" push -q origin main >/dev/null 2>&1
 
@@ -292,8 +292,8 @@ fi
 ( cd "$TR" && ./service.sh stop >/dev/null 2>&1; ./service.sh uninstall >/dev/null 2>&1 )
 # Clear the stop flag and leave a running service behind, because section 5 is
 # about stopping one and there would otherwise be nothing there to stop.
-printf 'id:\nstep:\n' > "$TR/agent/request"
-git -C "$TR" add agent/request >/dev/null 2>&1
+printf 'id:\nstep:\n' > "$TR/station/request"
+git -C "$TR" add station/request >/dev/null 2>&1
 git -C "$TR" commit -qm "request: clear" >/dev/null 2>&1
 git -C "$TR" push -q origin main >/dev/null 2>&1
 ( cd "$TR" && ./service.sh install >/dev/null 2>&1 )

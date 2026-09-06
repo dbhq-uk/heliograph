@@ -215,7 +215,7 @@ assert_eq "the working directory is writable by the default user" "ok" "$out"
 # The contract: given a repo URL and a credential, the entrypoint clones,
 # cds in, and execs the cloned repo's OWN start.sh. Everything past the clone
 # (the preflight, the credential table, the branch checkout, the handover to
-# agent.sh) is start.sh's job, proved here by PASSING THROUGH to it and
+# station.sh) is start.sh's job, proved here by PASSING THROUGH to it and
 # reading ITS output, never by re-asserting what test-start.sh already
 # covers directly.
 #
@@ -242,7 +242,7 @@ make_transport_repo() {
 # a stub that reports its own pid and argv. Used only to pin the exec/
 # passthrough mechanics in isolation from the real preflight, the same
 # separation test-start.sh's own "the handover" block draws with its stub
-# agent.sh.
+# station.sh.
 make_stub_repo() {
   local bare="$1" work="$1.work" body="$2"
   mkdir -p "$work"
@@ -432,7 +432,7 @@ assert_eq "the marker a re-clone would have destroyed survives" \
 # --- a restart against a DIFFERENT repo on the same volume is refused ----------
 # Reproduced exactly as reported: two real repos, one volume. Without this
 # check, run 2 against beta.git still had alpha checked out and alpha as its
-# remote, and everything start.sh/agent.sh do next - including pushing
+# remote, and everything start.sh/station.sh do next - including pushing
 # captured logs - happened against the wrong transport repo. Refused, not
 # merely warned: an operator skimming scrollback would miss a warning.
 make_transport_repo "$TMP/alpha.git"
@@ -1291,7 +1291,7 @@ assert_eq "and it is genuinely still running the 20s stub, not finished and coin
 make_pushfail_repo() {
   local bare="$1" work="$1.work"
   "$ROOT/skills/heliograph/scripts/bootstrap.sh" "$work" >/dev/null 2>&1
-  printf 'id: fail-push-1\nstep: env\nenv:\ncancel:\nstop:\nnote:\n' > "$work/agent/request"
+  printf 'id: fail-push-1\nstep: env\nenv:\ncancel:\nstop:\nnote:\n' > "$work/station/request"
   git init -q --bare "$bare"
   ( cd "$work" && git init -q && git remote add origin "$bare" \
       && $GIT add -A && $GIT commit -qm init && $GIT push -q -u origin HEAD ) >/dev/null 2>&1

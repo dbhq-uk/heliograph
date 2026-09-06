@@ -7,23 +7,23 @@
 #  to it: it writes the request, ships the agent's own code, and reads the logs
 #  back. Neither side can reach the other; both reach the storage account.
 #
-#      ./drop.sh bundle                 build and upload the agent's code
-#      ./drop.sh send <id> <step> [env] queue a step for the agent to run
-#      ./drop.sh status                 what is the agent doing right now
+#      ./drop.sh bundle                 build and upload the station's code
+#      ./drop.sh send <id> <step> [env] queue a step for the station to run
+#      ./drop.sh status                 what is the station doing right now
 #      ./drop.sh logs                   what has come back
 #      ./drop.sh get <blob>             download one log and print it
 #      ./drop.sh watch                  poll until the run finishes, then print
-#      ./drop.sh stop                   tell the agent to exit cleanly
+#      ./drop.sh stop                   tell the station to exit cleanly
 #
 #  AUTHENTICATION IS NOT SYMMETRIC, and that is the point of the whole design.
 #  This side uses Entra (`--auth-mode login`) because it has internet and can
-#  reach login.microsoftonline.com. The agent cannot, so it uses a SAS. Neither
+#  reach login.microsoftonline.com. The station cannot, so it uses a SAS. Neither
 #  credential works on the other side.
 #
 #  Environment
 #    PIGEONHOLE_ACCOUNT  storage account. Read from terraform output if unset.
 #    PIGEONHOLE_LANE     which request to write. Default: default
-#    PIGEONHOLE_GROUP    the agent's container group, for the restart hint only.
+#    PIGEONHOLE_GROUP    the station's container group, for the restart hint only.
 #    PIGEONHOLE_RG       its resource group, likewise.
 #    TF_DIR              a terraform directory whose output names the account.
 # =============================================================================
@@ -64,7 +64,7 @@ restart_hint() {
   if [ -n "${PIGEONHOLE_RG:-}" ] && [ -n "${PIGEONHOLE_GROUP:-}" ]; then
     echo "  az container restart -g ${PIGEONHOLE_RG} -n ${PIGEONHOLE_GROUP}"
   else
-    echo "  restart the agent however it is hosted - for Azure Container"
+    echo "  restart the station however it is hosted - for Azure Container"
     echo "  Instances: az container restart -g <rg> -n <container-group>"
     echo "  (set PIGEONHOLE_RG and PIGEONHOLE_GROUP to print the exact command)"
   fi
@@ -98,11 +98,11 @@ case "$cmd" in
 
 # --- the agent's own code ----------------------------------------------------
 # Everything pigeonhole.sh needs at runtime, in one artifact. The container has
-# no way to clone the repo, so this IS how the agent is deployed - and why
+# no way to clone the repo, so this IS how the station is deployed - and why
 # updating it is an upload rather than a redeploy of the container group.
 bundle)
   tmp="$(mktemp -d)"
-  # Only what the agent runs. start.sh, agent.sh and the git machinery stay
+  # Only what the station runs. start.sh, station.sh and the git machinery stay
   # behind deliberately: they belong to the pipeline runner, and shipping a
   # second transport into the container is how a runner ends up answering a
   # request on a path nobody expected.
@@ -119,13 +119,13 @@ bundle)
       || die "could not build the bundle"
   blob_up agent bundle.tgz "$tmp/bundle.tgz" || die "upload failed"
   echo "bundle uploaded: $(du -h "$tmp/bundle.tgz" | cut -f1)  -> ${ACCOUNT}/agent/bundle.tgz"
-  echo "The agent picks it up on its next restart. To force one now:"
+  echo "The station picks it up on its next restart. To force one now:"
   restart_hint
   rm -rf "$tmp"
   ;;
 
 # --- queue a step ------------------------------------------------------------
-# THE TRIGGER IS THE id. The agent runs when this value CHANGES, so rewriting
+# THE TRIGGER IS THE id. The station runs when this value CHANGES, so rewriting
 # the request with the same id - to fix a note or a typo - sets nothing going.
 send)
   id="${1:-}"; step="${2:-}"; shift 2 2>/dev/null || true
@@ -152,7 +152,7 @@ status)
     cat "$tmp"
   else
     echo "no status blob for lane '${LANE}'."
-    echo "The agent has never started, or started and cannot write. Those are"
+    echo "The station has never started, or started and cannot write. Those are"
     echo "different faults: the first is the host, the second is the SAS."
     if [ -n "${PIGEONHOLE_RG:-}" ] && [ -n "${PIGEONHOLE_GROUP:-}" ]; then
       echo "  az container show -g ${PIGEONHOLE_RG} -n ${PIGEONHOLE_GROUP} \\"
@@ -231,7 +231,7 @@ stop)
     printf 'note: stopped %s by %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(whoami)"
   } > "$tmp"
   blob_up requests "${LANE}.txt" "$tmp" || die "could not write the request"
-  echo "stop sent to lane '${LANE}'. The agent exits after its current step."
+  echo "stop sent to lane '${LANE}'. The station exits after its current step."
   rm -f "$tmp"
   ;;
 

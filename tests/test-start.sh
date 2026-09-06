@@ -90,7 +90,7 @@ assert_contains "and it says what to do about it" "GNU sed" "$OUT"
 make_repo "$TMP/detached"
 ( cd "$TMP/detached" && git checkout -q --detach HEAD ) >/dev/null 2>&1
 run_start "$TMP/detached" --check
-assert_eq "a detached HEAD blocks, because agent.sh would refuse to start" "1" "$RC"
+assert_eq "a detached HEAD blocks, because station.sh would refuse to start" "1" "$RC"
 assert_contains "and it says so in those terms" "detached HEAD" "$OUT"
 
 # --- no origin ---------------------------------------------------------------
@@ -468,15 +468,15 @@ assert_contains "an unexpected ssh-add status says so rather than guessing" \
   "ssh-add exited 127" "$OUT"
 
 # --- the handover ------------------------------------------------------------
-# start.sh must exec agent.sh rather than run it as a child, so that the
+# start.sh must exec station.sh rather than run it as a child, so that the
 # operator's Ctrl-C reaches the agent and its cleanup trap fires. A stub agent
 # that reports its own pid is how that gets proved.
 make_repo "$TMP/handover"
-cat > "$TMP/handover/agent.sh" <<'EOF'
+cat > "$TMP/handover/station.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "STUB AGENT pid=$$ args=$*"
 EOF
-chmod +x "$TMP/handover/agent.sh"
+chmod +x "$TMP/handover/station.sh"
 
 RC=0
 OUT="$( cd "$TMP/handover" && ./start.sh 2>&1 )" || RC=$?
@@ -485,14 +485,14 @@ assert_contains "and the agent actually ran" "STUB AGENT" "$OUT"
 
 RC=0
 OUT="$( cd "$TMP/handover" && ./start.sh -- --once --interval 15 2>&1 )" || RC=$?
-assert_contains "args after -- reach agent.sh" "args=--once --interval 15" "$OUT"
+assert_contains "args after -- reach station.sh" "args=--once --interval 15" "$OUT"
 
 # exec, not a subshell: the agent must end up with start.sh's own pid.
 RC=0
 OUT="$( cd "$TMP/handover" && bash -c 'echo "SHELL pid=$$"; exec ./start.sh' 2>&1 )" || RC=$?
 shell_pid="$(printf '%s\n' "$OUT" | sed -n 's/^SHELL pid=//p')"
 agent_pid="$(printf '%s\n' "$OUT" | sed -n 's/.*STUB AGENT pid=\([0-9]*\).*/\1/p')"
-assert_eq "agent.sh is exec'd, so Ctrl-C reaches it" "$shell_pid" "$agent_pid"
+assert_eq "station.sh is exec'd, so Ctrl-C reaches it" "$shell_pid" "$agent_pid"
 
 # --check must still not reach the agent.
 RC=0
@@ -501,7 +501,7 @@ assert_eq "--check does not run the agent" "" "$(printf '%s' "$OUT" | grep -o 'S
 
 # --- --branch ----------------------------------------------------------------
 make_repo "$TMP/branchy"
-cp "$TMP/handover/agent.sh" "$TMP/branchy/agent.sh"
+cp "$TMP/handover/station.sh" "$TMP/branchy/station.sh"
 ( cd "$TMP/branchy" && $GIT checkout -q -b task/probe && $GIT push -q -u origin task/probe \
     && git checkout -q - ) >/dev/null 2>&1
 RC=0

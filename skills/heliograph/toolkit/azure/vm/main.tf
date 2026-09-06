@@ -71,7 +71,7 @@ variable "image" {
 }
 
 variable "startArgs" {
-  description = "Arguments for start.sh, and after --, for agent.sh."
+  description = "Arguments for start.sh, and after --, for station.sh."
   type        = list(string)
   default     = []
 }

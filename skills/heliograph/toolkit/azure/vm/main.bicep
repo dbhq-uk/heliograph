@@ -50,7 +50,7 @@ param gitTokenUser string = ''
 @description('VM OS image URN. NOT a container image - this host runs nothing in a container at all, so `image` here means the marketplace image the VM boots from. Kept under the same parameter name as the other hosts\' container image for a reason worth naming rather than hiding: it is the one parameter whose MEANING genuinely changes on this host, not just its value.')
 param image string = 'Canonical:ubuntu-24_04-lts:server:latest'
 
-@description('Arguments for start.sh, and after --, for agent.sh. The repo URL is NOT one of these here either, even though this host has no REPO_URL environment variable at all - see cloud-init.sh, which threads repoUrl straight into git clone\'s own argument.')
+@description('Arguments for start.sh, and after --, for station.sh. The repo URL is NOT one of these here either, even though this host has no REPO_URL environment variable at all - see cloud-init.sh, which threads repoUrl straight into git clone\'s own argument.')
 param startArgs array = []
 
 @description('Accepted for parameter parity with the other hosts in this PR, but NOT actionable here: a VM is sized by vmSize (below), a fixed SKU, not a continuous cpu/memory request the way a container is.')
