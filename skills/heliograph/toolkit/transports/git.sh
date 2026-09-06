@@ -39,6 +39,30 @@
 # will not be able to do later, while somebody is still listening.
 tp_capabilities() { printf 'request status progress self live\n'; }
 
+# Validate what this transport needs locally, and fail with a remedy rather
+# than a symptom. Called once, before anything else.
+tp_init() {
+  git rev-parse --git-dir >/dev/null 2>&1 || {
+    echo "station: this is not a git repository, and the git transport needs one." >&2
+    echo "         clone the transport repo and run ./start.sh from inside it." >&2
+    return 1
+  }
+  local b
+  b="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  [ -n "$b" ] && [ "$b" != "HEAD" ] || {
+    echo "station: not on a branch - checkout the task branch first" >&2
+    return 1
+  }
+  BRANCH="$b"
+  return 0
+}
+
+# What a run is bound to. A branch here; a lane in the blob transport.
+tp_scope() { printf '%s' "$BRANCH"; }
+
+# A one-line description of what was just fetched, for the log.
+tp_revision() { git log --oneline -1 2>/dev/null; }
+
 tp_check() {
   git rev-parse --git-dir >/dev/null 2>&1 || {
     echo "not a git repository" >&2
