@@ -108,12 +108,12 @@ before the first one. Every rule in it cost a round trip.
 
 Ask the operator to run `./start.sh` once, then stop relaying runs. It checks that
 the machine can capture properly and that git can push from it, then starts the
-agent, which watches `agent/request` and runs when the `id:` changes:
+agent, which watches `station/request` and runs when the `id:` changes:
 
 ```
-you       git pull --rebase, edit agent/request (new id), push ──▶ transport repo
+you       git pull --rebase, edit station/request (new id), push ──▶ transport repo
 agent     picks it up within seconds, runs ./run.sh
-          pushes agent/status, then the log ───────────────▶ transport repo
+          pushes station/status, then the log ───────────────▶ transport repo
 you       poll, read the log, decide the next step ◀────────
 ```
 
@@ -131,8 +131,8 @@ That is not a fault, it is two writers on one branch working as intended. The
 agent already does exactly this on its own side before every push. Rebase rather
 than merge: it keeps the history readable as a sequence of requests and answers
 instead of threading it with merge commits. Conflicts are rare in practice, since
-the agent only ever writes `agent/status` and `ops-logs/` while you write
-`agent/request` and `steps/`.
+the agent only ever writes `station/status` and `ops-logs/` while you write
+`station/request` and `steps/`.
 
 If they want to know whether the machine will work before committing to anything,
 `./start.sh --check` answers that and changes nothing.
@@ -146,7 +146,7 @@ Every step declares itself in its own file - `# heliograph-mode: read-only` or
 needs `CONFIRM=yes` in the request's `env:` **and** `run.sh`'s own gate, and the
 agent refuses it altogether unless the operator started it with
 `--allow-actions`. The loop is read-only by default; a refusal is published to
-`agent/status` within seconds, so you find out on the next poll rather than after
+`station/status` within seconds, so you find out on the next poll rather than after
 a wasted round trip.
 
 `cancel: yes` kills the step running right now, and `cancel: <id>` kills it only
@@ -329,7 +329,7 @@ store the far side has. Details, and why each guard is there:
 | | |
 |---|---|
 | [references/steps.md](references/steps.md) | writing a step, and the traps that cost round trips |
-| [references/runner.md](references/runner.md) | `start.sh`, `run.sh`, `agent.sh`, `caprun.sh`, every `cap_*` and knob |
+| [references/runner.md](references/runner.md) | `start.sh`, `run.sh`, `station.sh`, `caprun.sh`, every `cap_*` and knob |
 | [references/method.md](references/method.md) | how to debug across a gap. The expensive lessons |
 | [references/transport.md](references/transport.md) | how the control node authenticates to the git host |
 | [references/pigeonhole.md](references/pigeonhole.md) | the blob transport, for a control node that cannot reach git at all |

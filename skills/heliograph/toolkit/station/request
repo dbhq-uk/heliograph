@@ -1,4 +1,4 @@
-# agent/request - Claude edits this; agent.sh watches it.
+# station/request - Claude edits this; station.sh watches it.
 #
 # THE TRIGGER IS `id`. The agent runs only when this value changes, so ordinary
 # commits to a branch (docs, step edits, payload changes) do not set anything

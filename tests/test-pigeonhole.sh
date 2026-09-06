@@ -304,7 +304,7 @@ assert_contains "and a signalled agent records why it stopped" "reason:   SIGTER
 # =============================================================================
 #  It is read-only unless the operator said otherwise
 # =============================================================================
-# The same posture as agent.sh, asserted separately because this is a different
+# The same posture as station.sh, asserted separately because this is a different
 # runner reached by a different transport - and a container template that turned
 # out to be the permissive one would undo the whole argument.
 #

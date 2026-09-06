@@ -11,7 +11,7 @@
 //
 //  SCHEDULED, NOT LONG-RUNNING. Unlike ACI or the Web App, this host has no
 //  process that sits there polling. Azure starts a fresh container on the
-//  cron schedule below, agent.sh runs with --once (poll, run at most one
+//  cron schedule below, station.sh runs with --once (poll, run at most one
 //  requested step, push, exit), and the container is gone again. Nothing is
 //  ever "up" between runs - there is no agent to answer a request pushed
 //  between two schedule ticks, only at the next tick.
@@ -55,7 +55,7 @@ param gitTokenUser string = ''
 @description('Image to run.')
 param image string = 'ghcr.io/dbhq-uk/heliograph-toolkit:1.0.0-rc1'
 
-@description('Arguments for start.sh, and after --, for agent.sh. Defaults to `-- --once`: a Job executes once per schedule tick and must exit, unlike the long-running hosts, so --once is what makes that true rather than agent.sh polling forever inside a single execution.')
+@description('Arguments for start.sh, and after --, for station.sh. Defaults to `-- --once`: a Job executes once per schedule tick and must exit, unlike the long-running hosts, so --once is what makes that true rather than station.sh polling forever inside a single execution.')
 param startArgs array = [
   '--'
   '--once'
@@ -64,7 +64,7 @@ param startArgs array = [
 @description('Cron expression (UTC, standard 5-field) for how often a fresh execution starts. Every 15 minutes by default - tune to how quickly a request pushed to the transport repo needs picking up, against the cost of a container starting that often.')
 param cronExpression string = '*/15 * * * *'
 
-@description('Seconds before an execution is killed for running too long. Generous by default because a step can genuinely take a long time; agent.sh --once exits on its own well before this once its one poll cycle is done.')
+@description('Seconds before an execution is killed for running too long. Generous by default because a step can genuinely take a long time; station.sh --once exits on its own well before this once its one poll cycle is done.')
 param replicaTimeoutSeconds int = 1800
 
 param cpu string = '1.0'

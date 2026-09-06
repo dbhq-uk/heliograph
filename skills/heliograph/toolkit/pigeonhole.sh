@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  pigeonhole.sh - the agent loop, over blob storage instead of git
+#  pigeonhole.sh - the station loop, over blob storage instead of git
 # =============================================================================
 #
-#  Same contract as agent.sh: watch a request, run the step it names, ship the
+#  Same contract as station.sh: watch a request, run the step it names, ship the
 #  captured log back. The only difference is the transport.
 #
 #  USE THIS WHEN THE CONTROL NODE CANNOT REACH THE GIT HOST. Not when it is
@@ -19,11 +19,11 @@
 #  endpoint is VNet-local and never touches the route that is blocking
 #  everything else. See references/pigeonhole.md.
 #
-#  WHY A SEPARATE FILE AND NOT A FLAG ON agent.sh. Wherever this is needed, a
+#  WHY A SEPARATE FILE AND NOT A FLAG ON station.sh. Wherever this is needed, a
 #  git runner is usually still working somewhere else in the same estate. Two
 #  transports in one loop would mean every future change to either has to be
 #  reasoned about twice, and the failure mode of getting that wrong is a runner
-#  answering a request it should never have seen. This file owns blob; agent.sh
+#  answering a request it should never have seen. This file owns blob; station.sh
 #  owns git; neither knows about the other.
 #
 #  Everything BETWEEN the request and the log is shared: LOG_DIR and PUSH=0
@@ -226,7 +226,7 @@ drop_put() {
 }
 
 # --- request parsing ---------------------------------------------------------
-# Same key: value shape as agent/request, deliberately. The format is what the
+# Same key: value shape as station/request, deliberately. The format is what the
 # operator and Claude both already read, and changing it alongside the
 # transport would mean two things to relearn instead of one.
 REQ_FILE=""
@@ -329,7 +329,7 @@ trap 'cleanup_and_exit 143 TERM' TERM
 trap 'cleanup_and_exit 130 INT' INT
 
 # --- action gate -------------------------------------------------------------
-# Same rule as agent.sh, and for the same reason: this runner is unattended, so
+# Same rule as station.sh, and for the same reason: this runner is unattended, so
 # it is READ-ONLY unless the operator said otherwise when starting it.
 #
 # The step's own file says what it is (`# heliograph-mode: action`), read
@@ -419,7 +419,7 @@ while :; do
     fi
 
     # CANCEL IS NOT IMPLEMENTED HERE, AND SAYS SO RATHER THAN DOING NOTHING.
-    # agent.sh can cancel because it runs the step detached and stays
+    # station.sh can cancel because it runs the step detached and stays
     # responsive; this loop runs the step in the foreground and is deaf until
     # it returns. Accepting the field silently would be the worst outcome:
     # somebody writes `cancel: yes` to stop a wrong run, sees no error, and
@@ -487,7 +487,7 @@ while :; do
       # blast radius is a host nobody can log into to clean up.
       #
       # A refusal naming the character costs one round trip less than a
-      # surprise. Same treatment as agent.sh, deliberately: one bug, one shape.
+      # surprise. Same treatment as station.sh, deliberately: one bug, one shape.
       REFUSE=""
       case "$ENV_EXTRA" in
         *'$'* | *'`'* | *';'* | *'&'* | *'|'* | *'<'* | *'>'* | *'('* )

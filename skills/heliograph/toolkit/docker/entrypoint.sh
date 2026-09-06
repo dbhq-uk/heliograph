@@ -14,7 +14,7 @@
 #
 #  EVERYTHING AFTER THE CLONE IS start.sh's JOB. It already owns the
 #  preflight, the credential resolution, the branch checkout and the handover
-#  to agent.sh - PR 1 built and tested all of that. Duplicating any of it here
+#  to station.sh - PR 1 built and tested all of that. Duplicating any of it here
 #  would leave no answer to "which copy is authoritative", so this file does
 #  not try. In particular: there is no --branch flag here. A branch to switch
 #  to AFTER the clone is start.sh's own --branch, reached by passing it
@@ -55,7 +55,7 @@ set -uo pipefail
 # forever rather than failing. Confirmed by hand: unset, the container sat
 # there past two minutes against an auth-required host; set, the same clone
 # fails in about three seconds with "terminal prompts disabled". Exported,
-# deliberately, so it survives the exec into start.sh/agent.sh below and
+# deliberately, so it survives the exec into start.sh/station.sh below and
 # nothing later in the run can prompt either.
 export GIT_TERMINAL_PROMPT=0
 
@@ -66,7 +66,7 @@ export GIT_TERMINAL_PROMPT=0
 WORKDIR="${HELIOGRAPH_WORKDIR:-$HOME/repo}"
 
 # stamp - a UTC time for this script's own progress lines. Everything after
-# the handover is stamped already (run.sh's capture, agent.sh's loop), but
+# the handover is stamped already (run.sh's capture, station.sh's loop), but
 # nothing printed BEFORE start.sh was, and the gap this script owns is the
 # clone: on a large repo over a slow link, `docker logs` showed "cloning ..."
 # and then silence, indistinguishable from a hang. Two lines with times
@@ -382,7 +382,7 @@ user, which git refuses to read). Nothing is ever emptied or deleted to get
 past either, and no message suggests it for a directory whose contents this
 script could not identify. Then it hands over to that repo's own
 ./start.sh, which owns the preflight, the credential checks, the branch
-checkout and the handover to agent.sh. Every argument after the URL (or
+checkout and the handover to station.sh. Every argument after the URL (or
 every argument at all, if REPO_URL is set with no positional URL) is passed
 to start.sh untouched. REPO_URL and a positional URL together are refused,
 rather than one silently winning.
@@ -498,7 +498,7 @@ main() {
     # this check, a restart with a different REPO_URL/argument (a moved
     # remote, a copy-paste mistake, a volume reused for a different task)
     # silently kept the OLD checkout and its OLD remote, and everything
-    # start.sh and agent.sh do next - including pushing captured logs -
+    # start.sh and station.sh do next - including pushing captured logs -
     # happened against the wrong transport repo. That is precisely the
     # failure this toolkit exists to prevent, so this refuses rather than
     # warns: an operator who only skims scrollback would miss a warning.
@@ -570,7 +570,7 @@ main() {
       # log.
       echo "entrypoint: $WORKDIR already holds a clone of $(printf '%s' "$existing_url" | mask_secrets)," >&2
       echo "  but this run was given $(printf '%s' "$url" | mask_secrets) - refusing to reuse it." >&2
-      echo "  Reusing a checkout of a different repo would run agent.sh against, and push" >&2
+      echo "  Reusing a checkout of a different repo would run station.sh against, and push" >&2
       echo "  captured logs to, the wrong transport repo. Point HELIOGRAPH_WORKDIR at a" >&2
       echo "  different, empty location for this repo, or empty $WORKDIR by hand first if" >&2
       echo "  reusing it for a new repo is genuinely what you want - checking first that it" >&2
@@ -584,7 +584,7 @@ main() {
     # never discards the operator's work"). A re-clone would silently throw
     # that away. And there is no separate pull to write here either:
     # start.sh already does its own `cap_git pull --rebase --quiet` right
-    # before it hands over to agent.sh, using whichever credential this
+    # before it hands over to station.sh, using whichever credential this
     # container's environment provides - the same one this script would
     # otherwise re-resolve. Reusing that rather than adding a second pull
     # with a second copy of the credential logic is the "must not duplicate
@@ -663,9 +663,9 @@ main() {
   fi
 
   cd "$WORKDIR" || { echo "entrypoint: cannot cd into $WORKDIR" >&2; exit 1; }
-  # exec, not a child: the same reason start.sh execs agent.sh rather than
+  # exec, not a child: the same reason start.sh execs station.sh rather than
   # running it as one - a signal sent to this container's pid 1 has to reach
-  # start.sh (and, through its own exec, agent.sh) directly, or an operator's
+  # start.sh (and, through its own exec, station.sh) directly, or an operator's
   # `docker stop` would leave the real work orphaned and unsignalled.
 # A status endpoint, when a host asks for one.
 #

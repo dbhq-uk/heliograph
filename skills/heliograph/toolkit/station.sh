@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  agent.sh - run this ONCE on the control node and walk away
+#  station.sh - run this ONCE on the control node and walk away
 # =============================================================================
-#     ./agent.sh                    # poll, run, push, repeat - READ-ONLY
-#     ./agent.sh --once             # do one requested run, then exit
-#     ./agent.sh --interval 15      # seconds between polls (default 5)
-#     ./agent.sh --allow-actions    # also run steps that declare themselves actions
-#     ./agent.sh --allow-root       # permit running as root (see SAFETY below)
-#     ./agent.sh --pin              # approve the current steps, for REQUIRE_PIN=1
+#     ./station.sh                    # poll, run, push, repeat - READ-ONLY
+#     ./station.sh --once             # do one requested run, then exit
+#     ./station.sh --interval 15      # seconds between polls (default 5)
+#     ./station.sh --allow-actions    # also run steps that declare themselves actions
+#     ./station.sh --allow-root       # permit running as root (see SAFETY below)
+#     ./station.sh --pin              # approve the current steps, for REQUIRE_PIN=1
 #
 #  It watches this branch for a new request, runs the step, and pushes the log
 #  back - so the loop stops needing a human to relay each run:
 #
-#     Claude   edits agent/request (new id), pushes ─────────────▶ repo
+#     Claude   edits station/request (new id), pushes ─────────────▶ repo
 #     agent    sees it within seconds, runs ./run.sh
-#              pushes agent/status "running" ────────────────────▶ repo
+#              pushes station/status "running" ────────────────────▶ repo
 #              run.sh pushes ops-logs/<step>-<UTC>.txt ──────────▶ repo
-#              pushes agent/status "idle exit=N" ────────────────▶ repo
+#              pushes station/status "idle exit=N" ────────────────▶ repo
 #     Claude   polls, reads the log, decides the next step ◀──────
 #
 #  The operator types one command, once. Everything after that is git.
 #
 #  THE TRIGGER IS `id`, NOT "a new commit". Documentation and step edits land in
-#  this branch constantly; if any commit triggered a run, the agent would fire on
-#  all of them. It runs only when the `id:` line in agent/request changes, so a
+#  this branch constantly; if any commit triggered a run, the station would fire on
+#  all of them. It runs only when the `id:` line in station/request changes, so a
 #  run is always something someone asked for on purpose.
 #
-#  STOPPING: `stop: yes` in agent/request, or Ctrl-C. The stop flag is honoured
+#  STOPPING: `stop: yes` in station/request, or Ctrl-C. The stop flag is honoured
 #  from the far side precisely because nobody is sitting at this terminal.
 #
-#  WATCHING: while a step runs the agent pushes the partial log every
+#  WATCHING: while a step runs the station pushes the partial log every
 #  PROGRESS_EVERY seconds (default 60, 0 disables) with a line count and the last
 #  real line, so a long run can be followed instead of waited out.
 #
@@ -45,7 +45,7 @@
 #  READ-ONLY BY DEFAULT. A step says what it is in its own file
 #  (`# heliograph-mode: read-only` or `action`); this asks run.sh --mode and
 #  refuses an action outright unless started with --allow-actions. The refusal
-#  is PUBLISHED to agent/status within one poll, so the far side learns in
+#  is PUBLISHED to station/status within one poll, so the far side learns in
 #  seconds rather than waiting out a round trip - which is what makes a safe
 #  default affordable. An action that is allowed still has to carry CONFIRM=yes
 #  in the request's `env:` and get past run.sh's own gate. ACTION_ENV catches
@@ -58,7 +58,7 @@
 #  estate has no other option.
 #
 #  REQUIRE_PIN=1 refuses any step whose file hash the operator has not approved
-#  with `./agent.sh --pin`. Off by default: it makes every new step wait for the
+#  with `./station.sh --pin`. Off by default: it makes every new step wait for the
 #  operator, which is the relaying this loop exists to remove. It is here for an
 #  estate that wants "runs only what I approved" and knows what it costs.
 # =============================================================================
@@ -69,15 +69,15 @@ cd "$REPO_ROOT" || exit 1
 # shellcheck source=caplib.sh disable=SC1091
 . "$REPO_ROOT/caplib.sh"
 
-# Kept so the agent can re-exec itself into a newer version of this file - see
+# Kept so the station can re-exec itself into a newer version of this file - see
 # the self-update check in the loop. The option parser below consumes "$@".
 ORIG_ARGS=("$@")
-SELF_HASH="$(sha256sum "$REPO_ROOT/agent.sh" 2>/dev/null | cut -d' ' -f1)"
+SELF_HASH="$(sha256sum "$REPO_ROOT/station.sh" 2>/dev/null | cut -d' ' -f1)"
 
 INTERVAL="${INTERVAL:-5}"
 ONCE=0
 PIN_ONLY=0
-# 1 = the agent may run steps that change state, when the request asks for one.
+# 1 = the station may run steps that change state, when the request asks for one.
 #
 # DEFAULT 0. This was 1 for a while and the reason was a real one: the flag is
 # typed once at agent start, often days before the request it gates, and a
@@ -92,14 +92,37 @@ PIN_ONLY=0
 ALLOW_ACTIONS="${ALLOW_ACTIONS:-0}"
 # Running as root makes the blast radius the whole machine - see SAFETY above.
 ALLOW_ROOT="${ALLOW_ROOT:-0}"
-# 1 = refuse any step whose file hash is not in .agent-approved.
+# 1 = refuse any step whose file hash is not in .station-approved.
 REQUIRE_PIN="${REQUIRE_PIN:-0}"
 
-REQUEST="agent/request"
-STATUS="agent/status"
-STATE_FILE=".agent-state"        # gitignored: the last id we ran
-APPROVED=".agent-approved"       # gitignored: hashes the operator has approved
-LOCK=".agent.lock"
+REQUEST="station/request"
+STATUS="station/status"
+STATE_FILE=".station-state"        # gitignored: the last id we ran
+APPROVED=".station-approved"       # gitignored: hashes the operator has approved
+LOCK=".station.lock"
+
+# --- compat: a transport repo bootstrapped before the rename -----------------
+# This loop was called the "agent" until the vocabulary changed, and its paths
+# with it. A transport repo is a SEPARATE repo on a machine nobody here can
+# reach, so it does not get upgraded when this one does: the far side pulls
+# whatever it pulls, and an operator who bootstrapped last month still has
+# `agent/request` sitting in their checkout.
+#
+# Refusing that would present as the loop going deaf - polling happily,
+# answering nothing, with the request they just pushed apparently ignored.
+# That is the exact failure this whole toolkit exists to prevent, so the old
+# paths are read when the new ones are absent, and the fact is said ONCE in
+# the log rather than every poll.
+#
+# Removed at the first major version, not before.
+if [ ! -e "$REQUEST" ] && [ -e "agent/request" ]; then
+  REQUEST="agent/request"
+  STATUS="agent/status"
+  HELIOGRAPH_COMPAT_PATHS=1
+fi
+[ -e "$STATE_FILE" ]  || [ ! -e ".agent-state" ]    || STATE_FILE=".agent-state"
+[ -e "$APPROVED" ]    || [ ! -e ".agent-approved" ] || APPROVED=".agent-approved"
+[ -e "$LOCK" ]        || [ ! -e ".agent.lock" ]     || LOCK=".agent.lock"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -116,7 +139,7 @@ while [ $# -gt 0 ]; do
 done
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
-[ -n "$BRANCH" ] && [ "$BRANCH" != "HEAD" ] || { echo "agent: not on a branch - checkout the task branch first" >&2; exit 2; }
+[ -n "$BRANCH" ] && [ "$BRANCH" != "HEAD" ] || { echo "station: not on a branch - checkout the task branch first" >&2; exit 2; }
 
 # One agent per checkout. Two would double-run every request and race on push.
 #
@@ -127,9 +150,9 @@ if [ "$PIN_ONLY" = "0" ]; then
   if [ -e "$LOCK" ]; then
     pid="$(cat "$LOCK" 2>/dev/null || echo)"
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-      echo "agent: already running here as pid $pid (remove $LOCK if that is wrong)" >&2; exit 3
+      echo "station: already running here as pid $pid (remove $LOCK if that is wrong)" >&2; exit 3
     fi
-    echo "agent: clearing a stale lock from pid ${pid:-?}"
+    echo "station: clearing a stale lock from pid ${pid:-?}"
   fi
   echo $$ > "$LOCK"
 fi
@@ -157,7 +180,7 @@ cleanup() {
   # Only if this process took it. A --pin run holds no lock, and removing one it
   # never owned would unlock a real agent that is mid-run.
   [ "$PIN_ONLY" = "0" ] && rm -f "$LOCK"
-  # The step runs in its own session now, so Ctrl-C on the agent no longer
+  # The step runs in its own session now, so Ctrl-C on the station no longer
   # reaches it. Signal the group explicitly: an operator who interrupts the
   # agent expects the run to stop, not to carry on detached and push a log
   # afterwards with nothing watching it.
@@ -212,7 +235,7 @@ is_action_step() {
 # than listing names is the point - an edit to an approved step is a different
 # step, and the pin notices.
 #
-# It does NOT cover agent.sh, which self-updates on pull. Say so in the docs
+# It does NOT cover station.sh, which self-updates on pull. Say so in the docs
 # rather than implying a boundary that is not there.
 pin_hash() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
 pin_write() {
@@ -224,7 +247,7 @@ pin_write() {
     n=$((n + 1))
   done
   say "approved $n files into $APPROVED"
-  say "re-run ./agent.sh --pin after any step changes, or the loop will refuse them"
+  say "re-run ./station.sh --pin after any step changes, or the loop will refuse them"
 }
 pin_check() {  # pin_check <stepfile>; prints the first unapproved path
   local f
@@ -258,7 +281,7 @@ publish_status() {
   mkdir -p agent
   # A killed step leaves its log modified in the working tree, and progress
   # pushes have made that file TRACKED - so unless it is committed here, every
-  # later `pull --rebase` refuses on a dirty tree and the agent wedges with the
+  # later `pull --rebase` refuses on a dirty tree and the station wedges with the
   # cancellation never reaching the far side. Found by cancelling a run that had
   # been publishing progress.
   [ -n "$alsofile" ] && [ -f "$alsofile" ] || alsofile=""
@@ -275,7 +298,7 @@ publish_status() {
   git diff --cached --quiet -- "$STATUS" ${alsofile:+"$alsofile"} >/dev/null 2>&1 && return 0
   git -c user.name="${GIT_AUTHOR_NAME:-agent}" \
       -c user.email="${GIT_AUTHOR_EMAIL:-agent@$(hostname)}" \
-      commit -q -m "agent: $state ($id) ***NO_CI***" -- "$STATUS" ${alsofile:+"$alsofile"} 2>/dev/null
+      commit -q -m "station: $state ($id) ***NO_CI***" -- "$STATUS" ${alsofile:+"$alsofile"} 2>/dev/null
   cap_git pull --rebase --quiet >/dev/null 2>&1
   cap_git push --quiet >/dev/null 2>&1 || cap_git push --quiet -u origin HEAD >/dev/null 2>&1 || \
     say "status push failed (will retry on the next transition)"
@@ -320,12 +343,17 @@ publish_progress() {
   git diff --cached --quiet -- "$STATUS" "$logfile" >/dev/null 2>&1 && return 0
   git -c user.name="${GIT_AUTHOR_NAME:-agent}" \
       -c user.email="${GIT_AUTHOR_EMAIL:-agent@$(hostname)}" \
-      commit -q -m "agent: progress ($id) ${lines} lines ***NO_CI***" -- "$STATUS" "$logfile" 2>/dev/null
+      commit -q -m "station: progress ($id) ${lines} lines ***NO_CI***" -- "$STATUS" "$logfile" 2>/dev/null
   cap_git push --quiet >/dev/null 2>&1 ||
     say "progress push rejected (remote moved) - will retry; the final push reconciles"
 }
 
-say "agent up on $BRANCH at $(hostname -f 2>/dev/null || hostname), polling every ${INTERVAL}s"
+say "station up on $BRANCH at $(hostname -f 2>/dev/null || hostname), polling every ${INTERVAL}s"
+if [ "${HELIOGRAPH_COMPAT_PATHS:-0}" = "1" ]; then
+  say "compat: reading agent/request and writing agent/status, because this"
+  say "        transport repo predates the rename. Re-run bootstrap.sh to move"
+  say "        to station/request; nothing else changes and the loop is unaffected."
+fi
 if [ "$ALLOW_ACTIONS" = "1" ]; then
   say "state-changing steps: ALLOWED - started with --allow-actions, still gated by CONFIRM in the request"
 else
@@ -335,7 +363,7 @@ if [ "$REQUIRE_PIN" = "1" ]; then
   if [ -f "$APPROVED" ]; then
     say "pinning: ON - only the $(wc -l < "$APPROVED") files approved in $APPROVED will run"
   else
-    say "pinning: ON, nothing approved yet - every request is refused until ./agent.sh --pin"
+    say "pinning: ON, nothing approved yet - every request is refused until ./station.sh --pin"
   fi
 fi
 say "request 'stop: yes' or Ctrl-C to finish, 'cancel: yes' to kill a running step"
@@ -366,7 +394,7 @@ while :; do
       sleep "$INTERVAL"; continue
     fi
 
-    # Self-update. Without this, a fix to agent.sh cannot take effect while the
+    # Self-update. Without this, a fix to station.sh cannot take effect while the
     # agent is running it, and the operator has to be told to restart - which
     # defeats the point of them starting it once and walking away. Worse, bash
     # reads a script incrementally, so editing this file underneath a running
@@ -376,11 +404,11 @@ while :; do
     # mid-run, so the replacement starts from a known state. exec keeps the PID,
     # so the lock has to go first or the new process refuses to start seeing
     # "another agent" that is really itself.
-    NEW_HASH="$(sha256sum "$REPO_ROOT/agent.sh" 2>/dev/null | cut -d' ' -f1)"
+    NEW_HASH="$(sha256sum "$REPO_ROOT/station.sh" 2>/dev/null | cut -d' ' -f1)"
     if [ -n "$NEW_HASH" ] && [ "$NEW_HASH" != "$SELF_HASH" ]; then
-      say "agent.sh changed - restarting into the new version"
+      say "station.sh changed - restarting into the new version"
       rm -f "$LOCK"
-      exec "$REPO_ROOT/agent.sh" ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}
+      exec "$REPO_ROOT/station.sh" ${ORIG_ARGS[@]+"${ORIG_ARGS[@]}"}
     fi
   fi
 
@@ -427,14 +455,14 @@ while :; do
   esac
 
   if is_action_step "$STEP" && [ "$ALLOW_ACTIONS" != "1" ]; then
-    refuse "step changes state; restart the agent with --allow-actions to permit it" \
+    refuse "step changes state; restart the station with --allow-actions to permit it" \
            "'$STEP'${ENVLINE:+ with env '$ENVLINE'} changes state, and this agent is read-only (the default)"
     sleep "$INTERVAL"; continue
   fi
 
   if [ "$REQUIRE_PIN" = "1" ]; then
     if ! UNPINNED="$(pin_check "$(step_file "$STEP")")"; then
-      refuse "'$UNPINNED' is not approved in $APPROVED - the operator runs ./agent.sh --pin to approve it" \
+      refuse "'$UNPINNED' is not approved in $APPROVED - the operator runs ./station.sh --pin to approve it" \
              "'$STEP' is not approved: $UNPINNED is new or has changed since the last --pin"
       sleep "$INTERVAL"; continue
     fi
@@ -443,7 +471,7 @@ while :; do
   publish_status "running" "$ID" "$STEP"
   RUNNING=1
   START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  # run.sh owns the log, the timestamps and the log push. The agent only decides
+  # run.sh owns the log, the timestamps and the log push. The station only decides
   # WHEN it runs - that separation is the same one steps and runners already have.
   #
   # THE STEP RUNS IN ITS OWN SESSION, IN THE BACKGROUND, so this loop stays
@@ -568,7 +596,7 @@ while :; do
   # BOTH of these, and this is not belt-and-braces. LAST_ID is what the loop
   # compares against; STATE_FILE is only read at startup. Writing the file alone
   # left LAST_ID at its startup value, so the same request matched "new" on every
-  # poll and the agent re-ran it every few seconds until it was stopped.
+  # poll and the station re-ran it every few seconds until it was stopped.
   LAST_ID="$ID"
   echo "$ID" > "$STATE_FILE"
 

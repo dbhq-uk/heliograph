@@ -21,7 +21,7 @@ Every rule in here was paid for by an investigation that went wrong first.
 skills/heliograph/SKILL.md          # the skill (agent-facing instructions)
 skills/heliograph/references/       # method, runner reference, step-writing, transport, secrets, remote repos, container, windows, service
 skills/heliograph/scripts/          # bootstrap.sh - installs the toolkit into a transport repo
-skills/heliograph/toolkit/          # what gets copied out: start.sh, run.sh, agent.sh, agent.ps1, service.sh, caplib.sh, secret.sh, lib/, steps/, docker/
+skills/heliograph/toolkit/          # what gets copied out: start.sh, run.sh, station.sh, station.ps1, service.sh, caplib.sh, secret.sh, lib/, steps/, docker/
 skills/heliograph/toolkit/azure/    # bicep and Terraform for four Azure hosts. Never deployed from CI
 install.sh / install-codex.sh       # local symlink installers (Claude / Codex)
 tests/                              # plain-bash assertions; run ./tests/run-tests.sh
@@ -55,12 +55,12 @@ rather than exiting. Each round trip through an operator is expensive; none of
 them may be wasted by tooling that only reports success.
 
 **3. The runner owns the log; a step just prints to stdout.** `run.sh` and
-`caprun.sh` own the file, the timestamps and the push. `agent.sh` decides only
+`caprun.sh` own the file, the timestamps and the push. `station.sh` decides only
 *when* a runner runs. A step script knows nothing about any of it, which is what
 lets you run `./steps/foo.sh` straight to a terminal while writing it. There is
 one implementation of the capture pattern, in `caplib.sh`. Do not fork it.
 
-`agent.sh` pushes the partial log while a step runs, and that is not a crack in
+`station.sh` pushes the partial log while a step runs, and that is not a crack in
 this: it publishes a **snapshot** and never writes to the file. The step is
 appending through an open descriptor, which is also why those pushes never pull
 or rebase - a rewrite underneath a running step would leave the appends
@@ -70,7 +70,7 @@ continuing at a stale offset. `cap_push` remains the authoritative final push.
 is in its own file - `# heliograph-mode: read-only` or `action`, in the first 30
 lines - and a step that declares neither **does not run at all**. `run.sh` reads
 that declaration and requires `CONFIRM=yes` for an action, so a stale
-`DEFAULT_STEP` can never do damage on its own. `agent.sh` asks the same question
+`DEFAULT_STEP` can never do damage on its own. `station.sh` asks the same question
 through `run.sh --mode` and refuses an action unless started with
 `--allow-actions`; it also still checks the env the request passes
 (`ACTION_ENV`), because a diagnostic that only writes once `env: APPLY=1` is set
@@ -106,7 +106,7 @@ bootstrapping into a repo that holds anything else.
 `start.sh`.** `entrypoint.sh` (`toolkit/docker/`) does exactly three things:
 resolve the repo URL, clone it or reuse an existing checkout, and `exec
 ./start.sh`. Everything past the clone - the preflight, the credential
-table, the branch checkout, the handover to `agent.sh` - stays `start.sh`'s
+table, the branch checkout, the handover to `station.sh` - stays `start.sh`'s
 alone. It has no `--branch` of its own and no second `git pull` for a reused
 checkout; either would create a second copy of logic that already has one
 authoritative source. The one thing it does own is the credential for that
@@ -117,7 +117,7 @@ runs as is not a security boundary either: anyone who can run a command in
 it can `sudo` to root. Full account:
 [`skills/heliograph/references/container.md`](skills/heliograph/references/container.md).
 
-**7. `agent.ps1` is a launcher, never a port.** It finds the bash that Git for
+**7. `station.ps1` is a launcher, never a port.** It finds the bash that Git for
 Windows installed and hands over to `start.sh`. It reimplements nothing, and
 adding a PowerShell copy of the capture would break constraint 3 in the way that
 matters least visibly: a buffered port gives every line the same timestamp,
@@ -135,12 +135,12 @@ check refuses to start a Windows control node that works. Full account, with the
 measurements:
 [`skills/heliograph/references/windows.md`](skills/heliograph/references/windows.md).
 
-**8. `agent.sh` does not trap HUP, and that is deliberate.** It dies when the
+**8. `station.sh` does not trap HUP, and that is deliberate.** It dies when the
 ssh session closes, which looks like a one-line fix and is not: `cleanup`
 signals the running step's process group, so trapping HUP would kill an
 in-flight step every time a connection dropped. An hour-long plan destroyed by a
 wifi blink is worse than the agent exiting while the step finishes and pushes its
-log. The stale lock it leaves is already handled - `agent.sh` clears it on the
+log. The stale lock it leaves is already handled - `station.sh` clears it on the
 next start. `toolkit/service.sh` (systemd `--user` plus lingering, or setsid +
 nohup) is the supported way to survive logout, and `service.ps1` does the same
 with a scheduled task. Full account:
@@ -190,7 +190,7 @@ anything, because both report a clean run. Do not fix the mutant, and do not
 weaken a property to make a driver pass.
 
 A `windows` job runs the toolkit on `windows-latest`, and it is not decoration:
-`agent.ps1`'s registry lookup for bash, `ps_step` against Windows PowerShell 5.1
+`station.ps1`'s registry lookup for bash, `ps_step` against Windows PowerShell 5.1
 rather than pwsh 7, the line-ending probe's CR-tolerant branch and
 `.gitattributes` against a real `core.autocrlf=true` all execute nowhere else. It
 found two portability bugs in this repo's own tests on its first run. Note that

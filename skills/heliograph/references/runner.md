@@ -5,7 +5,7 @@ Two runners, one library. A **runner** owns the log file, the timestamps and the
 `./steps/foo.sh` straight to the terminal while you're writing it, and get the full captured
 treatment from `./run.sh foo` without changing a line.
 
-`agent.sh` sits above both: it decides *when* a runner runs, and nothing else.
+`station.sh` sits above both: it decides *when* a runner runs, and nothing else.
 `start.sh` sits above that: it decides *whether this machine can run one at all*.
 
 ---
@@ -16,10 +16,10 @@ treatment from `./run.sh foo` without changing a line.
 ./start.sh                     # check this machine, then run the agent
 ./start.sh --check             # check only, change nothing, exit
 ./start.sh --branch task/foo   # check that branch out first
-./start.sh -- --once           # everything after -- goes to agent.sh
+./start.sh -- --once           # everything after -- goes to station.sh
 ```
 
-`agent.sh` decides *when* a runner runs. `start.sh` decides *whether this machine
+`station.sh` decides *when* a runner runs. `start.sh` decides *whether this machine
 can run one at all*, and owns nothing else: no log, no push, like `secret.sh`.
 
 It answers two questions that were previously answered by a failed round trip.
@@ -71,26 +71,26 @@ run where installing is forbidden.
 
 ---
 
-## `agent.sh` - the unattended loop
+## `station.sh` - the unattended loop
 
 ```bash
-./agent.sh                     # poll, run, push, repeat - READ-ONLY
-./agent.sh --allow-actions     # also run steps that declare themselves actions
-./agent.sh --once              # one requested run, then exit
-./agent.sh --interval 15       # seconds between polls (default 5)
-./agent.sh --allow-root        # permit running as root (it refuses by default)
-./agent.sh --pin               # approve the current steps, for REQUIRE_PIN=1
+./station.sh                     # poll, run, push, repeat - READ-ONLY
+./station.sh --allow-actions     # also run steps that declare themselves actions
+./station.sh --once              # one requested run, then exit
+./station.sh --interval 15       # seconds between polls (default 5)
+./station.sh --allow-root        # permit running as root (it refuses by default)
+./station.sh --pin               # approve the current steps, for REQUIRE_PIN=1
 ```
 
 Start it once on the control node and leave it. It polls this branch, and when the `id:` in
-[`agent/request`](../toolkit/agent/request) changes it runs that step and pushes the log back:
+[`station/request`](../toolkit/station/request) changes it runs that step and pushes the log back:
 
 ```
-Claude   edits agent/request (new id), pushes ─────────────▶ repo
+Claude   edits station/request (new id), pushes ─────────────▶ repo
 agent    sees it within seconds, runs ./run.sh
-         pushes agent/status "running" ────────────────────▶ repo
+         pushes station/status "running" ────────────────────▶ repo
          run.sh pushes ops-logs/<step>-<UTC>.txt ──────────▶ repo
-         pushes agent/status "idle exit=N" ────────────────▶ repo
+         pushes station/status "idle exit=N" ────────────────▶ repo
 Claude   polls, reads the log, decides the next step ◀──────
 ```
 
@@ -101,7 +101,7 @@ has to be sitting on the far side to relay each run.
 branch constantly; if any commit fired a run, the agent would run on all of them. Only a changed
 `id` starts anything, so a run is always something someone asked for on purpose.
 
-### agent/request
+### station/request
 
 | field | |
 |---|---|
@@ -118,7 +118,7 @@ agent has to be stoppable from the same side that starts its work.
 ### Watching a run in progress
 
 While a step runs, the agent pushes the **partial log** every `PROGRESS_EVERY` seconds (default
-60, `0` disables) along with an `agent/status` carrying a line count and the last real line:
+60, `0` disables) along with an `station/status` carrying a line count and the last real line:
 
 ```
 state:    running     progress: 412 lines
@@ -164,7 +164,7 @@ cancel: 20260813T1500Z-survey   # kill it only if that id is the one running
 - Ctrl-C on the agent signals the running step too, rather than leaving it detached to push a log
   with nothing watching it.
 
-### agent/status
+### station/status
 
 Pushed on every transition, so the far side can tell "running for four minutes" from "never woke
 up" - which is otherwise invisible until a log appears.
@@ -207,14 +207,14 @@ request, so a loop that would refuse everything says so before the operator walk
 
 ### Pinning: an allowlist, when you want one
 
-`REQUIRE_PIN=1 ./agent.sh` runs only files whose sha256 the operator approved:
+`REQUIRE_PIN=1 ./station.sh` runs only files whose sha256 the operator approved:
 
 ```bash
-./agent.sh --pin                  # approve run.sh, caplib.sh, lib/*.sh and steps/*
-REQUIRE_PIN=1 ./agent.sh          # and refuse anything else
+./station.sh --pin                  # approve run.sh, caplib.sh, lib/*.sh and steps/*
+REQUIRE_PIN=1 ./station.sh          # and refuse anything else
 ```
 
-Approvals live in `.agent-approved`, which is **gitignored on purpose**: recorded in the transport
+Approvals live in `.station-approved`, which is **gitignored on purpose**: recorded in the transport
 repo they could be edited from the far side, which is the only side a pin exists to distrust.
 Hashing rather than listing names is the point - an edit to an approved step is a different step,
 and the pin notices.
@@ -223,19 +223,19 @@ and the pin notices.
 
 **Off by default**, because it makes every new step wait for the operator, which is the relaying
 this loop exists to remove. It is for an estate that wants "runs only what I approved" and knows
-what that costs. It covers everything a request can reach; it does not cover `agent.sh` itself,
+what that costs. It covers everything a request can reach; it does not cover `station.sh` itself,
 which self-updates on pull.
 
 ### Operational notes
 
-- **One agent per checkout.** `.agent.lock` holds the pid; a second refuses to start rather than
+- **One agent per checkout.** `.station.lock` holds the pid; a second refuses to start rather than
   double-running every request. A stale lock from a dead pid is cleared automatically.
 - **A fetch failure is a blip, not a death.** The loop is meant to outlive a flapping link: it
   reports, backs off and carries on, and says so when the fetch recovers.
 - **It never resolves conflicts.** If `pull --rebase` fails it aborts the rebase, says so and keeps
   polling. It will not force anything or discard local work.
-- **`.agent-state` and `.agent.lock` are gitignored** - they are per-node facts, not shared ones.
-- **An interrupted run is retried, not skipped.** `.agent-state` is written after
+- **`.station-state` and `.station.lock` are gitignored** - they are per-node facts, not shared ones.
+- **An interrupted run is retried, not skipped.** `.station-state` is written after
   a run finishes, so an agent killed mid-step picks the same request up again on
   restart. That is the right default for a read-only diagnostic and the reason
   state-changing steps are gated twice: if you do not want a retry, change the
@@ -268,7 +268,7 @@ Anatomy, in order:
 4. It refuses to run as root (exit 5) unless `ALLOW_ROOT=1`.
 5. `cap_header` → `cap_run` → `cap_footer` → `cap_push`.
 
-`--mode` and `--file` answer questions about a step and exit without touching anything. `agent.sh`
+`--mode` and `--file` answer questions about a step and exit without touching anything. `station.sh`
 asks through them rather than parsing the step table itself, so the mapping from a name to a file
 has one owner.
 
@@ -319,11 +319,11 @@ chain or gate on.
 | `SUDO` | `0` | `SUDO=1` pre-caches sudo up front, with a 60s keep-alive. Use for anything that escalates on the control node - otherwise it hangs on an invisible password prompt |
 | `CONFIRM` | unset | required (`CONFIRM=yes`) for a step declaring `heliograph-mode: action` |
 | `ALLOW_ROOT` | `0` | `1` permits running as root. Every runner refuses by default |
-| `ALLOW_ACTIONS` | `0` | `1` (or `--allow-actions`) lets `agent.sh` run an action step at all |
-| `REQUIRE_PIN` | `0` | `1` makes `agent.sh` run only files approved by `./agent.sh --pin` |
+| `ALLOW_ACTIONS` | `0` | `1` (or `--allow-actions`) lets `station.sh` run an action step at all |
+| `REQUIRE_PIN` | `0` | `1` makes `station.sh` run only files approved by `./station.sh --pin` |
 | `REDACT` | `1` | `REDACT=0` disables secret masking, when it's hiding something you need |
 | `LOG_DIR` | `ops-logs/` | where the log is written |
-| `PROGRESS_EVERY` | `60` | seconds between partial-log pushes while a step runs (`agent.sh`; `0` disables) |
+| `PROGRESS_EVERY` | `60` | seconds between partial-log pushes while a step runs (`station.sh`; `0` disables) |
 | `NO_COLOUR` | unset | plain banners, no ANSI |
 | `GIT_TOKEN` / `GIT_TOKEN_FILE` | unset | token for the git push over an HTTPS remote (see *Pushing* below) |
 

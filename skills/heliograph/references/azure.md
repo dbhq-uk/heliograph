@@ -546,7 +546,7 @@ it is what makes the workaround possible to express cleanly.
 refuses outright whenever `REPO_URL` is set AND any positional argument is
 also given. The fix for this lives in this branch's working tree but is not
 published in that tag. A Container Apps Job cannot avoid the collision: a Job
-runs once and exits, which means passing `--once` to `agent.sh`, and every
+runs once and exits, which means passing `--once` to `station.sh`, and every
 other host in this PR only avoids the refusal by passing no arguments at all
 in its default configuration.
 
@@ -569,7 +569,7 @@ then, not a reason to block this PR on a publish today.
 
 Passing `--once` also needs the same `--` that `start.sh` itself requires -
 `args = [repoUrl, "--once"]` alone reaches `start.sh` as an unrecognised
-option (`unknown option: --once`, exit 2) and never gets to `agent.sh` at
+option (`unknown option: --once`, exit 2) and never gets to `station.sh` at
 all. `[repoUrl, "--", "--once"]` is the whole shape.
 
 ### Executions are cheap to trigger by hand for testing
@@ -584,12 +584,12 @@ execution, though it only reliably shows the TAIL of a fast-finishing
 execution's output rather than the whole thing (the underlying Log Analytics
 ingestion lags by several minutes, so querying the workspace directly right
 after a run comes back empty too) - the transport repo's own
-`agent/status`/`ops-logs/` are the more reliable evidence for a fast job.
+`station/status`/`ops-logs/` are the more reliable evidence for a fast job.
 
 ## VM (systemd, no container)
 
 This host runs no image at all: cloud-init installs git and a small set of
-packages, clones the transport repo directly, and starts `agent.sh` under a
+packages, clones the transport repo directly, and starts `station.sh` under a
 systemd unit. Both the bicep and the Terraform templates were written,
 bicep-built/`terraform validate`d clean, and the cloud-init script that
 drives first boot passes `shellcheck -S warning` and `bash -n` - but neither
@@ -733,8 +733,8 @@ Eight seconds, which is faster than the five-second polling agent.
 
 **The path filter is load-bearing.** The job pushes a log back, and that push is
 a commit. Without a filter it triggers itself, then does it again. Logs land in
-`ops-logs/` and the agent writes `agent/status`, so triggering only on
-`agent/request` means neither can re-fire it. Verified: two requests produced
+`ops-logs/` and the agent writes `station/status`, so triggering only on
+`station/request` means neither can re-fire it. Verified: two requests produced
 exactly two runs, and the log pushes started nothing.
 
 GitHub gives a second guard for free, because a push made with the built-in
@@ -806,7 +806,7 @@ then pass its `subjectDescriptor` as `--subject`, with `--allow-bit 6` (2 Read +
 `repoV2/{projectId}/{repoId}`.
 
 **The checkout is a detached HEAD.** Azure DevOps checks out a commit, not a
-branch, and `agent.sh` refuses to start on one. That refusal is correct - a
+branch, and `station.sh` refuses to start on one. That refusal is correct - a
 commit on a detached HEAD goes nowhere, so the captured log would be written,
 committed, and destroyed with the workspace. The template now re-attaches with
 `git checkout -B "${BUILD_SOURCEBRANCH#refs/heads/}"` before anything else.

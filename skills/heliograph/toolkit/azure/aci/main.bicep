@@ -43,7 +43,7 @@ param gitTokenUser string = ''
 @description('Image to run.')
 param image string = 'ghcr.io/dbhq-uk/heliograph-toolkit:1.0.0-rc1'
 
-@description('Arguments for start.sh, and after --, for agent.sh. The repo URL is NOT one of these: it travels as REPO_URL.')
+@description('Arguments for start.sh, and after --, for station.sh. The repo URL is NOT one of these: it travels as REPO_URL.')
 param startArgs array = []
 
 @description('The image\'s entrypoint, needed only because ACI has no args field. Change it if you change the image.')
@@ -66,7 +66,7 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
   location: location
   properties: {
     osType: 'Linux'
-    // OnFailure, not Always: `stop: yes` in agent/request is a clean exit and
+    // OnFailure, not Always: `stop: yes` in station/request is a clean exit and
     // must stay stopped. Always would restart an agent the far side just asked
     // to stop, and it would keep restarting it.
     restartPolicy: 'OnFailure'

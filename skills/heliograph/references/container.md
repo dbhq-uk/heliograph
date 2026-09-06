@@ -123,13 +123,13 @@ one.
 3. `cd` in and `exec ./start.sh "$@"`.
 
 Everything past the clone - the preflight, the credential table and its
-reporting, the branch checkout, the handover to `agent.sh` - stays
+reporting, the branch checkout, the handover to `station.sh` - stays
 `start.sh`'s job, unmodified. There is no `--branch` flag here: a branch to
 switch to after the clone is `start.sh --branch`, reached only by passing it
 through untouched. There is no second `git pull` for the reused-checkout
 case either, even though `caplib.sh` genuinely is reachable by then (the repo
 already exists on disk) - `start.sh` already runs its own `cap_git pull
---rebase --quiet` immediately before handing over to `agent.sh`, using the
+--rebase --quiet` immediately before handing over to `station.sh`, using the
 same credential this container's environment provides, and adding a second
 pull here would be exactly the "two copies, no authoritative one" problem
 this whole toolkit is built to avoid.
@@ -201,7 +201,7 @@ value, and the wrapper's `--token-file` makes that the path of least
 resistance rather than something an operator has to assemble by hand.
 
 **The entrypoint's own progress lines carry a UTC time.** Everything after
-the handover is stamped already (`run.sh`'s capture, `agent.sh`'s loop), but
+the handover is stamped already (`run.sh`'s capture, `station.sh`'s loop), but
 nothing before `start.sh` was, and the gap the entrypoint owns is the clone:
 on a large repo over a slow link, `docker logs` showed "cloning ..." and then
 silence, which reads exactly like a hang. Two lines minutes apart settle it
@@ -225,7 +225,7 @@ was never pushed, and a re-clone would silently discard that.
 **A restart against a changed repository URL is refused**, not silently
 honoured. The check is a plain, uncredentialed, local `git remote get-url
 origin` against the checkout already on disk, compared with the URL this run
-was given. Reusing the old checkout regardless would run `agent.sh` against,
+was given. Reusing the old checkout regardless would run `station.sh` against,
 and push captured logs to, the wrong transport repo - precisely the failure
 this toolkit exists to prevent, so it is a refusal rather than a warning that
 scrollback might miss.

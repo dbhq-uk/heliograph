@@ -89,7 +89,7 @@ fi
 chmod +x "$WORKDIR/start.sh"
 
 # The credential the RUNNING agent needs is separate from the one-off clone
-# above: start.sh's own preflight and agent.sh's later pushes both re-read
+# above: start.sh's own preflight and station.sh's later pushes both re-read
 # GIT_TOKEN/GIT_TOKEN_USER via caplib.sh's cap_git, the same env-based
 # lookup as the clone. An EnvironmentFile, not inline Environment= lines in
 # the unit, so the token is not visible in `systemctl cat` or
@@ -115,7 +115,7 @@ WorkingDirectory=$WORKDIR
 EnvironmentFile=/etc/heliograph/env
 ExecStart=$WORKDIR/start.sh $START_ARGS
 # OnFailure, not always-restart-unconditionally: same reasoning as ACI's
-# restartPolicy in aci/main.bicep. A clean exit (stop: yes in agent/request,
+# restartPolicy in aci/main.bicep. A clean exit (stop: yes in station/request,
 # or --once finishing) must stay stopped.
 Restart=on-failure
 RestartSec=5

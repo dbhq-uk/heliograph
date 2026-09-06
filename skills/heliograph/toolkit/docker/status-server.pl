@@ -4,7 +4,7 @@
 # =============================================================================
 #  heliograph's weakest point is that the far side is opaque. You push a
 #  request and wait, and "running for forty minutes" looks the same as "died an
-#  hour ago". agent.sh already writes agent/status on every transition. This
+#  hour ago". station.sh already writes station/status on every transition. This
 #  serves it.
 #
 #  It exists for two reasons at once:
@@ -76,7 +76,7 @@ while (my $client = $sock->accept) {
     my ($path) = $req =~ m{^GET\s+(\S+)\s} ? ($1) : ('/');
     $path =~ s/\?.*$//;
 
-    my $status = slurp("$workdir/agent/status");
+    my $status = slurp("$workdir/station/status");
 
     if ($path eq '/health' or $path eq '/') {
         # LIVENESS, and deliberately always 200 while this server is answering.
@@ -97,7 +97,7 @@ while (my $client = $sock->accept) {
             reply($client, '200 OK', 'text/plain', $status);
         } else {
             reply($client, '503 Service Unavailable', 'text/plain',
-                  "no agent/status yet\n\nThe container is up and this server is answering, so the\n" .
+                  "no station/status yet\n\nThe container is up and this server is answering, so the\n" .
                   "image and the port are fine. The agent has not written a status\n" .
                   "yet, which usually means the clone or the preflight is still\n" .
                   "running, or start.sh refused. Check the container log.\n");

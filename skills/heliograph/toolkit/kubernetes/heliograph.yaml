@@ -39,7 +39,7 @@ metadata:
 spec:
   replicas: 1
   # Recreate, not RollingUpdate. Two agents on one transport repo would both
-  # answer the same request and race on the push. agent.sh already refuses to
+  # answer the same request and race on the push. station.sh already refuses to
   # run twice on one checkout with a lock file; this is the same rule at the
   # cluster level.
   strategy:

@@ -63,7 +63,7 @@ the timestamps and the push. Keep it that way.
 ## 4. Verify
 
 Three behaviours matter, and CI asserts all three (`toolkit` job). Run them by
-hand after touching `caplib.sh`, `run.sh` or `agent.sh`, because they are the
+hand after touching `caplib.sh`, `run.sh` or `station.sh`, because they are the
 ones whose failure is invisible until someone is waiting on the far side of a gap
 for a log that never arrives:
 

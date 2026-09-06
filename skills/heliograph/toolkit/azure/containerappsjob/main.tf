@@ -80,7 +80,7 @@ variable "image" {
 }
 
 variable "startArgs" {
-  description = "Arguments for start.sh, and after --, for agent.sh. Defaults to [\"--\", \"--once\"]: a Job executes once per schedule tick and must exit."
+  description = "Arguments for start.sh, and after --, for station.sh. Defaults to [\"--\", \"--once\"]: a Job executes once per schedule tick and must exit."
   type        = list(string)
   default     = ["--", "--once"]
 }

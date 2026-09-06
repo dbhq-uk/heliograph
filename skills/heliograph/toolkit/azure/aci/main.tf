@@ -77,7 +77,7 @@ variable "image" {
 }
 
 variable "startArgs" {
-  description = "Arguments for start.sh, and after --, for agent.sh. The repo URL is NOT one of these: it travels as REPO_URL."
+  description = "Arguments for start.sh, and after --, for station.sh. The repo URL is NOT one of these: it travels as REPO_URL."
   type        = list(string)
   default     = []
 }
@@ -149,7 +149,7 @@ resource "azurerm_container_group" "this" {
   subnet_ids      = [data.azurerm_subnet.this.id]
 
   # OnFailure, not Always, for the same reason as the bicep version: `stop:
-  # yes` in agent/request is a clean exit and must stay stopped, not be
+  # yes` in station/request is a clean exit and must stay stopped, not be
   # restarted by a policy that cannot tell a deliberate stop from a crash.
   restart_policy = "OnFailure"
 

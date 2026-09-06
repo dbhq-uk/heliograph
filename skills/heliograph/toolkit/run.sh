@@ -41,7 +41,7 @@ DEFAULT_STEP="env"
 
 # --mode <step> answers what a step declares itself to be; --file <step> answers
 # which file that declaration was read from. Both exit having touched nothing.
-# agent.sh asks through here rather than reading the step table itself, so the
+# station.sh asks through here rather than reading the step table itself, so the
 # mapping from a step name to a file stays in ONE place - two copies of it would
 # drift the first time somebody registered a step that takes arguments.
 QUERY=""

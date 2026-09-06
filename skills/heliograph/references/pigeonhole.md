@@ -39,7 +39,7 @@ Four containers on one account:
 
 Two runners must never answer one request. A heliograph log's whole value is that it says what **one** machine saw; two logs seconds apart from two hosts is a failure that looks like success.
 
-Git gets that from branch binding - each runner reads a different branch, so a different copy of `agent/request`. There are no branches in a blob store, so the **lane** is the path: a runner reads `requests/<lane>.txt` and nothing else, and **no two runners may share a lane**.
+Git gets that from branch binding - each runner reads a different branch, so a different copy of `station/request`. There are no branches in a blob store, so the **lane** is the path: a runner reads `requests/<lane>.txt` and nothing else, and **no two runners may share a lane**.
 
 Set it with `PIGEONHOLE_LANE` on both sides.
 
@@ -92,7 +92,7 @@ It needs `PIGEONHOLE_ACCOUNT`, or `TF_DIR` pointing at a terraform directory who
 
 ## It is read-only unless you said otherwise
 
-Same posture as `agent.sh`, for the same reason: nobody is watching this runner either. A step that declares `# heliograph-mode: action` is refused unless the runner was started with `PIGEONHOLE_ALLOW_ACTIONS=1`, and the refusal is published to the status blob with the variable that would permit it. `PIGEONHOLE_NO_ACTIONS=1` is still honoured - it is now the default, and it stays in the templates that set it.
+Same posture as `station.sh`, for the same reason: nobody is watching this runner either. A step that declares `# heliograph-mode: action` is refused unless the runner was started with `PIGEONHOLE_ALLOW_ACTIONS=1`, and the refusal is published to the status blob with the variable that would permit it. `PIGEONHOLE_NO_ACTIONS=1` is still honoured - it is now the default, and it stays in the templates that set it.
 
 The gate reads each step's own declaration through `run.sh --mode`. It used to be a prefix convention - `apply-*`, `deploy-*`, `fix-*`, `restart-*` - which could only ever see the steps whose authors had followed it.
 
@@ -102,7 +102,7 @@ It also refuses to run as root unless `ALLOW_ROOT=1`. The account is the whole b
 
 `pigeonhole.sh` calls `run.sh` with `LOG_DIR` and `PUSH=0`, so the capture itself is untouched: the same timestamps, the same ANSI stripping, the same redaction, the same header and footer. A log from the pigeonhole and a log from a git runner are the same document. Only the poll source and the publish sink differ.
 
-It is a separate file from `agent.sh` on purpose. Wherever this is needed, a git runner is usually still working elsewhere in the same estate, and two transports in one loop would mean reasoning about every future change twice - with a runner answering a request it should never have seen as the failure mode.
+It is a separate file from `station.sh` on purpose. Wherever this is needed, a git runner is usually still working elsewhere in the same estate, and two transports in one loop would mean reasoning about every future change twice - with a runner answering a request it should never have seen as the failure mode.
 
 ## Traps
 

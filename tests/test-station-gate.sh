@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  test-agent-gate.sh - what the unattended loop will and will not run
+#  test-station-gate.sh - what the unattended loop will and will not run
 # =============================================================================
 # The agent is the part of this toolkit that runs without anyone watching, so
 # its default posture is the thing most worth asserting. It is read-only by
@@ -10,7 +10,7 @@
 # That default was the other way round for a while, for a real reason - a flag
 # typed once at agent start, days before the request it gated, surfaced as a
 # silent refusal and wasted the round trip this tooling exists to save. The
-# refusal now reaches the far side through agent/status within one poll, which
+# refusal now reaches the far side through station/status within one poll, which
 # is what makes a safe default affordable again. So the assertions below check
 # the refusal is PUBLISHED, not just that it happened.
 #
@@ -25,7 +25,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
 TMP="$(mktemp -d)"
-trap 'pkill -f "$TMP/tr/agent.sh" 2>/dev/null; rm -rf "$TMP"' EXIT
+trap 'pkill -f "$TMP/tr/station.sh" 2>/dev/null; rm -rf "$TMP"' EXIT
 
 TR="$TMP/tr"
 GIT="git -c user.email=ci@example.invalid -c user.name=ci"
@@ -55,22 +55,22 @@ add_step writer action
 ( cd "$TR" && $GIT add -A && $GIT commit -qm steps && $GIT push -q ) >/dev/null 2>&1
 
 request() {  # request <id> <step> [envline]
-  { echo "id: $1"; echo "step: $2"; [ -n "${3:-}" ] && echo "env: $3"; } > "$TR/agent/request"
+  { echo "id: $1"; echo "step: $2"; [ -n "${3:-}" ] && echo "env: $3"; } > "$TR/station/request"
   ( cd "$TR" && $GIT add -A && $GIT commit -qm "request $1" && $GIT push -q ) >/dev/null 2>&1
 }
 
 agent() {  # agent [args...] - one pass, output in OUT, exit code in RC
   RC=0
-  OUT="$( cd "$TR" && timeout 60 ./agent.sh --once --interval 1 "$@" 2>&1 )" || RC=$?
+  OUT="$( cd "$TR" && timeout 60 ./station.sh --once --interval 1 "$@" 2>&1 )" || RC=$?
 }
 
-status_field() { sed -n "s/^$1:[[:space:]]*//p" "$TR/agent/status" | head -1; }
+status_field() { sed -n "s/^$1:[[:space:]]*//p" "$TR/station/status" | head -1; }
 logs_for() { ls "$TR/ops-logs/$1"-*.txt 2>/dev/null | wc -l; }
 
 # --- the default posture ------------------------------------------------------
 # The shipped request has an empty `id`, so a fresh agent starts up and waits.
 # Five seconds is plenty to read its banner and nothing is lost by killing it.
-banner() { OUT="$( cd "$TR" && timeout 5 ./agent.sh --interval 1 "$@" 2>&1 )"; }
+banner() { OUT="$( cd "$TR" && timeout 5 ./station.sh --interval 1 "$@" 2>&1 )"; }
 banner
 assert_contains "the agent says at startup that actions are blocked" "BLOCKED" "$OUT"
 
@@ -86,7 +86,7 @@ assert_contains "and the refusal is said out loud" "REFUSED" "$OUT"
 assert_eq "and PUBLISHED, which is what makes the safe default affordable" \
   "refused" "$(status_field state)"
 assert_contains "and the reason names the flag that would allow it" \
-  "allow-actions" "$(cat "$TR/agent/status")"
+  "allow-actions" "$(cat "$TR/station/status")"
 
 # --- the operator opting in ---------------------------------------------------
 request w2 writer "CONFIRM=yes"
@@ -121,24 +121,24 @@ assert_eq "pinning is off by default: an unpinned step still runs" "2" "$(logs_f
 
 request r2 reader
 RC=0
-OUT="$( cd "$TR" && REQUIRE_PIN=1 timeout 60 ./agent.sh --once --interval 1 2>&1 )" || RC=$?
+OUT="$( cd "$TR" && REQUIRE_PIN=1 timeout 60 ./station.sh --once --interval 1 2>&1 )" || RC=$?
 assert_eq "with REQUIRE_PIN=1 and nothing approved, the step is refused" \
   "refused" "$(status_field state)"
-assert_contains "and the reason says it is not approved" "not approved" "$(cat "$TR/agent/status")"
+assert_contains "and the reason says it is not approved" "not approved" "$(cat "$TR/station/status")"
 assert_eq "and it captured nothing" "2" "$(logs_for reader)"
 
-( cd "$TR" && ./agent.sh --pin >/dev/null 2>&1 )
+( cd "$TR" && ./station.sh --pin >/dev/null 2>&1 )
 assert_eq "--pin writes the approvals locally" "1" \
-  "$( [ -f "$TR/.agent-approved" ] && echo 1 || echo 0 )"
+  "$( [ -f "$TR/.station-approved" ] && echo 1 || echo 0 )"
 
 # Local, and gitignored: an approval recorded in the transport repo could be
 # edited from the far side, which is the only side the pin exists to distrust.
-assert_eq ".agent-approved is gitignored, because trust must not be pushable" "0" \
-  "$( cd "$TR" && git check-ignore -q .agent-approved && echo 0 || echo 1 )"
+assert_eq ".station-approved is gitignored, because trust must not be pushable" "0" \
+  "$( cd "$TR" && git check-ignore -q .station-approved && echo 0 || echo 1 )"
 
 request r3 reader
 RC=0
-OUT="$( cd "$TR" && REQUIRE_PIN=1 timeout 60 ./agent.sh --once --interval 1 2>&1 )" || RC=$?
+OUT="$( cd "$TR" && REQUIRE_PIN=1 timeout 60 ./station.sh --once --interval 1 2>&1 )" || RC=$?
 assert_eq "after --pin, the approved step runs" "3" "$(logs_for reader)"
 
 # The point of hashing rather than listing names: an EDIT to an approved step is
@@ -147,7 +147,7 @@ printf 'echo "changed after approval"\n' >> "$TR/steps/reader.sh"
 ( cd "$TR" && $GIT add -A && $GIT commit -qm edit && $GIT push -q ) >/dev/null 2>&1
 request r4 reader
 RC=0
-OUT="$( cd "$TR" && REQUIRE_PIN=1 timeout 60 ./agent.sh --once --interval 1 2>&1 )" || RC=$?
+OUT="$( cd "$TR" && REQUIRE_PIN=1 timeout 60 ./station.sh --once --interval 1 2>&1 )" || RC=$?
 assert_eq "an approved step that has since changed is refused" "refused" "$(status_field state)"
 assert_eq "and did not run" "3" "$(logs_for reader)"
 # A refusal is an answer: --once has answered its one request and must exit

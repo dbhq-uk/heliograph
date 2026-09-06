@@ -3,20 +3,20 @@
 # =============================================================================
 #     .\service.ps1 install                    # survive logout and reboot
 #     .\service.ps1 install --branch task/foo  # ...on a task branch
-#     .\service.ps1 install -- --once          # ...args after -- go to agent.sh
+#     .\service.ps1 install -- --once          # ...args after -- go to station.sh
 #     .\service.ps1 status
 #     .\service.ps1 logs
 #     .\service.ps1 stop
 #     .\service.ps1 uninstall
 #
 #  This is service.sh's counterpart. Same job, same division of labour: it
-#  decides only HOW THE LOOP OUTLIVES THE SESSION, and it starts agent.ps1 so
+#  decides only HOW THE LOOP OUTLIVES THE SESSION, and it starts station.ps1 so
 #  that the bash discovery and start.sh's preflight both still happen. It
 #  reimplements neither.
 #
-#  IT DOES NOT LOOK FOR BASH. agent.ps1 already does that, including the
+#  IT DOES NOT LOOK FOR BASH. station.ps1 already does that, including the
 #  registry lookup that is the only thing which finds bash.exe on a default Git
-#  for Windows install. Registering the task against agent.ps1 rather than
+#  for Windows install. Registering the task against station.ps1 rather than
 #  against a bash path keeps one copy of that logic.
 #
 #  WHY A SCHEDULED TASK rather than a service. A Windows service needs
@@ -33,11 +33,11 @@ $ErrorActionPreference = 'Stop'
 # relying on.
 $TaskName = if ($env:HELIOGRAPH_SERVICE_NAME) { $env:HELIOGRAPH_SERVICE_NAME } else { 'heliograph' }
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$LogFile  = Join-Path $RepoRoot '.agent-service.log'
+$LogFile  = Join-Path $RepoRoot '.station-service.log'
 
 function Assert-Prereqs {
-    if (-not (Test-Path (Join-Path $RepoRoot 'agent.ps1'))) {
-        throw "service.ps1: no agent.ps1 beside this script. Run it from inside a transport repo."
+    if (-not (Test-Path (Join-Path $RepoRoot 'station.ps1'))) {
+        throw "service.ps1: no station.ps1 beside this script. Run it from inside a transport repo."
     }
     if (-not (Test-Path (Join-Path $RepoRoot 'start.sh'))) {
         throw "service.ps1: no start.sh beside this script. Run it from inside a transport repo."
@@ -46,7 +46,7 @@ function Assert-Prereqs {
 
 # The credential is where an unattended loop actually fails, and a scheduled task
 # inherits nothing from the shell that registered it. GIT_TOKEN typed before
-# .\agent.ps1 reaches the agent; GIT_TOKEN typed before .\service.ps1 install
+# .\station.ps1 reaches the station; GIT_TOKEN typed before .\service.ps1 install
 # does NOT reach the task. The loop then starts, polls happily and cannot push a
 # single log, which is discovered hours later by somebody waiting on the far
 # side.
@@ -100,7 +100,7 @@ function Test-Credential {
     return $false
 }
 
-# Everything except -Force is forwarded to agent.ps1, which forwards it to
+# Everything except -Force is forwarded to station.ps1, which forwards it to
 # start.sh. The first version hardcoded no arguments, so a service-managed loop
 # could not be put on a task branch - and branch per task is how this skill
 # works. Found by running a real investigation through the Linux side.
@@ -113,11 +113,11 @@ function Install-Service {
 
     # Redirect through -Command rather than -File, because a task's output goes
     # nowhere by default and a loop you cannot read is not much better than one
-    # that died. 6>&1 catches the information stream too; agent.ps1 reports the
+    # that died. 6>&1 catches the information stream too; station.ps1 reports the
     # bash it picked with Write-Host.
     $tail = ''
     if ($StartArgs.Count) { $tail = ' ' + (($StartArgs | ForEach-Object { "'" + ($_ -replace "'", "''") + "'" }) -join ' ') }
-    $inner = "& '$RepoRoot\agent.ps1'$tail *>&1 | Out-File -FilePath '$LogFile' -Encoding utf8 -Append"
+    $inner = "& '$RepoRoot\station.ps1'$tail *>&1 | Out-File -FilePath '$LogFile' -Encoding utf8 -Append"
     $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
         -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"$inner`"" `
         -WorkingDirectory $RepoRoot
@@ -146,7 +146,7 @@ function Install-Service {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
         -Principal $principal -Settings $settings `
-        -Description "heliograph agent loop ($RepoRoot)" | Out-Null
+        -Description "heliograph station loop ($RepoRoot)" | Out-Null
 
     Start-ScheduledTask -TaskName $TaskName
     Start-Sleep -Seconds 3
