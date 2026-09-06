@@ -141,6 +141,22 @@ done
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 [ -n "$BRANCH" ] && [ "$BRANCH" != "HEAD" ] || { echo "station: not on a branch - checkout the task branch first" >&2; exit 2; }
 
+# --- the transport -----------------------------------------------------------
+# Every command that crosses the gap lives behind tp_*, so this loop no longer
+# knows what it is talking to. TRANSPORT selects one; git is the default and
+# the only one this build ships.
+TRANSPORT="${TRANSPORT:-git}"
+TP_FILE="$REPO_ROOT/transports/${TRANSPORT}.sh"
+[ -f "$TP_FILE" ] || { echo "station: no transport named '$TRANSPORT' (looked for $TP_FILE)" >&2; exit 2; }
+# shellcheck source=transports/git.sh disable=SC1090
+. "$TP_FILE"
+
+# Read at START, so a station can say what it will NOT be able to do later,
+# while there is still somebody listening. A station that cannot self-update is
+# a working station; one that discovers it when an update is needed and nobody
+# is there is a wasted round trip.
+TP_CAPS=" $(tp_capabilities) "
+
 # One agent per checkout. Two would double-run every request and race on push.
 #
 # --pin takes no lock, deliberately: approving a new step is exactly the thing
@@ -196,7 +212,14 @@ trap cleanup INT TERM
 # --- request parsing ---------------------------------------------------------
 # Deliberately dumb key: value. No YAML parser, nothing to install, and the file
 # stays readable by whoever opens it next.
-field() { sed -n "s/^${1}:[[:space:]]*//p" "$REQUEST" 2>/dev/null | head -1; }
+# Read a field from the request the transport last handed us, NOT from a file.
+#
+# A file is a git detail. A relay or an object store hands over a document with
+# no path at all, and a `field` that reads $REQUEST would work only for the one
+# transport it was written against - which is exactly the drift the interface
+# exists to prevent.
+REQ_BODY=""
+field() { printf '%s\n' "$REQ_BODY" | sed -n "s/^${1}:[[:space:]]*//p" | head -1; }
 
 # A step is an action if its OWN FILE says so, or if the request's env turns it
 # into one.
@@ -294,13 +317,7 @@ publish_status() {
     echo "utc:      $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     [ -n "$extra" ] && echo "$extra"
   } > "$STATUS"
-  git add -f "$STATUS" ${alsofile:+"$alsofile"} >/dev/null 2>&1
-  git diff --cached --quiet -- "$STATUS" ${alsofile:+"$alsofile"} >/dev/null 2>&1 && return 0
-  git -c user.name="${GIT_AUTHOR_NAME:-station}" \
-      -c user.email="${GIT_AUTHOR_EMAIL:-station@$(hostname)}" \
-      commit -q -m "station: $state ($id) ***NO_CI***" -- "$STATUS" ${alsofile:+"$alsofile"} 2>/dev/null
-  cap_git pull --rebase --quiet >/dev/null 2>&1
-  cap_git push --quiet >/dev/null 2>&1 || cap_git push --quiet -u origin HEAD >/dev/null 2>&1 || \
+  tp_put_status "$(cat "$STATUS")" "station: $state ($id) ***NO_CI***" "$alsofile" || \
     say "status push failed (will retry on the next transition)"
 }
 
@@ -339,16 +356,19 @@ publish_progress() {
     echo "log:      $logfile"
     [ -n "$last" ] && echo "last:     $last"
   } > "$STATUS"
-  git add -f "$STATUS" "$logfile" >/dev/null 2>&1
-  git diff --cached --quiet -- "$STATUS" "$logfile" >/dev/null 2>&1 && return 0
-  git -c user.name="${GIT_AUTHOR_NAME:-station}" \
-      -c user.email="${GIT_AUTHOR_EMAIL:-station@$(hostname)}" \
-      commit -q -m "station: progress ($id) ${lines} lines ***NO_CI***" -- "$STATUS" "$logfile" 2>/dev/null
-  cap_git push --quiet >/dev/null 2>&1 ||
+  tp_put_progress "$(cat "$STATUS")" "station: progress ($id) ${lines} lines ***NO_CI***" "$logfile" || \
     say "progress push rejected (remote moved) - will retry; the final push reconciles"
 }
 
 say "station up on $BRANCH at $(hostname -f 2>/dev/null || hostname), polling every ${INTERVAL}s"
+say "transport: $(tp_describe)"
+# Said at START rather than discovered later. A station that cannot update
+# itself is a working station; one that finds that out when an update is needed,
+# with nobody on this side to tell, has cost a round trip.
+case "$TP_CAPS" in
+  *" self "*) : ;;
+  *) say "note: this transport cannot update the station. To change it, re-plant." ;;
+esac
 if [ "${HELIOGRAPH_COMPAT_PATHS:-0}" = "1" ]; then
   say "compat: reading agent/request and writing agent/status, because this"
   say "        transport repo predates the rename. Re-run bootstrap.sh to move"
@@ -374,25 +394,23 @@ FAILS=0
 while :; do
   # A fetch failure is a blip, not a reason to die - this loop is meant to
   # outlive a flapping link. Report it, back off a little, carry on.
-  if ! cap_git fetch --quiet origin "$BRANCH" 2>/dev/null; then
+  if ! REQ_BODY="$(tp_fetch_request)"; then
     FAILS=$((FAILS + 1))
     [ $((FAILS % 12)) = 1 ] && say "fetch failed (${FAILS}x) - still trying"
     sleep "$INTERVAL"; continue
   fi
   [ "$FAILS" != "0" ] && { say "fetch recovered"; FAILS=0; }
 
-  LOCAL="$(git rev-parse HEAD 2>/dev/null)"
-  REMOTE="$(git rev-parse "origin/$BRANCH" 2>/dev/null)"
-  if [ "$LOCAL" != "$REMOTE" ]; then
-    if cap_git pull --rebase --quiet 2>/dev/null; then
-      say "pulled $(git log --oneline -1)"
-    else
-      say "pull --rebase failed - working tree may be dirty; leaving it alone"
-      # Bare git: abort touches no network, so cap_git would put the auth header
-      # in this process's argv for nothing.
-      git rebase --abort >/dev/null 2>&1
-      sleep "$INTERVAL"; continue
-    fi
+  # Bring a newer payload in, if this transport can. 0 = something changed,
+  # 1 = nothing to do, 2 = it could not be done. A 2 is not fatal: a station
+  # that cannot update itself is still a working station.
+  tp_fetch_self; TP_SELF=$?
+  if [ "$TP_SELF" = "2" ]; then
+    say "pull --rebase failed - working tree may be dirty; leaving it alone"
+    sleep "$INTERVAL"; continue
+  fi
+  if [ "$TP_SELF" = "0" ]; then
+    say "pulled $(git log --oneline -1)"
 
     # Self-update. Without this, a fix to station.sh cannot take effect while the
     # agent is running it, and the operator has to be told to restart - which
@@ -547,8 +565,8 @@ while :; do
     # Read the request from the REMOTE ref, never by pulling: the step is writing
     # to this working tree right now, and a rebase underneath a running step is
     # how you corrupt a run you were only trying to observe.
-    cap_git fetch --quiet origin "$BRANCH" 2>/dev/null || continue
-    REMOTE_REQ="$(git show "origin/$BRANCH:$REQUEST" 2>/dev/null)" || continue
+    REMOTE_REQ="$(tp_fetch_request_live)" || continue
+    [ -n "$REMOTE_REQ" ] || continue
     WANT_CANCEL="$(printf '%s\n' "$REMOTE_REQ" | sed -n 's/^cancel:[[:space:]]*//p' | head -1)"
     NEW_ID="$(printf '%s\n' "$REMOTE_REQ" | sed -n 's/^id:[[:space:]]*//p' | head -1)"
 
