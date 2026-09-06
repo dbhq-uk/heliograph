@@ -84,7 +84,7 @@ reads as clearly as a successful one and a round trip is never wasted.
 ### Any agent (Cursor, Copilot, Windsurf, Gemini, Cline and more)
 
 ```bash
-npx skills add dbhq-uk/heliograph-skill
+npx skills add dbhq-uk/heliograph
 ```
 
 The [skills.sh](https://skills.sh) CLI installs into whichever agent directories
@@ -93,8 +93,8 @@ it finds, so this works outside Claude Code and Codex too.
 ### Local install (Claude Code or Codex)
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph-skill.git
-cd heliograph-skill
+git clone https://github.com/dbhq-uk/heliograph.git
+cd heliograph
 ./install.sh          # Claude Code: symlinks into ~/.claude/skills (edits are live)
 ./install-codex.sh    # Codex: installs into ~/.codex/skills
 ```
@@ -105,8 +105,8 @@ The toolkit is plain bash and stands on its own. Copy it into a fresh private
 repo and drive it by hand:
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph-skill.git
-./heliograph-skill/skills/heliograph/scripts/bootstrap.sh ~/my-investigation
+git clone https://github.com/dbhq-uk/heliograph.git
+./heliograph/skills/heliograph/scripts/bootstrap.sh ~/my-investigation
 ```
 
 Bash 4+, git and GNU coreutils. No packages, no credentials, no network beyond

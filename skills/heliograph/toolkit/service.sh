@@ -192,7 +192,7 @@ write_unit() {
   cat > "$UNIT_PATH" <<EOF
 [Unit]
 Description=heliograph agent loop ($REPO_ROOT)
-Documentation=https://github.com/dbhq-uk/heliograph-skill
+Documentation=https://github.com/dbhq-uk/heliograph
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300
