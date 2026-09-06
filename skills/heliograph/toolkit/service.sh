@@ -49,6 +49,30 @@ cd "$REPO_ROOT" || exit 1
 SERVICE_NAME="${HELIOGRAPH_SERVICE_NAME:-heliograph}"
 UNIT_NAME="$SERVICE_NAME.service"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+
+# --- launchd, for macOS -------------------------------------------------------
+# There is no systemd here and the setsid fallback, while it works, does not
+# survive a reboot. A LaunchAgent does, restarts on failure, and needs no root -
+# the same three properties the systemd path was chosen for.
+#
+# The label is reverse-DNS because launchd requires it, and it carries
+# HELIOGRAPH_SERVICE_NAME for the same reason the unit name does: one transport
+# repo per investigation is ordinary, and a fixed label would mean the second
+# install silently replaced the first.
+LAUNCH_LABEL="uk.dbhq.heliograph.${SERVICE_NAME}"
+LAUNCH_DIR="$HOME/Library/LaunchAgents"
+LAUNCH_PATH="$LAUNCH_DIR/${LAUNCH_LABEL}.plist"
+
+# A repo path can contain & or < - rare, but a plist with one in it is invalid
+# and launchd's complaint about it names the file, not the character.
+xml_escape() {
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+launchd_ok() {
+  [ "$(uname -s 2>/dev/null)" = "Darwin" ] || return 1
+  command -v launchctl >/dev/null 2>&1
+}
 UNIT_PATH="$UNIT_DIR/$UNIT_NAME"
 PID_FILE="$REPO_ROOT/.agent-service.pid"
 LOG_FILE="$REPO_ROOT/.station-service.log"
@@ -283,6 +307,56 @@ cmd_install() {
     return 0
   fi
 
+  # --- launchd, on macOS ------------------------------------------------------
+  if launchd_ok; then
+    mkdir -p "$LAUNCH_DIR"
+    local args_xml=""
+    local a
+    for a in "$REPO_ROOT/start.sh" ${START_ARGS+"${START_ARGS[@]}"}; do
+      args_xml="${args_xml}        <string>$(xml_escape "$a")</string>
+"
+    done
+    cat > "$LAUNCH_PATH" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key><string>${LAUNCH_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+${args_xml}    </array>
+    <key>WorkingDirectory</key><string>$(xml_escape "$REPO_ROOT")</string>
+    <key>RunAtLoad</key><true/>
+    <!-- KeepAlive on a NON-ZERO exit only, never unconditionally.
+
+         \`stop: yes\` in station/request is how the far side ends a loop it can
+         no longer reach, and station.sh honours it by exiting 0. Under a plain
+         <true/> launchd would restart it, it would read the same stop flag,
+         exit again, and round it would go - every cycle a commit pushed to the
+         transport repo. The systemd unit uses Restart=on-failure for exactly
+         this reason, learned by running one. -->
+    <key>KeepAlive</key>
+    <dict><key>SuccessfulExit</key><false/></dict>
+    <key>StandardOutPath</key><string>$(xml_escape "$LOG_FILE")</string>
+    <key>StandardErrorPath</key><string>$(xml_escape "$LOG_FILE")</string>
+    <key>ProcessType</key><string>Background</string>
+  </dict>
+</plist>
+PLIST
+
+    launchctl unload "$LAUNCH_PATH" >/dev/null 2>&1
+    if ! launchctl load "$LAUNCH_PATH" 2>/dev/null; then
+      die "launchctl load failed for $LAUNCH_PATH"
+    fi
+    say "installed: $LAUNCH_PATH"
+    say "mechanism: launchd LaunchAgent, restarts on failure, survives reboot"
+    say ""
+    say "  ./service.sh status     what it is doing"
+    say "  ./service.sh logs       follow $LOG_FILE"
+    return 0
+  fi
+
   # --- fallback ---------------------------------------------------------------
   say "no user systemd here, falling back to setsid + nohup"
   if [ -s "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
@@ -310,6 +384,13 @@ cmd_install() {
 
 # --- the others ---------------------------------------------------------------
 cmd_status() {
+  if launchd_ok && [ -f "$LAUNCH_PATH" ]; then
+    say "mechanism: launchd ($LAUNCH_PATH)"
+    say "branch   : $(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+    say "log      : $LOG_FILE"
+    launchctl list "$LAUNCH_LABEL" 2>&1 | head -15
+    return 0
+  fi
   if systemd_user_ok && [ -f "$UNIT_PATH" ]; then
     say "mechanism: systemd --user ($UNIT_PATH)"
     say "lingering: $(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)"
@@ -317,6 +398,12 @@ cmd_status() {
     say "branch   : $(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)"
     systemctl --user status "$UNIT_NAME" --no-pager 2>&1 | head -15
     return 0
+  fi
+  if launchd_ok && [ -f "$LAUNCH_PATH" ]; then
+    # unload, not `launchctl stop`: with KeepAlive set, stop is followed by
+    # launchd starting it straight back up, which looks exactly like a stop
+    # that did not work.
+    launchctl unload "$LAUNCH_PATH" 2>/dev/null && { say "unloaded the LaunchAgent"; stopped=1; }
   fi
   if [ -s "$PID_FILE" ]; then
     local pid; pid="$(cat "$PID_FILE")"
@@ -337,7 +424,9 @@ cmd_logs() {
   if systemd_user_ok && [ -f "$UNIT_PATH" ]; then
     exec journalctl --user -u "$UNIT_NAME" -f -n 50
   fi
-  [ -f "$LOG_FILE" ] || die "no log yet at $LOG_FILE, and no systemd unit installed."
+  # A LaunchAgent writes to LOG_FILE by StandardOutPath, so the tail below is
+  # already right for it and needs no branch of its own.
+  [ -f "$LOG_FILE" ] || die "no log yet at $LOG_FILE, and no service installed."
   exec tail -f -n 50 "$LOG_FILE"
 }
 
@@ -345,6 +434,13 @@ cmd_stop() {
   local stopped=0
   if systemd_user_ok && [ -f "$UNIT_PATH" ]; then
     systemctl --user stop "$UNIT_NAME" 2>/dev/null && { say "stopped the unit"; stopped=1; }
+  fi
+  if launchd_ok && [ -f "$LAUNCH_PATH" ]; then
+    say "mechanism: launchd ($LAUNCH_PATH)"
+    say "branch   : $(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+    say "log      : $LOG_FILE"
+    launchctl list "$LAUNCH_LABEL" 2>&1 | head -15
+    return 0
   fi
   if [ -s "$PID_FILE" ]; then
     local pid; pid="$(cat "$PID_FILE")"
@@ -367,6 +463,11 @@ cmd_uninstall() {
     rm -f "$UNIT_PATH"
     systemd_user_ok && systemctl --user daemon-reload
     say "removed $UNIT_PATH"
+  fi
+  if [ -f "$LAUNCH_PATH" ]; then
+    launchd_ok && launchctl unload "$LAUNCH_PATH" >/dev/null 2>&1
+    rm -f "$LAUNCH_PATH"
+    say "removed $LAUNCH_PATH"
   fi
   rm -f "$PID_FILE"
   say "uninstalled. Lingering is left enabled: it is a property of the user, not"

@@ -52,7 +52,34 @@ free from a restart policy: the container, the four Azure hosts, AKS, the
 pipelines. The plainest case of all, somebody with a shell on a box, was the one
 still broken.
 
-## Two mechanisms
+## Three mechanisms
+
+`service.sh` picks the best it can reach and **says which it used**, because
+they are not equivalent.
+
+| | systemd `--user` | launchd | `setsid` + `nohup` |
+|---|---|---|---|
+| survives logout | yes, with lingering | yes | yes |
+| survives reboot | yes | yes | **no** |
+| restarts on failure | yes, 5 tries per 5 minutes | yes | no |
+| logs | `journalctl --user` | `.station-service.log` | `.station-service.log` |
+| needs root | no | no | no |
+
+launchd is the macOS answer, and it exists because the fallback was the only
+thing a Mac control node could use and it does not survive a reboot.
+
+`KeepAlive` is set to fire on a **non-zero exit only**, never unconditionally,
+and that is the same lesson the systemd unit learned by running one. `stop: yes`
+in `station/request` is how the far side ends a loop it can no longer reach, and
+`station.sh` honours it by exiting 0. Under an unconditional `KeepAlive` launchd
+restarts it, it reads the same stop flag, exits again, and round it goes - every
+cycle a commit pushed to the transport repo.
+
+`./service.sh stop` **unloads** rather than calling `launchctl stop`, for the
+same reason: with `KeepAlive` set, a stop is followed by launchd starting it
+straight back up, which looks exactly like a stop that did not work.
+
+## The two Linux mechanisms
 
 `service.sh` picks the better one it can reach and **says which it used**, because
 they are not equivalent.
