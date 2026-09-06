@@ -194,16 +194,27 @@ preflight() {
 
   # THE load-bearing check, and the reason this script exists.
   if [ "$(printf 'x\n' | sed -u 's/x/y/' 2>/dev/null)" = "y" ]; then
-    report ok "sed -u" "the capture can run unbuffered"
+    report ok "sed -u" "the capture streams, and a cancelled run keeps its partial log"
   else
-    report FAIL "sed -u" "this sed has no -u, so every captured line would carry the same timestamp and a hang would be invisible. Install GNU sed and put it first on PATH"
+    # This used to be a FAIL, and it was right at the time: the timestamp was
+    # applied AFTER sed, so a buffered sed gave every line in a block the same
+    # time and a hang became invisible while the log still read perfectly.
+    #
+    # cap_run now stamps each line before any sed runs, so the timestamps are
+    # honest whatever sed does. What is left is smaller and worth saying
+    # plainly rather than refusing over: redaction is still a sed stage and
+    # cannot be skipped, so a run killed mid-flight loses whatever sed was
+    # holding.
+    report warn "sed -u" "this sed has no -u (busybox does not). Timestamps are unaffected - they are applied before sed - but a CANCELLED run will lose its partial log, and terminal output arrives in blocks. Install GNU sed and put it first on PATH to get both back"
   fi
 
   # base64 -w0 is how caplib builds the HTTPS auth header. BSD base64 wraps.
-  if printf 'x' | base64 -w0 >/dev/null 2>&1; then
-    report ok "base64 -w0" "an HTTPS auth header can be built"
+  if printf 'x' | base64 | tr -d '\n' >/dev/null 2>&1; then
+    report ok "base64" "an HTTPS auth header can be built"
   else
-    report FAIL "base64 -w0" "this base64 has no -w0, so cap_git cannot build an auth header for an HTTPS remote. Install GNU coreutils and put them first on PATH"
+    # caplib no longer asks for -w0: `base64 | tr -d '\n'` is the same thing
+    # and is universal, so this only fails where there is no base64 at all.
+    report FAIL "base64" "no usable base64 on PATH, so cap_git cannot build an auth header for an HTTPS remote"
   fi
 
   if command -v sha256sum >/dev/null 2>&1; then

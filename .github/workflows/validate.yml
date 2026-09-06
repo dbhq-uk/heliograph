@@ -471,7 +471,9 @@ jobs:
             Write-Output "::error::station.ps1 did not report the bash it selected"; exit 1
           }
           # And having found it, the preflight must actually have run.
-          foreach ($needle in 'sed -u', 'base64 -w0', 'line endings') {
+          # 'base64' rather than 'base64 -w0': caplib no longer asks for the GNU
+          # spelling, so the preflight no longer reports it. See A7.
+          foreach ($needle in 'sed -u', 'base64', 'line endings') {
             if ($out -notmatch [regex]::Escape($needle)) {
               Write-Output "::error::preflight did not report '$needle', so handover did not happen"; exit 1
             }

@@ -263,7 +263,24 @@ fi
 # publishes state `cancelled` with exit 130. That needs a transport driver to
 # observe a published status and is asserted in A6. This is the half that
 # belongs to the capture.
-if drv_supports cancel; then
+# Needs an unbuffered sed. cap_run stamps each line before any sed runs, so the
+# TIMESTAMPS are honest either way - that is what A7 fixed. But redaction is
+# still a sed stage, and redaction cannot be skipped or reordered: publishing
+# unredacted output to a log that gets committed is not a trade available at
+# any price. So where sed buffers, a run killed mid-flight loses whatever was
+# in that buffer.
+#
+# Stated rather than hidden. A busybox station captures honest logs and loses
+# the partial one on a cancel, and somebody choosing that platform should know
+# which half they are giving up.
+CAN_CANCEL=1
+if ! printf 'x\n' | sed -u 's/x/y/' >/dev/null 2>&1; then
+  CAN_CANCEL=0
+fi
+
+if [ "$CAN_CANCEL" = "0" ]; then
+  t_skip "p8: this sed has no -u, so a cancelled run cannot keep its partial log (timestamps are unaffected)"
+elif drv_supports cancel; then
   cat > "$WORK/slow.sh" <<'EOS'
 #!/usr/bin/env bash
 echo starting the long probe

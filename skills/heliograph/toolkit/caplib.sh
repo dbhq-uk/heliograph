@@ -160,9 +160,21 @@ cap_result() {
 # English in a diagnostic log and exactly the over-masking this file argues
 # against everywhere else. GNU sed is already a stated requirement of this
 # toolkit - `sed -u` is what keeps the capture unbuffered - so \b is fair game.
+# `sed -u` where it exists, plain sed where it does not. Resolved once, here,
+# so the two places that pipe through sed cannot disagree about it.
+#
+# Since the timestamp is applied before either of them, an unbuffered sed is now
+# only about how promptly a watching operator sees a line, never about whether
+# the log is honest.
+if printf 'x\n' | sed -u 's/x/y/' >/dev/null 2>&1; then
+  CAP_SED="sed -u"
+else
+  CAP_SED="sed"
+fi
+
 cap_redact() {
   if [ "${REDACT:-1}" = "0" ]; then cat; return 0; fi
-  sed -u -E \
+  $CAP_SED -E \
     -e "s/((password|passwd|pwd|secret|token|api[_-]?key|client_secret|accountkey|sas|connectionstring)[\"\x27]?[[:space:]]*[:=][[:space:]]*[\"\x27]?)[^\"\x27[:space:],;}]+/\1***REDACTED***/gI" \
     -e "s#(://[^/@:[:space:]]*):[^/@[:space:]]*@#\1:***REDACTED***@#g" \
     -e "s%(https?://)[^/@:?#,[:space:]]*@%\1***REDACTED***@%gI" \
@@ -271,12 +283,30 @@ cap_section() {
 # Only the TRAILING one goes. A bare CR mid-line is a terminal doing
 # carriage-return progress, and deleting those would silently join output that
 # was never on the same line.
+# THE TIMESTAMP IS APPLIED FIRST, and that ordering is the whole point.
+#
+# It used to be applied last, after sed had stripped ANSI and cap_redact had
+# masked secrets. That made the single load-bearing property of these logs
+# depend on `sed -u`: a sed without it buffers, a whole block arrives at the
+# stamping loop at once, every line in it carries the same time, and a hang
+# becomes invisible while the log still reads perfectly. busybox sed has no -u,
+# so `start.sh` had to refuse to run on Alpine at all.
+#
+# Reading straight from the command with a bash loop removes the dependency
+# instead of documenting it. A bash `read` is line-buffered by definition, so
+# the stamp is taken when the line is PRODUCED, whatever any later stage does
+# with it. Downstream buffering can now only delay when a line is displayed,
+# never what time it claims to have happened.
+#
+# `sed -u` is still preferred where it exists, because without it an operator
+# watching the terminal sees output in blocks. That is a comfort, not a
+# correctness property, which is exactly the right thing to degrade.
 cap_run() {
   local out="$1"; shift
   "$@" 2>&1 \
-    | sed -u 's/\x1b\[[0-9;]*[mGKHF]//g' \
-    | cap_redact \
     | while IFS= read -r l; do l="${l%$'\r'}"; printf '%s | %s\n' "$(date -u +%H:%M:%S)" "$l"; done \
+    | $CAP_SED 's/\x1b\[[0-9;]*[mGKHF]//g' \
+    | cap_redact \
     | tee -a "$out"
   return "${PIPESTATUS[0]}"
 }
@@ -378,7 +408,7 @@ _cap_auth_header() {
   esac
   [ -z "$tok" ] && return 0
   printf 'Authorization: Basic %s' \
-    "$(printf '%s:%s' "${GIT_TOKEN_USER:-}" "$tok" | base64 -w0)"
+    "$(printf '%s:%s' "${GIT_TOKEN_USER:-}" "$tok" | base64 | tr -d '\n')"
 }
 
 # cap_auth_describe - which credential is in force, for a human. NEVER its value.
