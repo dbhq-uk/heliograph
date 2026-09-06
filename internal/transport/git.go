@@ -59,6 +59,15 @@ func NewGit(dir string) (*Git, error) {
 	return g, nil
 }
 
+// RemoteURL is what the far side would clone.
+func (g *Git) RemoteURL() (string, error) {
+	out, err := g.git("remote", "get-url", "origin")
+	if err != nil {
+		return "", fmt.Errorf("this clone has no origin, so there is nothing for the far side to clone: %w", err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // Branch is the branch this transport is bound to.
 func (g *Git) Branch() string { return g.branch }
 

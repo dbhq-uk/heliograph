@@ -15,16 +15,23 @@ import (
 	"time"
 
 	"github.com/dbhq-uk/heliograph/internal/logfile"
+	"github.com/dbhq-uk/heliograph/internal/plant"
 
 	"github.com/dbhq-uk/heliograph/internal/estate"
 	"github.com/dbhq-uk/heliograph/internal/transport"
 	"github.com/dbhq-uk/heliograph/internal/wire"
 )
 
+// version is set at build time with -ldflags. "dev" means somebody built this
+// from source, which is worth saying rather than printing a version that is
+// not one.
+var version = "dev"
+
 const usage = `heliograph - run things on a machine you cannot log into
 
   heliograph init <estate> --dir <path>     remember a transport repo by name
   heliograph estates                        what is configured here
+  heliograph plant                          what to send the operator
   heliograph send <step> [K=V ...]          publish a request, and return
   heliograph status                         what the station is doing now
   heliograph watch                          follow a run until it ends
@@ -32,6 +39,7 @@ const usage = `heliograph - run things on a machine you cannot log into
   heliograph logs <name>                    print one, whole
   heliograph logs --last --gaps             where the last run stalled
   heliograph doctor                         will this work from here, in full
+  heliograph version
 
 Common flags:
   -e, --estate <name>   which estate (default: the only one, if there is one)
@@ -50,6 +58,8 @@ func main() {
 		err = cmdInit(os.Args[2:])
 	case "estates":
 		err = cmdEstates()
+	case "plant":
+		err = cmdPlant(os.Args[2:])
 	case "send":
 		err = cmdSend(os.Args[2:])
 	case "status":
@@ -60,6 +70,9 @@ func main() {
 		err = cmdWatch(os.Args[2:])
 	case "check", "doctor":
 		err = cmdDoctor(os.Args[2:])
+	case "version", "--version":
+		fmt.Printf("heliograph %s\n", version)
+		return
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return
@@ -506,5 +519,40 @@ func cmdDoctor(args []string) error {
 	if problems > 0 {
 		return fmt.Errorf("%d blocking problem(s) above", problems)
 	}
+	return nil
+}
+
+// cmdPlant prints what to send the operator.
+//
+// Today this is prose in a chat window: somebody types out a clone URL, a
+// branch and a command, and the operator retypes them. Every retyping is a
+// chance to get it wrong on a machine nobody can check afterwards.
+func cmdPlant(args []string) error {
+	fs := flag.NewFlagSet("plant", flag.ExitOnError)
+	name := estateFlag(fs)
+	service := fs.Bool("service", false, "install it to survive logout, rather than run in a shell")
+	script := fs.Bool("script", false, "just the commands, with no explanation around them")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	_, g, err := open(*name)
+	if err != nil {
+		return err
+	}
+	url, err := g.RemoteURL()
+	if err != nil {
+		return err
+	}
+	t := plant.Target{RepoURL: url, Branch: g.Branch(), Service: *service}
+	var out string
+	if *script {
+		out, err = t.Script()
+	} else {
+		out, err = t.Instructions()
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Print(out)
 	return nil
 }
