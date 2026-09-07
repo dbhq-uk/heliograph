@@ -222,6 +222,37 @@ nav a.here{color:var(--flash)}
 .rail nav a::after{display:none}
 .rail nav a:hover{color:var(--ink);border-left-color:var(--gold)}
 
+/* ------------------------------------------------------------- diagrams */
+/* Coloured from the same variables as the prose, so there is no second
+   palette to keep in step and they are right in whatever the theme becomes. */
+.dgw{margin:2.4rem 0;padding:0}
+.dg{width:100%;height:auto;display:block;color:var(--ink-2)}
+.dgw figcaption{
+  margin-top:.9rem;font-size:.88rem;color:var(--ink-2);line-height:1.5;
+  text-wrap:pretty;
+}
+.dg-box rect{fill:var(--dusk);stroke:var(--ridge);stroke-width:1}
+.dg-gate rect{fill:none;stroke:var(--ridge);stroke-width:1;stroke-dasharray:3 3}
+.dg-chan rect{fill:var(--dusk);stroke:var(--ridge);stroke-width:1}
+.dg-line path{stroke:var(--ridge);stroke-width:1.25;fill:none}
+.dg-line.dg-no path{stroke-dasharray:3 3}
+.dg text{font-family:'Instrument Sans',system-ui,sans-serif}
+.dg-label,.dg text.dg-label{fill:var(--ink);font-size:13px;font-weight:500;text-anchor:middle}
+.dg-sub,.dg text.dg-sub{fill:var(--ink-2);font-size:11px;text-anchor:middle;letter-spacing:.02em}
+.dg-note text{fill:var(--ink-2);font-size:11px;text-anchor:middle}
+.dg-foot{fill:var(--ink-2);font-size:11.5px;text-anchor:middle}
+.dg-mono text,.dg .dg-mono text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:12.5px;fill:var(--ink-2);text-anchor:start}
+.dg-ok{fill:var(--gold);font-size:13px;font-weight:500;text-anchor:middle}
+.dg-flag rect{fill:color-mix(in srgb,var(--gold) 14%,transparent);stroke:var(--gold);stroke-width:1}
+.dg-flagtext{fill:var(--ink);font-size:11.5px;text-anchor:start}
+.missing{color:#e06c75;font-weight:600}
+
+/* A diagram is scanned, so it may use the whole column rather than the
+   reading measure. Below that it is smaller than its own labels. */
+.shell main .dgw{max-width:none;width:100%}
+@media(max-width:560px){.dg text{font-size:14px}.dg-sub,.dg-foot{font-size:12px}}
+
 /* ----------------------------------------------------------------- main */
 /* Inside the shell the column already sets the width, so main only sets the
    measure it will not exceed. --measure is the line length prose is readable

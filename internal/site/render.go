@@ -116,6 +116,33 @@ func RenderBody(md string) string {
 
 		if reFence.MatchString(l) {
 			closeBlocks()
+			// ```diagram fences hold a name, not code. The picture lives in Go
+			// so it can inherit the theme's colours; the markdown keeps a name
+			// a person can read, and the mirror keeps the caption rather than
+			// four hundred bytes of path data.
+			if info := strings.TrimSpace(strings.TrimPrefix(l, "```")); !inCode &&
+				strings.HasPrefix(info, "diagram") {
+				name := strings.TrimSpace(strings.TrimPrefix(info, "diagram"))
+				var body []string
+				for i+1 < len(lines) && !reFence.MatchString(lines[i+1]) {
+					i++
+					body = append(body, strings.TrimSpace(lines[i]))
+				}
+				i++ // the closing fence
+				caption := strings.TrimSpace(strings.Join(body, " "))
+				svg, ok := Diagram(name)
+				if !ok {
+					// Rendered as visible text rather than dropped. A diagram
+					// that silently vanishes is a hole in the page nobody
+					// notices until a reader asks what the picture was.
+					fmt.Fprintf(&out, "<p class=\"missing\">missing diagram: %s</p>\n",
+						html.EscapeString(name))
+					continue
+				}
+				fmt.Fprintf(&out, "<figure class=\"dgw\">%s<figcaption>%s</figcaption></figure>\n",
+					svg, inline(caption))
+				continue
+			}
 			if inCode {
 				out.WriteString("</code></pre>\n")
 			} else {

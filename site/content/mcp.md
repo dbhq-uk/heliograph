@@ -61,6 +61,11 @@ nor action, and still refuses an action unless it was started with
 
 An MCP client asks. It does not get to answer.
 
+```diagram gates
+Three gates, all on the far side. The control side can ask for anything; the station decides.
+```
+
+
 **Nothing about the far side.** There is still no connection, no tunnel and
 nothing held open. Somebody with legitimate access started the loop, and they
 can stop it.

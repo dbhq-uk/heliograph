@@ -5,6 +5,10 @@ The loop is identical whichever you pick: same request format, same gates, same
 log. That is deliberate, and it is what lets you change transport without
 relearning the method.
 
+```diagram transports
+One request format, one set of gates, one log. Only the channel changes.
+```
+
 ## Choosing one
 
 **Measure before reaching past git.** Git is better when git works, and an

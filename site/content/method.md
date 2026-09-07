@@ -48,6 +48,10 @@ control is.
 **Record what was measured separately from what you concluded.** Measurements
 stay true; conclusions get revised.
 
+```diagram gap
+A hang and slow progress look identical in an untimed log. With a UTC stamp on every line, the hang is arithmetic.
+```
+
 ## Safety, and what it actually rests on
 
 The loop is **read-only unless the operator started it otherwise**. A step
