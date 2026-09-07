@@ -1,6 +1,6 @@
 {
   "name": "@dbhq/heliograph",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Run commands on a machine you cannot SSH into. MCP server and CLI for air-gapped, bastion-only and change-controlled estates.",
   "keywords": [
     "mcp",

@@ -9,8 +9,10 @@ package packaging
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -40,20 +42,112 @@ func latestTag(t *testing.T) string {
 	return strings.TrimPrefix(strings.TrimSpace(string(out)), "v")
 }
 
-func TestPackagedVersionsMatchTheLatestTag(t *testing.T) {
-	want := latestTag(t)
+// The packaged version must be the latest tag or newer.
+//
+// NOT exactly equal, and the difference matters. A release begins with a commit
+// that bumps these files, and that commit necessarily lands BEFORE the tag
+// exists - so an equality check fails on every release-preparation branch and
+// makes the gate impossible to satisfy. I wrote it that way first and it
+// blocked the very next release.
+//
+// Ahead of the tag is a release in preparation, which is normal. Behind it is
+// the bug: npm would serve a wrapper that downloads an older release than the
+// one it claims to be, or a release that has been superseded.
+//
+// Exactness still matters at the moment of publishing, and the release workflow
+// asserts it there - where a mismatch would ship a package that 404s on install.
+func TestPackagedVersionsAreNotBehindTheLatestTag(t *testing.T) {
+	tag := latestTag(t)
 	for _, c := range []struct{ path, key string }{
 		{"npm/package.json", "version"},
 		{"mcpb/manifest.json", "version"},
 		{"../server.json", "version"},
 	} {
 		got, _ := read(t, c.path)[c.key].(string)
-		if got != want {
-			t.Errorf("%s says version %q, but the latest tag is v%s.\n"+
-				"npm would serve a wrapper that downloads a release tag which may not exist, "+
-				"and the user sees a 404 with no hint that two numbers disagree.", c.path, got, want)
+		cmp, err := compareSemver(got, tag)
+		if err != nil {
+			t.Errorf("%s has version %q, which is not a version: %v", c.path, got, err)
+			continue
+		}
+		if cmp < 0 {
+			t.Errorf("%s says version %q, which is BEHIND the latest tag v%s.\n"+
+				"The published wrapper would download an older release than it claims to be.",
+				c.path, got, tag)
 		}
 	}
+}
+
+// The three files must agree with each other, whatever they say. Two of them
+// bumped and one forgotten is the shape this catches, and it is the likely one:
+// they are bumped by hand, in three different files, in one commit.
+func TestPackagedVersionsAgreeWithEachOther(t *testing.T) {
+	seen := map[string][]string{}
+	for _, c := range []struct{ path, key string }{
+		{"npm/package.json", "version"},
+		{"mcpb/manifest.json", "version"},
+		{"../server.json", "version"},
+	} {
+		v, _ := read(t, c.path)[c.key].(string)
+		seen[v] = append(seen[v], c.path)
+	}
+	if len(seen) > 1 {
+		t.Errorf("the packaged versions disagree: %v", seen)
+	}
+}
+
+// server.json carries the version twice: once for the server and once for the
+// npm package it installs. A client reads the second one.
+func TestServerJSONPackageVersionMatchesItsOwn(t *testing.T) {
+	srv := read(t, "../server.json")
+	own, _ := srv["version"].(string)
+	pkgs, _ := srv["packages"].([]any)
+	if len(pkgs) == 0 {
+		t.Fatal("server.json lists no packages")
+	}
+	p, _ := pkgs[0].(map[string]any)
+	if got, _ := p["version"].(string); got != own {
+		t.Errorf("server.json is version %q but installs package version %q; a client "+
+			"following the registry gets the second one", own, got)
+	}
+}
+
+// compareSemver returns -1, 0 or 1. Only the numeric parts, because that is all
+// these versions ever carry and a full semver parser here would be a dependency
+// or a hundred lines to compare three integers.
+func compareSemver(a, b string) (int, error) {
+	pa, err := parts(a)
+	if err != nil {
+		return 0, err
+	}
+	pb, err := parts(b)
+	if err != nil {
+		return 0, err
+	}
+	for i := 0; i < 3; i++ {
+		switch {
+		case pa[i] < pb[i]:
+			return -1, nil
+		case pa[i] > pb[i]:
+			return 1, nil
+		}
+	}
+	return 0, nil
+}
+
+func parts(v string) ([3]int, error) {
+	var out [3]int
+	f := strings.SplitN(strings.TrimPrefix(v, "v"), ".", 4)
+	if len(f) < 3 {
+		return out, fmt.Errorf("%q is not major.minor.patch", v)
+	}
+	for i := 0; i < 3; i++ {
+		n, err := strconv.Atoi(strings.SplitN(f[i], "-", 2)[0])
+		if err != nil {
+			return out, fmt.Errorf("%q: %w", v, err)
+		}
+		out[i] = n
+	}
+	return out, nil
 }
 
 // The registry proves ownership of an npm package by matching a marker in the
