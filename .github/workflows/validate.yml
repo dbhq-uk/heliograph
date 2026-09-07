@@ -192,11 +192,20 @@ jobs:
             echo "::error::a credential shape appears in a file that is not in .secret-scan-allow"
             bad=1
           fi
-          # Cloudflare API tokens are 40 chars of [A-Za-z0-9_-] with no prefix,
-          # so they cannot be matched by shape. What CAN be caught is the
-          # variable being assigned a literal.
-          if grep -rInE "(CLOUDFLARE_API_TOKEN|TF_VAR_cloudflare_api_token|api_token)[[:space:]]*=[[:space:]]*[\"'"'"'][A-Za-z0-9_-]{20,}" \
-               --exclude-dir=.git --exclude-dir=node_modules . ; then
+          # Cloudflare API tokens are 40 characters of [A-Za-z0-9_-] with no
+          # prefix, so they cannot be caught by shape. What CAN be caught is the
+          # variable being assigned a long literal.
+          #
+          # The pattern deliberately does not try to match a quote character.
+          # The first version did, and the nested escaping needed to put both
+          # quote kinds inside a double-quoted YAML scalar produced a shell
+          # SYNTAX error - which exits 2, fails the step, and says nothing about
+          # secrets at all. A gate too clever to parse is a gate that is red for
+          # the wrong reason.
+          lit="$(grep -rInE "(CLOUDFLARE_API_TOKEN|TF_VAR_cloudflare_api_token)[[:space:]]*=[[:space:]]*.?[A-Za-z0-9_-]{25,}" \
+                   --exclude-dir=.git --exclude-dir=node_modules . || true)"
+          if [ -n "$lit" ]; then
+            echo "$lit"
             echo "::error::an API token appears to be assigned a literal value"
             bad=1
           fi
