@@ -17,7 +17,7 @@ side, so a container can start cleanly on a host with no network at all.
 | **file share** | both machines mount the same directory | works |
 | **bundle** | nothing crosses the gap but a person | works |
 | **relay** | there is no git host, no storage, no share | works |
-| **object store** | S3 or Azure Blob is permitted where git is not | designed |
+| **object store** | S3-compatible storage is permitted where git is not | works |
 
 ## git
 
@@ -105,6 +105,60 @@ docker run -p 8080:8080 \
   -e HELIOGRAPH_RELAY_ESTATES="payments:$CTL:$STN" \
   ghcr.io/dbhq-uk/heliograph-relay:latest
 ```
+
+## Object store
+
+For an estate where storage is reachable and nothing else is. That sounds
+contrived and is common: a locked-down cloud subnet where a firewall appliance
+holds the default route and has no policy for the subnet the station sits in
+has no outbound anything, while traffic to a **private endpoint** stays inside
+the virtual network, never reaches that appliance, and works normally.
+
+```bash
+export HELIOGRAPH_S3_ACCESS_KEY=...
+export HELIOGRAPH_S3_SECRET_KEY=...
+
+heliograph init payments --transport objstore \
+  --dir https://s3.eu-west-2.amazonaws.com \
+  --bucket heliograph-transport \
+  --scope net-probe
+```
+
+The keys come from the environment and are **never written to the estate file**.
+That file is on disk, gets copied between machines and ends up in backups; a
+secret in it would be a secret in all three.
+
+`--scope` is the lane: one per investigation, so two running at once do not
+overwrite each other.
+
+### What works
+
+AWS S3, Cloudflare R2, MinIO, Backblaze B2, DigitalOcean Spaces, Ceph - anything
+S3-compatible. Pass `--region auto` (the default) for R2 and MinIO, which have
+no regions but reject a request without one.
+
+Azure Blob is **not** S3-compatible. The station reaches it through its own
+pigeonhole path instead.
+
+### The layout
+
+```
+<prefix>requests/<lane>.txt
+<prefix>status/<lane>.txt
+<prefix>logs/<name>.txt
+```
+
+The same `key: value` documents that cross every other transport, which is why
+a log that came back this way reads identically to one that came back over git.
+
+### Scoping the credential
+
+Give it read and write on the prefix and nothing else. It does not need to
+create buckets, list other prefixes, or read anything but its own lane.
+
+`heliograph doctor` **writes** a probe object and deletes it, deliberately: a
+read-only bucket policy lists and gets perfectly and fails on the first write,
+which would be the log, an hour later, with nobody left to tell.
 
 ## What a transport must implement
 
