@@ -76,3 +76,70 @@ jobs:
             --title "${{ github.ref_name }}" \
             --generate-notes \
             dist/*
+
+  npm:
+    name: Publish the npm wrapper
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      # OIDC, not a token. npm trusted publishing mints a short-lived
+      # credential scoped to this workflow, which cannot be extracted or
+      # reused, so there is no long-lived NPM_TOKEN in this repository's
+      # secrets to leak or to remember to rotate.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or newer. Node 24 ships one, but
+      # pinning the CLI as well means a runner image change cannot silently
+      # drop us back to token auth.
+      - name: npm new enough for OIDC
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: The package version must be the tag
+        # The tag is the source of truth. packaging_test.go asserts these agree
+        # at head; this asserts it again at the moment of publishing, because
+        # the wrapper downloads a release named after its own version and a
+        # mismatch here ships a package that 404s on install.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          want="${TAG#v}"
+          got="$(node -p "require('./packaging/npm/package.json').version")"
+          if [ "$want" != "$got" ]; then
+            echo "::error::package.json is $got but the tag is $want. The published wrapper would download a release that does not exist."
+            exit 1
+          fi
+          echo "version $got matches the tag"
+
+      - name: Publish
+        # No NODE_AUTH_TOKEN: the CLI detects the OIDC environment and uses it.
+        # Provenance is attached by default under trusted publishing, so the
+        # package carries a signed statement of which workflow built it.
+        working-directory: packaging/npm
+        run: npm publish --access public
+
+      - name: It installs from the registry
+        # Publishing is not the same as working. This installs the package the
+        # way a user would, from the registry, and runs it - which exercises
+        # the postinstall download and the checksum check against the release
+        # the previous job just published.
+        run: |
+          set -euo pipefail
+          cd "$(mktemp -d)"
+          npm init -y >/dev/null
+          npm install "@dbhq/heliograph@${GITHUB_REF_NAME#v}"
+          ./node_modules/.bin/heliograph version
+          printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' \
+            | ./node_modules/.bin/heliograph mcp \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const t=JSON.parse(s).result.tools;if(t.length!==7){console.error('::error::got '+t.length+' tools, want 7');process.exit(1)}console.log('installed from npm and served '+t.length+' tools')})"
