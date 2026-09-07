@@ -6,14 +6,14 @@
     "url": "https://github.com/dbhq-uk/heliograph",
     "source": "github"
   },
-  "version": "0.3.1",
+  "version": "0.3.2",
   "websiteUrl": "https://heliograph.dbhq.uk",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@dbhq/heliograph",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "transport": {
         "type": "stdio"
       },
