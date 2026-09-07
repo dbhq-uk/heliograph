@@ -3,7 +3,7 @@
   "manifest_version": "0.1",
   "name": "heliograph",
   "display_name": "heliograph",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Run commands on a machine you cannot SSH into.",
   "long_description": "Publishes a step to a transport the far side already reaches - git, a file share, S3-compatible storage, a relay, or a file carried by hand - and the whole run comes back as a log with every line timestamped in UTC, whether it passed or failed. For air-gapped, bastion-only and change-controlled estates. No tunnel, no proxy, nothing held open. The gates live on the far side: a tool call can ask, but cannot authorise.",
   "author": {
