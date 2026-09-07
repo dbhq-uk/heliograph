@@ -1,0 +1,340 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/dbhq-uk/heliograph/internal/estate"
+	"github.com/dbhq-uk/heliograph/internal/mcp"
+)
+
+// call finds a shipped tool by name and runs it. Going through the real tool
+// list rather than the function behind it means a tool that is defined but
+// never registered fails here rather than in a client.
+func call(t *testing.T, name string, args map[string]any) (string, error) {
+	t.Helper()
+	for _, tl := range tools() {
+		if tl.Name == name {
+			return tl.Call(args)
+		}
+	}
+	t.Fatalf("no tool named %q", name)
+	return "", nil
+}
+
+// estateOnDisk builds a real share estate in a temp directory and points the
+// config at it, so the tools resolve it exactly as they would in the field.
+func estateOnDisk(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	share := filepath.Join(root, "share")
+	if err := os.MkdirAll(share, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := estate.Estate{Name: "payments", Transport: "share", Dir: share, Scope: "probe"}
+	if err := e.Save(); err != nil {
+		t.Fatal(err)
+	}
+	return share
+}
+
+// scopeDir is where the share transport keeps one investigation. Written to
+// directly here because these tests stand in for the far side, which this
+// process never runs.
+func scopeDir(t *testing.T, share string) string {
+	t.Helper()
+	d := filepath.Join(share, "probe")
+	if err := os.MkdirAll(filepath.Join(d, "ops-logs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+func write(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEstatesListsWhatWasConfigured(t *testing.T) {
+	estateOnDisk(t)
+	out, err := call(t, "heliograph_estates", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "payments") || !strings.Contains(out, "transport=share") {
+		t.Errorf("got %q", out)
+	}
+}
+
+// A single estate needs no naming. Making an agent state it every time is how
+// a wrong estate gets a request when there is more than one.
+func TestOneEstateIsTheDefault(t *testing.T) {
+	share := estateOnDisk(t)
+	scopeDir(t, share)
+	if _, err := call(t, "heliograph_send", map[string]any{"step": "net-probe"}); err != nil {
+		t.Fatalf("a single estate was not defaulted to: %v", err)
+	}
+}
+
+// With two, guessing is worse than asking. The error has to name them, because
+// an agent that cannot see the config cannot look them up.
+func TestSeveralEstatesRefuseToGuess(t *testing.T) {
+	estateOnDisk(t)
+	second := estate.Estate{Name: "cardnet", Transport: "share", Dir: t.TempDir(), Scope: "probe"}
+	if err := second.Save(); err != nil {
+		t.Fatal(err)
+	}
+	_, err := call(t, "heliograph_status", map[string]any{})
+	if err == nil {
+		t.Fatal("a guess was made between two estates")
+	}
+	for _, want := range []string{"payments", "cardnet"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not name %s: %v", want, err)
+		}
+	}
+}
+
+// The whole point of the send tool: what an agent asks for has to arrive on the
+// far side as a document the station can act on, with the env intact.
+func TestSendWritesARequestTheStationCanRead(t *testing.T) {
+	share := estateOnDisk(t)
+	d := scopeDir(t, share)
+
+	out, err := call(t, "heliograph_send", map[string]any{
+		"step": "net-probe",
+		"env":  map[string]any{"HOSTS": "sql01 sql02", "PORT": "1433"},
+		"note": "checking the cluster",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "net-probe") {
+		t.Errorf("the reply does not say what was sent: %q", out)
+	}
+
+	b, err := os.ReadFile(filepath.Join(d, "request"))
+	if err != nil {
+		t.Fatalf("no request reached the far side: %v", err)
+	}
+	got := string(b)
+	// The space-bearing value must arrive quoted. Unquoted, the station sets
+	// HOSTS=sql01 and then tries to RUN sql02.
+	if !strings.Contains(got, `HOSTS='sql01 sql02'`) {
+		t.Errorf("HOSTS arrived unquoted:\n%s", got)
+	}
+	if !strings.Contains(got, "step: net-probe") {
+		t.Errorf("step missing:\n%s", got)
+	}
+	if !strings.Contains(got, "note: checking the cluster") {
+		t.Errorf("note missing:\n%s", got)
+	}
+	// Sorted, so two identical calls produce identical documents rather than
+	// ones that differ only in map order.
+	if strings.Index(got, "HOSTS") > strings.Index(got, "PORT") {
+		t.Errorf("env is not in a stable order:\n%s", got)
+	}
+}
+
+func TestStatusReportsWhatTheStationPublished(t *testing.T) {
+	share := estateOnDisk(t)
+	d := scopeDir(t, share)
+	write(t, filepath.Join(d, "status"),
+		"state: running\nid: 20260101T000000Z-net-probe\nstep: net-probe\nhost: sql01\nprogress: 412 lines\nlast: probing 5985\n")
+
+	out, err := call(t, "heliograph_status", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"state: running", "step: net-probe", "progress: 412 lines", "last: probing 5985"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status is missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// A refusal is not a failure, and an agent that reads it as one will retry the
+// same step forever. The reply says what would permit it instead.
+func TestRefusalExplainsItself(t *testing.T) {
+	share := estateOnDisk(t)
+	d := scopeDir(t, share)
+	write(t, filepath.Join(d, "status"),
+		"state: refused\nid: 20260101T000000Z-restart\nstep: restart-svc\nreason: this step changes state\n")
+
+	out, err := call(t, "heliograph_status", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "reason: this step changes state") {
+		t.Errorf("the station's own reason was dropped:\n%s", out)
+	}
+	if !strings.Contains(out, "--allow-actions") || !strings.Contains(out, "CONFIRM=yes") {
+		t.Errorf("the reply does not say what would permit it:\n%s", out)
+	}
+}
+
+// An empty status means the station was never started. Reporting that as
+// "state: " sends somebody to debug the transport instead.
+func TestNoStatusSaysTheStationMayNotBeRunning(t *testing.T) {
+	share := estateOnDisk(t)
+	scopeDir(t, share)
+	out, err := call(t, "heliograph_status", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "not have been started") {
+		t.Errorf("got %q", out)
+	}
+}
+
+const stalledLog = `12:00:00 | starting net-probe
+12:00:01 | resolving sql01
+12:00:02 | connecting to sql01:5985
+12:02:30 | timed out after 148s
+12:02:31 | resolving sql02
+12:02:32 | connected
+`
+
+func TestReadLogReturnsItWhole(t *testing.T) {
+	share := estateOnDisk(t)
+	d := scopeDir(t, share)
+	write(t, filepath.Join(d, "ops-logs", "20260101T000000Z-net-probe.txt"), stalledLog)
+
+	out, err := call(t, "heliograph_read_log", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != stalledLog {
+		t.Errorf("the log came back altered:\n%q", out)
+	}
+}
+
+func TestLogsNamesTheCaptures(t *testing.T) {
+	share := estateOnDisk(t)
+	d := scopeDir(t, share)
+	write(t, filepath.Join(d, "ops-logs", "20260101T000000Z-net-probe.txt"), stalledLog)
+	write(t, filepath.Join(d, "ops-logs", "20260102T000000Z-disk-check.txt"), stalledLog)
+
+	out, err := call(t, "heliograph_logs", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	// Newest first, because the one you want is almost always the last run.
+	if lines[0] != "20260102T000000Z-disk-check.txt" {
+		t.Errorf("logs are not newest first: %v", lines)
+	}
+}
+
+// The gap is attributed to the line BEFORE it, which is what was running. Get
+// this backwards and the tool blames the timeout message for the timeout.
+func TestGapsBlamesTheLineThatWasRunning(t *testing.T) {
+	share := estateOnDisk(t)
+	d := scopeDir(t, share)
+	write(t, filepath.Join(d, "ops-logs", "20260101T000000Z-net-probe.txt"), stalledLog)
+
+	out, err := call(t, "heliograph_gaps", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "connecting to sql01:5985") {
+		t.Errorf("the stall was not attributed to the connect:\n%s", out)
+	}
+	if strings.Contains(out, "No interval") {
+		t.Errorf("a 148 second stall was reported as nothing:\n%s", out)
+	}
+}
+
+func TestGapsRespectsItsThreshold(t *testing.T) {
+	share := estateOnDisk(t)
+	d := scopeDir(t, share)
+	write(t, filepath.Join(d, "ops-logs", "20260101T000000Z-net-probe.txt"), stalledLog)
+
+	out, err := call(t, "heliograph_gaps", map[string]any{"min_seconds": 300.0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "No interval") {
+		t.Errorf("a 148 second stall was reported above a 300 second threshold:\n%s", out)
+	}
+}
+
+// Every line carrying the same timestamp means the capture was buffered, and a
+// buffered log cannot answer the question at all. Reporting "no gaps" from one
+// is worse than reporting nothing: it is a clean bill of health from an
+// instrument that was switched off.
+func TestGapsRefusesABufferedLog(t *testing.T) {
+	share := estateOnDisk(t)
+	d := scopeDir(t, share)
+	write(t, filepath.Join(d, "ops-logs", "20260101T000000Z-net-probe.txt"),
+		"12:00:00 | starting\n12:00:00 | working\n12:00:00 | done\n")
+
+	out, err := call(t, "heliograph_gaps", map[string]any{})
+	if err == nil {
+		t.Fatalf("a buffered log was analysed anyway: %q", out)
+	}
+}
+
+func TestDoctorReportsAReachableTransportWithoutChangingAnything(t *testing.T) {
+	share := estateOnDisk(t)
+	d := scopeDir(t, share)
+
+	out, err := call(t, "heliograph_doctor", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "ok: the transport is reachable") {
+		t.Errorf("doctor could not reach a directory it can write to:\n%s", out)
+	}
+	if !strings.Contains(out, "estate: payments") {
+		t.Errorf("doctor does not say which estate it checked:\n%s", out)
+	}
+	// Nothing was published, so nothing should have been.
+	if _, err := os.Stat(filepath.Join(d, "request")); err == nil {
+		t.Error("doctor wrote a request")
+	}
+}
+
+func TestDoctorFailsLoudlyWhenTheTransportIsGone(t *testing.T) {
+	share := estateOnDisk(t)
+	if err := os.RemoveAll(share); err != nil {
+		t.Fatal(err)
+	}
+	out, err := call(t, "heliograph_doctor", map[string]any{})
+	// A transport that is gone is news, not an exception: the reply says so in
+	// text an agent can act on rather than a protocol error it will stop at.
+	if err != nil {
+		return
+	}
+	if !strings.Contains(out, "FAIL") {
+		t.Errorf("a missing share directory passed the check:\n%s", out)
+	}
+}
+
+// The tools go out through the same server a client talks to, so a schema that
+// will not marshal or a call that panics shows up here rather than at a client.
+func TestToolsAreCallableThroughTheServer(t *testing.T) {
+	estateOnDisk(t)
+	var out strings.Builder
+	s := mcp.NewServer("heliograph", "test", tools())
+	in := strings.NewReader(
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + "\n" +
+			`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"heliograph_estates","arguments":{}}}` + "\n")
+	if err := s.Serve(in, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "heliograph_doctor") {
+		t.Errorf("tools/list did not carry the tools:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "payments") {
+		t.Errorf("the call did not reach the estate:\n%s", out.String())
+	}
+}

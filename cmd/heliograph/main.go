@@ -39,6 +39,7 @@ const usage = `heliograph - run things on a machine you cannot log into
   heliograph logs <name>                    print one, whole
   heliograph logs --last --gaps             where the last run stalled
   heliograph doctor                         will this work from here, in full
+  heliograph mcp                            serve these as tools to an agent
   heliograph version
 
 Common flags:
@@ -70,6 +71,8 @@ func main() {
 		err = cmdWatch(os.Args[2:])
 	case "check", "doctor":
 		err = cmdDoctor(os.Args[2:])
+	case "mcp":
+		err = cmdMCP(os.Args[2:])
 	case "version", "--version":
 		fmt.Printf("heliograph %s\n", version)
 		return
@@ -286,7 +289,7 @@ func cmdSend(args []string) error {
 		if !strings.Contains(a, "=") {
 			return fmt.Errorf("%q is not KEY=VALUE: environment for the run goes after the step name", a)
 		}
-		env = append(env, shellQuote(a))
+		env = append(env, wire.QuoteEnv(a))
 	}
 
 	op, err2 := open(*name)
@@ -611,27 +614,4 @@ func cmdPlant(args []string) error {
 	return nil
 }
 
-// shellQuote re-quotes a KEY=VALUE pair whose value needs it.
-//
-// The station splits the env line the way a shell would, and the shell that
-// invoked THIS command has already eaten the quotes: by the time
-// `HOSTS="sql01 sql02"` arrives here it is one argument with a space in it.
-// Joining those with spaces produces `env: HOSTS=sql01 sql02`, which the far
-// side reads as HOSTS=sql01 followed by an attempt to run `sql02`.
-//
-// So the quoting has to be put back. Single quotes, with the standard escape
-// for an embedded one, because inside single quotes a shell interprets nothing
-// at all - and this string is about to be split by one on a machine nobody can
-// reach.
-func shellQuote(kv string) string {
-	i := strings.IndexByte(kv, '=')
-	if i < 0 {
-		return kv
-	}
-	k, v := kv[:i], kv[i+1:]
-	// An empty value is already unambiguous, and A='' reads like a mistake.
-	if v == "" || !strings.ContainsAny(v, " \t\n\"'\\$`&|;<>()*?[]#~!") {
-		return kv
-	}
-	return k + "='" + strings.ReplaceAll(v, "'", `'\''`) + "'"
-}
+// The env quoting lives in wire.QuoteEnv, with the document it belongs to.

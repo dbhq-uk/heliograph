@@ -15,15 +15,17 @@ A free, open-source tool by [DBHQ](https://dbhq.uk)
 
 ## Status
 
-**Early. The CLI works against a real station; the relay does not exist yet.**
+**Early, and working. The CLI drives a real station over four transports.**
 
 | | |
 |---|---|
 | control CLI over git | works, tested end to end against a stock station |
 | `--gaps` | works |
 | file share, bundle | work |
-| relay, object store | designed, not built |
-| documentation site | not built |
+| MCP server (`heliograph mcp`) | works |
+| relay | works: [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay), deployed to the Cloudflare edge |
+| documentation site | [heliograph.dbhq.uk](https://heliograph.dbhq.uk) |
+| object store | designed, not built |
 
 The far side is [**dbhq-uk/heliograph-skill**](https://github.com/dbhq-uk/heliograph-skill),
 which is complete and in use. This CLI drives it **unmodified** - if you already
@@ -54,7 +56,18 @@ heliograph watch                                      # follow it
 heliograph logs --last                                # read the whole log
 heliograph logs --last --gaps                         # where it stalled
 heliograph doctor                                     # will this work from here
+heliograph mcp                                        # serve all of the above as tools
 ```
+
+For an agent, `heliograph mcp` is the same CLI as typed MCP tools - one command
+to configure, nothing extra to install:
+
+```bash
+claude mcp add heliograph -- heliograph mcp
+```
+
+The gates do not move. A tool call publishes a request; the station still
+decides whether to run it. An MCP client asks, it does not get to answer.
 
 `--gaps` is the one worth knowing about. *"Scan the timestamp column for gaps
 before reading the content"* is the most valuable instruction in the method, and
@@ -155,16 +168,26 @@ to run it.
 ## Layout
 
 ```
-cmd/heliograph/         the control CLI                     (Go)
-cmd/heliograph-relay/   the relay server                    (Go)
-internal/transport/     git | relay | objstore | share | bundle
-station/                station-side transport adapters
-station/conformance/    the suite every adapter must pass
-hosts/                  the host contract, and the proven templates
-skills/                 the skill family
-site/                   the documentation site
+cmd/heliograph/         the control CLI, and `heliograph mcp`
+cmd/heliograph-seal/    key generation for the relay transport
+cmd/heliograph-site/    the static site generator
+internal/transport/     git | relay | share | bundle
+internal/wire/          the request and status documents that cross the gap
+internal/seal/          sign-then-encrypt, for the relay
+internal/logfile/       gap analysis
+internal/mcp/           JSON-RPC over stdio, no dependencies
+internal/estate/        which transport repo a name refers to
+internal/plant/         what to send the operator
+internal/site/          markdown subset, CSS, hero
+site/content/           the documentation, one source, three renderings
+infra/                  terraform: DNS, Pages, R2 state
 docs/specs/             the designs, written before the code
 ```
+
+The relay server is its own repository,
+[dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay), because
+it holds no keys and must be publicly, obviously incapable of reading anything
+it carries.
 
 ## Licence
 

@@ -21,6 +21,12 @@ Or for any other agent - Cursor, Copilot, Windsurf, Gemini, Cline:
 npx skills add dbhq-uk/heliograph-skill
 ```
 
+For typed tools rather than a taught CLI, add the [MCP server](/mcp) instead:
+
+```bash
+claude mcp add heliograph -- heliograph mcp
+```
+
 ## Using it
 
 Ask in plain words. The skill knows the rest.
@@ -70,5 +76,6 @@ The skill is one component. The full set:
 |---|---|
 | the skill | the method, the gates, and how to write a step |
 | the CLI | `heliograph send`, `watch`, `logs --gaps`, `plant` |
+| the MCP server | `heliograph mcp`, the same CLI as typed tools |
 | the station | plain bash on the far side, nothing to install |
 | the relay | when there is no git host, no storage and no share |

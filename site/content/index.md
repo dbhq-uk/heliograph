@@ -26,7 +26,9 @@ policy, it cannot run anything at all.
 heliograph gives it a way to ask: publish a step, and read back a log with every
 line timestamped, whether the run passed or failed. The operator runs one
 command, once, and stops being anybody's terminal.
-[How it works with Claude Code](/claude-code).
+
+[How it works with Claude Code](/claude-code), or drive it as typed tools from
+any agent through the [MCP server](/mcp).
 
 ## The three components
 
