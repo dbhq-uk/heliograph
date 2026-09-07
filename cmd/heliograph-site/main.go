@@ -198,22 +198,81 @@ func rank(s string) int {
 	return len(order)
 }
 
+// groups fix the sidebar's sections. A flat list of eight is a list somebody
+// scans twice; three short groups is one somebody reads once. The names say
+// what a reader is trying to do, not what the pages are about.
+var groups = []struct {
+	name  string
+	slugs []string
+}{
+	{"Start here", []string{"index", "install", "quickstart"}},
+	{"Drive it from an agent", []string{"claude-code", "mcp"}},
+	{"Reference", []string{"transports", "cli", "method"}},
+}
+
+func label(o site.Page) string {
+	if o.Slug == "index" {
+		return "Overview"
+	}
+	return o.Title
+}
+
+func href(slug string) string {
+	if slug == "index" {
+		return "/"
+	}
+	return "/" + slug
+}
+
+// sidebar is the docs navigation: every page, grouped, with the current one
+// marked. It replaces a top nav that had eight items in a row - which fitted
+// on a laptop and wrapped on anything smaller, and left the content with
+// nothing to align to.
+func sidebar(p site.Page, all []site.Page) string {
+	byslug := map[string]site.Page{}
+	for _, o := range all {
+		byslug[o.Slug] = o
+	}
+	var b strings.Builder
+	for _, g := range groups {
+		fmt.Fprintf(&b, `<p class="grp">%s</p>`, escAttr(g.name))
+		for _, slug := range g.slugs {
+			o, ok := byslug[slug]
+			if !ok {
+				continue
+			}
+			cls := ""
+			if o.Slug == p.Slug {
+				cls = ` class="here"`
+			}
+			fmt.Fprintf(&b, `<a href="%s"%s>%s</a>`, href(slug), cls, escAttr(label(o)))
+		}
+	}
+	return b.String()
+}
+
+// rail is the "on this page" column. Omitted below three headings: a rail with
+// two entries is furniture, and it takes width from the thing it is pointing at.
+func rail(p site.Page) string {
+	hs := site.Headings(p.Body)
+	if len(hs) < 3 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(`<aside class="rail"><p class="grp">On this page</p><nav>`)
+	for _, h := range hs {
+		fmt.Fprintf(&b, `<a href="#%s">%s</a>`, escAttr(h[0]), escAttr(h[1]))
+	}
+	b.WriteString(`</nav></aside>`)
+	return b.String()
+}
+
 func page(p site.Page, all []site.Page) string {
 	var nav strings.Builder
 	for _, o := range all {
-		href := "/" + o.Slug
-		if o.Slug == "index" {
-			href = "/"
-		}
-		cls := ""
-		if o.Slug == p.Slug {
-			cls = ` class="here"`
-		}
-		label := o.Title
-		if o.Slug == "index" {
-			label = "Overview"
-		}
-		fmt.Fprintf(&nav, `<a href="%s"%s>%s</a>`, href, cls, escAttr(label))
+		fmt.Fprintf(&nav, `<a href="%s"%s>%s</a>`, href(o.Slug),
+			map[bool]string{true: ` class="here"`, false: ""}[o.Slug == p.Slug],
+			escAttr(label(o)))
 	}
 	canonical := baseURL + "/" + p.Slug
 	if p.Slug == "index" {
@@ -224,8 +283,23 @@ func page(p site.Page, all []site.Page) string {
 	// reading surface and gets neither: a docs page competing with its own
 	// header is a docs page nobody finishes.
 	hero, wide := "", ""
+	shellOpen, shellClose, railHTML := "", "", ""
 	if p.Slug == "index" {
 		hero, wide = heroHTML, " wide"
+	} else {
+		// Three columns, the way a docs site that fills its window works:
+		// navigation on the left, the reading column next to it, and the
+		// page's own headings on the right.
+		//
+		// The old layout put a full-bleed header above a centred 68ch column,
+		// so the logo sat at the far left while the first word of the body
+		// began a third of the way across, and neither shared an edge with
+		// anything. That reads as broken even to somebody who could not say
+		// why.
+		shellOpen = `<div class="shell"><aside class="side"><nav>` +
+			sidebar(p, all) + `</nav></aside><div class="col">`
+		shellClose = `</div>`
+		railHTML = rail(p) + `</div>`
 	}
 
 	title := titles[p.Slug]
@@ -258,16 +332,20 @@ func page(p site.Page, all []site.Page) string {
   <nav>%[6]s</nav>
 </header>
 %[7]s
+%[11]s
 <main class="doc%[8]s">
 %[9]s
 </main>
+%[12]s
+%[13]s
 <footer><div class="inner">
 <p>A free, open-source tool by <a href="https://dbhq.uk">DBHQ</a>.</p>
 <p><a href="https://github.com/dbhq-uk/heliograph">Source</a> &middot; <a href="/%[4]s.md">This page as markdown</a></p>
 </div></footer>
 <script>%[10]s</script>
 `, escAttr(title), escAttr(site.Summary(p.Body)), canonical, p.Slug,
-		site.Mark, nav.String(), hero, wide, site.RenderBody(p.Body), site.HeroJS)
+		site.Mark, nav.String(), hero, wide, site.RenderBody(p.Body), site.HeroJS,
+		shellOpen, shellClose, railHTML)
 }
 
 // titles are written per page rather than derived from the H1.

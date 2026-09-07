@@ -9,6 +9,10 @@ timestamped in UTC, whether it passed or failed.
 
 If you can SSH in yourself, do that instead. This is for when you cannot.
 
+```diagram loop
+You push a step; the station runs it; the log comes back. The operator runs one command, once.
+```
+
 ## Does this sound familiar
 
 - No SSH access to production, and you are not going to be given any
