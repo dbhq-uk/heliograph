@@ -1,0 +1,38 @@
+{
+  "name": "@dbhq/heliograph",
+  "version": "0.3.0",
+  "description": "Run commands on a machine you cannot SSH into. MCP server and CLI for air-gapped, bastion-only and change-controlled estates.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "claude",
+    "devops",
+    "remote-execution",
+    "air-gapped",
+    "ssh-alternative"
+  ],
+  "homepage": "https://heliograph.dbhq.uk",
+  "bugs": "https://github.com/dbhq-uk/heliograph/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dbhq-uk/heliograph.git"
+  },
+  "license": "MIT",
+  "author": "DBHQ",
+  "type": "module",
+  "bin": {
+    "heliograph": "bin/heliograph.mjs"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node bin/install.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "mcpName": "io.github.dbhq-uk/heliograph"
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.dbhq-uk/heliograph",
+  "description": "Run commands on a machine you cannot SSH into. For air-gapped, bastion-only and change-controlled estates.",
+  "repository": {
+    "url": "https://github.com/dbhq-uk/heliograph",
+    "source": "github"
+  },
+  "version": "0.3.0",
+  "websiteUrl": "https://heliograph.dbhq.uk",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@dbhq/heliograph",
+      "version": "0.3.0",
+      "transport": { "type": "stdio" },
+      "runtimeHint": "npx",
+      "runtimeArguments": [
+        { "type": "positional", "value": "-y", "isRequired": true, "format": "string" }
+      ],
+      "packageArguments": [
+        { "type": "positional", "value": "mcp", "isRequired": true, "format": "string" }
+      ]
+    }
+  ]
+}
