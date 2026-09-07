@@ -30,8 +30,10 @@ Tokens come from 1Password at apply time. Nothing is written to disk.
 
 ```bash
 set -a; . ~/.scentverdict/env.sh; set +a          # 1Password service account
-export TF_VAR_cloudflare_api_token="$(op read 'op://ScentVerdict/Cloudflare/api_token')"
+export TF_VAR_cloudflare_api_token="$(op read 'op://DBHQ/Cloudflare/api_token')"
 export TF_VAR_github_token="$(gh auth token)"
+export AWS_ACCESS_KEY_ID="$(op read 'op://DBHQ/heliograph - R2 terraform state/access_key_id')"
+export AWS_SECRET_ACCESS_KEY="$(op read 'op://DBHQ/heliograph - R2 terraform state/secret_access_key')"
 
 terraform init \
   -backend-config="bucket=heliograph-tfstate" \
@@ -59,6 +61,47 @@ placeholder gets committed and quietly used.
 | its certificate pack | Cloudflare creates it automatically. A four-label host is not covered by Universal SSL, which reaches only `*.dbhq.uk`. Managing it here would fight the automatic one |
 | the `workers.dev` subdomain | a one-time account-wide setting, for a single string that can never change |
 | estate tokens | secrets. Keeping them out of terraform is the point: they must never enter state |
+
+## The DBHQ convention: R2 holds every project's state
+
+Standing rule, not a heliograph decision. Every DBHQ project that uses terraform
+keeps its state in Cloudflare R2, never in git and never only on a laptop.
+
+**One bucket per project, named `<project>-tfstate`**, with its own R2 token
+scoped to that bucket alone.
+
+That last part is the whole reason for the shape, and it is worth knowing before
+somebody tidies it into a single shared bucket: **R2 tokens scope to a bucket,
+not to a prefix.** One bucket with `heliograph/`, `scentverdict/` and the rest
+under it would mean one credential that reads every project's state, and state
+holds secret values verbatim. Per-project buckets are the only way the isolation
+is real rather than cosmetic.
+
+Setting up a new project is two things in the dashboard and one paste:
+
+1. R2 -> Create bucket -> `<project>-tfstate`
+2. R2 -> Manage R2 API Tokens -> Object Read & Write, **scoped to that bucket**
+3. Store as `op://DBHQ/<project> - R2 terraform state` with `access_key_id` and
+   `secret_access_key`, then copy the `terraform init` block below and change
+   the bucket name.
+
+The endpoint and account id are the same for every project. Neither is a secret.
+
+This belongs in a shared DBHQ infrastructure repository once one exists. It is
+written here because it is true now and an unwritten convention is not one.
+
+## Credentials
+
+Held in 1Password, read at apply time, never written to disk.
+
+| | |
+|---|---|
+| `DBHQ/Cloudflare/api_token` | the provider |
+| `DBHQ/heliograph - R2 terraform state` | the state backend, scoped to that bucket alone |
+
+The R2 credential is **Object Read & Write on `heliograph-tfstate` only**. It
+cannot read another bucket, and it is not the Cloudflare API token: losing it
+costs you the state file, not the account.
 
 ## The gate
 

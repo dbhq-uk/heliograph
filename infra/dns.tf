@@ -16,7 +16,7 @@ resource "cloudflare_dns_record" "site" {
   proxied = false
   ttl     = 1
 
-  comment = "heliograph docs. DNS-only so GitHub Pages can issue its certificate."
+  comment = "heliograph docs site, GitHub Pages. DNS-only so GitHub can issue its certificate."
 }
 
 # The GitHub Pages binding, so the CNAME and the repository agree.
@@ -27,10 +27,14 @@ resource "github_repository_pages" "site" {
   repository = "heliograph"
   cname      = var.site_hostname
 
-  source {
-    branch = "main"
-    path   = "/"
-  }
+  # WORKFLOW, NOT LEGACY, and a `source` block must not appear here.
+  #
+  # The site is built and deployed by .github/workflows/pages.yml. Declaring a
+  # source branch flips build_type to "legacy", which makes Pages serve the
+  # repository root instead - so the first apply would have taken the live site
+  # down and served the raw markdown. The plan said "2 to change" and looked
+  # harmless.
+  build_type = "workflow"
 }
 
 # NOT MANAGED HERE, and each for a reason:
