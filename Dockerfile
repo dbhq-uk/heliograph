@@ -1,11 +1,23 @@
 # =============================================================================
-#  heliograph as an MCP server, in a container
+#  ghcr.io/dbhq-uk/heliograph - the CONTROL side, as a container
 # =============================================================================
-#     docker run -i --rm ghcr.io/dbhq-uk/heliograph mcp
+#     docker run -i --rm ghcr.io/dbhq-uk/heliograph mcp     # as an MCP server
+#     docker run --rm ghcr.io/dbhq-uk/heliograph estates    # as the CLI
 #
-#  -i is not optional: the server speaks JSON-RPC on stdin and stdout, and
-#  without an attached stdin it starts, reads EOF and exits, which looks
-#  exactly like a crash.
+#  This is the whole `heliograph` binary, not an MCP-only build. `mcp` is the
+#  default command because that is what a directory or an MCP client starts it
+#  for, but every other subcommand is here too.
+#
+#  NOT TO BE CONFUSED WITH ghcr.io/dbhq-uk/heliograph-toolkit, which is the
+#  STATION - the far side, built from dbhq-uk/heliograph-skill. The two images
+#  sit on opposite sides of the gap and share nothing but the wire format:
+#
+#    heliograph          your machine. Sends steps, reads logs. This file.
+#    heliograph-toolkit  the machine you cannot log into. Runs them.
+#
+#  -i is not optional for `mcp`: the server speaks JSON-RPC on stdin and
+#  stdout, and without an attached stdin it starts, reads EOF and exits, which
+#  looks exactly like a crash.
 #
 #  WHAT THIS IS FOR
 #
@@ -45,7 +57,7 @@ ENTRYPOINT ["/usr/local/bin/heliograph"]
 CMD ["mcp"]
 
 LABEL org.opencontainers.image.title="heliograph" \
-      org.opencontainers.image.description="Run commands on a machine you cannot SSH into. MCP server and CLI." \
+      org.opencontainers.image.description="The control side of heliograph: CLI and MCP server. Run commands on a machine you cannot SSH into." \
       org.opencontainers.image.url="https://heliograph.dbhq.uk" \
       org.opencontainers.image.source="https://github.com/dbhq-uk/heliograph" \
       org.opencontainers.image.licenses="MIT"
