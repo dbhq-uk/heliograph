@@ -6,21 +6,33 @@
     "url": "https://github.com/dbhq-uk/heliograph",
     "source": "github"
   },
-  "version": "0.3.0",
+  "version": "0.3.1",
   "websiteUrl": "https://heliograph.dbhq.uk",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@dbhq/heliograph",
-      "version": "0.3.0",
-      "transport": { "type": "stdio" },
+      "version": "0.3.1",
+      "transport": {
+        "type": "stdio"
+      },
       "runtimeHint": "npx",
       "runtimeArguments": [
-        { "type": "positional", "value": "-y", "isRequired": true, "format": "string" }
+        {
+          "type": "positional",
+          "value": "-y",
+          "isRequired": true,
+          "format": "string"
+        }
       ],
       "packageArguments": [
-        { "type": "positional", "value": "mcp", "isRequired": true, "format": "string" }
+        {
+          "type": "positional",
+          "value": "mcp",
+          "isRequired": true,
+          "format": "string"
+        }
       ]
     }
   ]
