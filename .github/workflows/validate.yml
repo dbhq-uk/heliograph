@@ -201,12 +201,20 @@ jobs:
             bad=1
           fi
           # State, which is the real risk and the one people forget.
-          if git ls-files | grep -E "\.tfstate|\.tfvars$|\.terraform/" ; then
+          #
+          # `|| true` on every grep, because the step runs under `bash -e` and a
+          # grep that matches NOTHING exits 1. Without it this gate failed
+          # precisely when the repository was clean, which is the worst
+          # direction for a check to fail in: it trains people to ignore it.
+          state="$(git ls-files | grep -E "\.tfstate|\.tfvars$|\.terraform/" || true)"
+          if [ -n "$state" ]; then
+            echo "$state"
             echo "::error::terraform state or variables are tracked. State holds secret values verbatim."
             bad=1
           fi
-          # A private key of any kind.
-          if grep -rIn "BEGIN [A-Z ]*PRIVATE KEY" --exclude-dir=.git . ; then
+          keys="$(grep -rIn "BEGIN [A-Z ]*PRIVATE KEY" --exclude-dir=.git . || true)"
+          if [ -n "$keys" ]; then
+            echo "$keys"
             echo "::error::a private key is present"
             bad=1
           fi
