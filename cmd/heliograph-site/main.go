@@ -237,8 +237,8 @@ func page(p site.Page, all []site.Page) string {
 <html lang="en-GB">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>%s</title>
-<meta name="description" content="%s">
+<title>%[1]s</title>
+<meta name="description" content="%[2]s">
 <meta name="theme-color" content="#080C12">
 <meta property="og:title" content="%[1]s">
 <meta property="og:description" content="%[2]s">
@@ -246,28 +246,28 @@ func page(p site.Page, all []site.Page) string {
 <meta property="og:url" content="%[3]s">
 <meta property="og:site_name" content="heliograph">
 <meta name="twitter:card" content="summary">
-<link rel="canonical" href="%s">
+<link rel="canonical" href="%[3]s">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <!-- The markdown mirror, announced so an agent does not have to guess. -->
-<link rel="alternate" type="text/markdown" href="/%s.md">
+<link rel="alternate" type="text/markdown" href="/%[4]s.md">
 <link rel="preload" href="/assets/fonts/InstrumentSerif-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/InstrumentSans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
 <header>
-  <a class="brand" href="/">%s heliograph</a>
-  <nav>%s</nav>
+  <a class="brand" href="/">%[5]s heliograph</a>
+  <nav>%[6]s</nav>
 </header>
-%s
-<main class="doc%s">
-%s
+%[7]s
+<main class="doc%[8]s">
+%[9]s
 </main>
 <footer><div class="inner">
 <p>A free, open-source tool by <a href="https://dbhq.uk">DBHQ</a>.</p>
-<p><a href="https://github.com/dbhq-uk/heliograph">Source</a> &middot; <a href="/%s.md">This page as markdown</a></p>
+<p><a href="https://github.com/dbhq-uk/heliograph">Source</a> &middot; <a href="/%[4]s.md">This page as markdown</a></p>
 </div></footer>
-<script>%s</script>
+<script>%[10]s</script>
 `, escAttr(title), escAttr(site.Summary(p.Body)), canonical, p.Slug,
-		site.Mark, nav.String(), hero, wide, site.RenderBody(p.Body), p.Slug, site.HeroJS)
+		site.Mark, nav.String(), hero, wide, site.RenderBody(p.Body), site.HeroJS)
 }
 
 // titles are written per page rather than derived from the H1.
