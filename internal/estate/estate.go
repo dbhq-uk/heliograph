@@ -18,15 +18,26 @@ import (
 // Estate is one transport repo, under a name a person chose.
 type Estate struct {
 	Name      string `json:"name"`
-	Transport string `json:"transport"` // git, for now
-	Dir       string `json:"dir"`       // the working clone
+	Transport string `json:"transport"` // git | share | bundle | objstore
+	Dir       string `json:"dir"`       // the working clone, or the endpoint for objstore
 	Branch    string `json:"branch"`    // recorded for reporting; the checkout decides
-	Scope     string `json:"scope"`     // share: one directory per investigation
+	Scope     string `json:"scope"`     // share: one directory, objstore: one lane, per investigation
+
+	// objstore only. Identifiers, all of them: an endpoint, a bucket and a
+	// prefix say WHERE, and none of them opens anything.
+	//
+	// The keys are deliberately absent and there is no field for them. They
+	// come from HELIOGRAPH_S3_ACCESS_KEY and HELIOGRAPH_S3_SECRET_KEY at the
+	// moment of use. This file is on disk, gets copied between machines and
+	// ends up in backups, and a secret in it would be a secret in all three.
+	Bucket string `json:"bucket,omitempty"`
+	Prefix string `json:"prefix,omitempty"`
+	Region string `json:"region,omitempty"`
 }
 
 // known transports. A name that is not here is refused at save time rather
 // than at send time, when somebody is already waiting on a far side.
-var known = map[string]bool{"git": true, "share": true, "bundle": true}
+var known = map[string]bool{"git": true, "share": true, "bundle": true, "objstore": true}
 
 func configDir() (string, error) {
 	base := os.Getenv("XDG_CONFIG_HOME")
@@ -61,10 +72,13 @@ func (e Estate) Save() error {
 		return err
 	}
 	if !known[e.Transport] {
-		return fmt.Errorf("unknown transport %q: this build knows git", e.Transport)
+		return fmt.Errorf("unknown transport %q: this build knows git, share, bundle and objstore", e.Transport)
 	}
 	if e.Dir == "" {
 		return fmt.Errorf("estate %q has no directory: it would have nothing to write to", e.Name)
+	}
+	if e.Transport == "objstore" && e.Bucket == "" {
+		return fmt.Errorf("estate %q is an object store with no bucket", e.Name)
 	}
 	dir, err := configDir()
 	if err != nil {

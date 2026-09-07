@@ -30,6 +30,9 @@ var version = "dev"
 const usage = `heliograph - run things on a machine you cannot log into
 
   heliograph init <estate> --dir <path>     remember a transport repo by name
+      [--transport git|share|bundle|objstore]
+      objstore: --dir <https endpoint> --bucket <name> --scope <lane> [--prefix p] [--region r]
+                keys come from HELIOGRAPH_S3_ACCESS_KEY and HELIOGRAPH_S3_SECRET_KEY
   heliograph estates                        what is configured here
   heliograph plant                          what to send the operator
   heliograph send <step> [K=V ...]          publish a request, and return
@@ -149,6 +152,23 @@ func open(name string) (opened, error) {
 			return opened{}, err
 		}
 		return opened{Estate: e, Transport: b, Dir: b.Dir(), Scope: b.Branch()}, nil
+	case "objstore":
+		// The keys come from the environment, never from the estate file. That
+		// file is on disk, gets copied between machines and ends up in
+		// backups; a secret in it would be a secret in all three.
+		o, err := transport.NewObjStore(transport.ObjStoreConfig{
+			Endpoint:  e.Dir,
+			Bucket:    e.Bucket,
+			Prefix:    e.Prefix,
+			Lane:      e.Scope,
+			Region:    e.Region,
+			AccessKey: os.Getenv("HELIOGRAPH_S3_ACCESS_KEY"),
+			SecretKey: os.Getenv("HELIOGRAPH_S3_SECRET_KEY"),
+		})
+		if err != nil {
+			return opened{}, err
+		}
+		return opened{Estate: e, Transport: o, Dir: o.Dir(), Scope: o.Branch()}, nil
 	default:
 		return opened{}, fmt.Errorf("estate %q names transport %q, which this build does not know", e.Name, e.Transport)
 	}
@@ -185,9 +205,12 @@ func estateFlag(fs *flag.FlagSet) *string {
 
 func cmdInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
-	dir := fs.String("dir", "", "the working clone, share directory, or bundle directory")
-	kind := fs.String("transport", "git", "git | share | bundle")
-	scopeFlag := fs.String("scope", "", "with --transport share: one directory per investigation")
+	dir := fs.String("dir", "", "the working clone, share directory, bundle directory, or object store endpoint")
+	kind := fs.String("transport", "git", "git | share | bundle | objstore")
+	scopeFlag := fs.String("scope", "", "share: one directory per investigation. objstore: one lane")
+	bucket := fs.String("bucket", "", "with --transport objstore: the bucket")
+	prefix := fs.String("prefix", "", "with --transport objstore: a key prefix, for a bucket shared with something else")
+	region := fs.String("region", "", "with --transport objstore: the region (default auto, which suits R2 and MinIO)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -199,9 +222,17 @@ func cmdInit(args []string) error {
 	if *dir == "" {
 		return fmt.Errorf("--dir is required: it is the clone this estate writes to")
 	}
-	abs, err := filepath.Abs(*dir)
-	if err != nil {
-		return err
+
+	// An object store's --dir is a URL, and filepath.Abs on one turns
+	// https://s3.example.com into $PWD/https:/s3.example.com. Silently: the
+	// estate saves, and every later command reports that it cannot reach a
+	// host with a name nobody typed.
+	abs := *dir
+	if *kind != "objstore" {
+		abs, err = filepath.Abs(*dir)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Attach BEFORE saving. An estate that names a directory which is not a
@@ -231,11 +262,32 @@ func cmdInit(args []string) error {
 			return err
 		}
 		tp, scope = b, b.Branch()
+	case "objstore":
+		if *scopeFlag == "" {
+			return fmt.Errorf("--scope is required for an object store: it is the lane, one per investigation, so two do not overwrite each other")
+		}
+		if *bucket == "" {
+			return fmt.Errorf("--bucket is required for an object store")
+		}
+		o, err := transport.NewObjStore(transport.ObjStoreConfig{
+			Endpoint:  abs,
+			Bucket:    *bucket,
+			Prefix:    *prefix,
+			Lane:      *scopeFlag,
+			Region:    *region,
+			AccessKey: os.Getenv("HELIOGRAPH_S3_ACCESS_KEY"),
+			SecretKey: os.Getenv("HELIOGRAPH_S3_SECRET_KEY"),
+		})
+		if err != nil {
+			return err
+		}
+		tp, scope = o, o.Branch()
 	default:
-		return fmt.Errorf("unknown transport %q: this build knows git, share and bundle", *kind)
+		return fmt.Errorf("unknown transport %q: this build knows git, share, bundle and objstore", *kind)
 	}
 
-	e := estate.Estate{Name: name, Transport: *kind, Dir: abs, Branch: scope, Scope: *scopeFlag}
+	e := estate.Estate{Name: name, Transport: *kind, Dir: abs, Branch: scope, Scope: *scopeFlag,
+		Bucket: *bucket, Prefix: *prefix, Region: *region}
 	if err := e.Save(); err != nil {
 		return err
 	}
