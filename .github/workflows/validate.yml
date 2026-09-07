@@ -56,6 +56,10 @@ jobs:
         # x/term arrive as x/crypto's declared requirements without a single
         # byte of them reaching the binary - so gating on that reports
         # dependencies the product does not have.
+        #
+        # `vendor/golang.org/x/...` is excluded because it is the standard
+        # library's OWN vendored copy, which crypto/tls uses. It is stdlib
+        # wearing a confusing path, not something this repository chose.
         run: |
           set -euo pipefail
           allowed="golang.org/x/crypto golang.org/x/sys"
@@ -66,7 +70,7 @@ jobs:
               *" $root "*) ;;
               *) echo "::error::undeclared dependency linked into the binary: $pkg"; bad=1 ;;
             esac
-          done < <(go list -deps ./... | grep '\.' | grep -v '^github.com/dbhq-uk/heliograph' | grep -v '^crypto/internal/')
+          done < <(go list -deps ./... | grep '\.' | grep -v '^github.com/dbhq-uk/heliograph' | grep -v '^crypto/internal/' | grep -v '^vendor/')
           [ "$bad" = "0" ] || exit 1
           echo "linked dependencies: $allowed"
 

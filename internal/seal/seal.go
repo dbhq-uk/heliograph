@@ -119,13 +119,23 @@ func DecodePublic(s string) (PublicIdentity, error) {
 //	Dir        a message reflected back the way it came
 //	Seq        an old request replayed to re-run something destructive
 //	Recipient  surreptitious forwarding, the known weakness of sign-then-encrypt
+//
+// THERE IS NO TIMESTAMP HERE, and that was a correction rather than an
+// omission. A `Sent` field was signed in the first draft, and it could not
+// work: the recipient has to reconstruct the metadata exactly in order to
+// verify, and it cannot know a clock it did not read. Carrying it alongside
+// would have let the relay tamper with the one field verification depended on.
+//
+// It was also redundant. The request and status documents already carry `utc:`,
+// and that is inside the plaintext, so it is signed without any of this. When a
+// field cannot be reconstructed and is already somewhere better, the answer is
+// to remove it rather than to invent a way to guess it.
 type Meta struct {
 	Estate    string
 	Station   string
 	Dir       string // "c2s" or "s2c"
 	Seq       uint64
 	Kind      string // request | status | progress | log | payload
-	Sent      string // advisory only; freshness rests on Seq
 	Recipient string // the recipient's fingerprint
 }
 
@@ -149,7 +159,6 @@ func (m Meta) canonical() []byte {
 	binary.BigEndian.PutUint64(v[:], m.Seq)
 	b = append(b, v[:]...)
 	add(m.Kind)
-	add(m.Sent)
 	add(m.Recipient)
 	return b
 }

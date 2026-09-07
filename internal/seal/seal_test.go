@@ -23,7 +23,7 @@ func pair(t *testing.T) (control, station *Identity) {
 func meta(to *Identity) Meta {
 	return Meta{
 		Estate: "e_7f3a", Station: "st_4a91", Dir: "c2s", Seq: 412,
-		Kind: "request", Sent: "2026-09-07T10:15:00Z",
+		Kind:      "request",
 		Recipient: to.Public().Fingerprint(),
 	}
 }
