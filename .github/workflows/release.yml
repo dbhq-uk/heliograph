@@ -138,7 +138,27 @@ jobs:
           set -euo pipefail
           cd "$(mktemp -d)"
           npm init -y >/dev/null
-          npm install "@dbhq/heliograph@${GITHUB_REF_NAME#v}"
+          ver="${GITHUB_REF_NAME#v}"
+
+          # npm accepts a publish before the version is resolvable for install.
+          # The first run of this step failed with ETARGET seconds after a
+          # publish that had plainly succeeded, so it waits rather than calling
+          # a propagation delay a failed release.
+          #
+          # It still fails in the end: a version that never becomes installable
+          # is a broken release, and the difference between that and slow is
+          # only how long you are willing to wait for it.
+          for attempt in $(seq 1 20); do
+            if npm install "@dbhq/heliograph@${ver}" 2>/dev/null; then
+              echo "installed on attempt ${attempt}"
+              break
+            fi
+            if [ "$attempt" = "20" ]; then
+              echo "::error::@dbhq/heliograph@${ver} was published but is still not installable after 5 minutes"
+              exit 1
+            fi
+            sleep 15
+          done
           ./node_modules/.bin/heliograph version
           printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' \
             | ./node_modules/.bin/heliograph mcp \
