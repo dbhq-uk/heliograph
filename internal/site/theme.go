@@ -15,29 +15,37 @@ const CSS = `
 /* Self-hosted. A third-party font request on a docs site is a dependency
    nobody asked for, and Instrument is the right voice twice over: a display
    serif with real optical contrast, and a sans from the same drawing. */
-@font-face{font-family:'Instrument Serif';src:url('/assets/fonts/InstrumentSerif-400.woff2')format('woff2');
-  font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:'Instrument Sans';src:url('/assets/fonts/InstrumentSans.woff2')format('woff2');
+@font-face{font-family:'Archivo';src:url('/assets/fonts/Archivo.woff2')format('woff2');
   font-weight:400 700;font-style:normal;font-display:swap}
-@font-face{font-family:'IBM Plex Mono';src:url('/assets/fonts/IBMPlexMono-400.woff2')format('woff2');
-  font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:'IBM Plex Mono';src:url('/assets/fonts/IBMPlexMono-500.woff2')format('woff2');
-  font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url('/assets/fonts/JetBrainsMono.woff2')format('woff2');
+  font-weight:400 700;font-style:normal;font-display:swap}
 
 /* --------------------------------------------------------------- tokens */
 :root{
-  --night:#08090B;          /* the valley */
-  --dusk:#0E1013;           /* raised surfaces */
-  --ridge:#171A1F;          /* borders, edges */
-  --slate:#252A31;
+  /* A signal lamp at dusk. Blue-greens because that is what a cold light
+     reads as against a warm horizon, and because saturated teal BURNS on a
+     dark surface - every accent here is drawn from the 300-400 lightness band
+     with saturation pulled back, not from a full-strength swatch.
 
-  --brass:#A87A2E;          /* the instrument */
-  --gold:#E8B04B;           /* the signal */
-  --flash:#FFF6E0;          /* the light itself. The only pure bright. */
+     Every pair below is measured against --night, not eyeballed:
+       ink    16.6:1   ink-2  9.3:1   ink-3  5.6:1
+       teal   11.9:1   signal 15.6:1  flash 18.4:1
+       dark text on the teal button: 10.3:1
+     The commonest failure in dev tooling is a slate-500 secondary at 4.0:1.
+     --ink-3 is the floor here and it is 5.6:1. */
+  --night:#070C0F;          /* the valley */
+  --dusk:#0C1418;           /* raised surfaces */
+  --ridge:#172227;          /* borders, edges */
+  --slate:#22333B;
 
-  --ink:#EDEEF0;
-  --ink-2:#A7ADB6;          /* 7.1:1 on --night */
-  --ink-3:#767D87;          /* 4.6:1 on --night, for captions only */
+  --brass:#1FA898;          /* the instrument, in shade */
+  --gold:#3EE0CB;           /* the signal */
+  --flash:#E4FDF8;          /* the light itself. The only near-white on the page. */
+  --signal:#8FF7E8;
+
+  --ink:#E7EEF2;
+  --ink-2:#9FB6BF;
+  --ink-3:#778C96;          /* 5.2:1, captions only */
 
   --measure:68ch;
   --ease:cubic-bezier(.16,1,.3,1);
@@ -48,7 +56,7 @@ const CSS = `
 html{-webkit-text-size-adjust:100%}
 body{
   margin:0;background:var(--night);color:var(--ink);
-  font:400 17px/1.65 'Instrument Sans',ui-sans-serif,system-ui,sans-serif;
+  font:400 17px/1.65 'Archivo',ui-sans-serif,system-ui,sans-serif;
   font-feature-settings:'kern' 1;
   -webkit-font-smoothing:antialiased;
   overflow-x:hidden;
@@ -79,7 +87,7 @@ header{
   border-bottom:1px solid var(--ridge);
 }
 .brand{display:flex;align-items:center;gap:.6rem;text-decoration:none;color:var(--ink);
-  font-family:'Instrument Serif',serif;font-size:1.32rem;letter-spacing:-.01em}
+  font-family:'Archivo',sans-serif;font-weight:600;font-size:1.12rem;letter-spacing:-.02em}
 .brand:hover{color:var(--ink)}
 .brand svg{width:26px;height:26px;color:var(--gold);flex:none}
 nav{display:flex;gap:1.35rem;flex-wrap:wrap;margin-left:auto}
@@ -103,11 +111,11 @@ nav a.here{color:var(--flash)}
   padding:clamp(3rem,9vh,5.5rem) clamp(1.1rem,4vw,2.5rem) clamp(9rem,22vh,13rem);
 }
 .hero h1{
-  font-family:'Instrument Serif',serif;font-weight:400;
-  font-size:clamp(2.9rem,7.4vw,5.6rem);line-height:.98;letter-spacing:-.022em;
-  margin:0 0 1.15rem;max-width:16ch;text-wrap:balance;
+  font-family:'Archivo',sans-serif;font-weight:600;
+  font-size:clamp(2.6rem,6.6vw,4.9rem);line-height:1.02;letter-spacing:-.035em;
+  margin:0 0 1.15rem;max-width:17ch;text-wrap:balance;
 }
-.hero h1 em{font-style:italic;color:var(--gold)}
+.hero h1 em{font-style:normal;color:var(--gold)}
 .hero .lede{
   font-size:clamp(1.08rem,1.9vw,1.34rem);line-height:1.55;color:var(--ink-2);
   max-width:46ch;margin:0 0 2.4rem;text-wrap:pretty;
@@ -119,10 +127,10 @@ nav a.here{color:var(--flash)}
   font-size:.97rem;font-weight:500;letter-spacing:.005em;
   transition:transform .2s var(--ease),box-shadow .2s var(--ease),background .2s var(--ease);
 }
-.btn-primary{background:var(--gold);color:#1A1206;
-  box-shadow:0 1px 2px rgba(0,0,0,.5),0 10px 26px -12px rgba(232,176,75,.7)}
-.btn-primary:hover{background:var(--flash);color:#1A1206;transform:translateY(-1px);
-  box-shadow:0 2px 4px rgba(0,0,0,.5),0 16px 34px -12px rgba(232,176,75,.85)}
+.btn-primary{background:var(--gold);color:#04211D;
+  box-shadow:0 1px 2px rgba(0,0,0,.5),0 10px 26px -12px rgba(62,224,203,.55)}
+.btn-primary:hover{background:var(--signal);color:#04211D;transform:translateY(-1px);
+  box-shadow:0 2px 4px rgba(0,0,0,.5),0 16px 34px -12px rgba(62,224,203,.75)}
 .btn-ghost{color:var(--ink);border:1px solid var(--slate);background:color-mix(in srgb,var(--dusk) 70%,transparent)}
 .btn-ghost:hover{color:var(--flash);border-color:var(--brass);transform:translateY(-1px)}
 
@@ -133,7 +141,7 @@ nav a.here{color:var(--flash)}
 .strip-inner{max-width:min(76rem,92vw);margin:0 auto;padding:2.6rem clamp(1.1rem,4vw,2.5rem)}
 .strip h2{font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
   font-weight:500;margin:0 0 1.1rem}
-.log{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:.845rem;line-height:1.95;
+.log{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.845rem;line-height:1.95;
   font-variant-numeric:tabular-nums;overflow-x:auto;margin:0}
 .log .t{color:var(--ink-3)}
 .log .gap{color:var(--gold);background:linear-gradient(90deg,
@@ -144,11 +152,11 @@ nav a.here{color:var(--flash)}
 main{max-width:var(--measure);margin:0 auto;padding:3.4rem clamp(1.1rem,4vw,2.5rem) 6rem}
 main.wide{max-width:min(76rem,92vw)}
 h1,h2,h3,h4{text-wrap:balance}
-main h1{font-family:'Instrument Serif',serif;font-weight:400;
-  font-size:clamp(2.3rem,5vw,3.4rem);line-height:1.06;letter-spacing:-.02em;margin:.2em 0 .5em}
-main h2{font-family:'Instrument Serif',serif;font-weight:400;
-  font-size:clamp(1.55rem,3vw,2.05rem);line-height:1.2;letter-spacing:-.012em;
-  margin:2.9em 0 .6em;padding-top:1.5rem;border-top:1px solid var(--ridge)}
+main h1{font-family:'Archivo',sans-serif;font-weight:600;
+  font-size:clamp(2.1rem,4.4vw,3rem);line-height:1.08;letter-spacing:-.032em;margin:.2em 0 .5em}
+main h2{font-family:'Archivo',sans-serif;font-weight:600;
+  font-size:clamp(1.4rem,2.6vw,1.8rem);line-height:1.22;letter-spacing:-.022em;
+  margin:2.6em 0 .6em;padding-top:1.4rem;border-top:1px solid var(--ridge)}
 main h3{font-size:1.1rem;font-weight:600;margin:2.1em 0 .45em;letter-spacing:-.005em}
 main h4{font-size:.98rem;font-weight:600;color:var(--ink-2);margin:1.7em 0 .35em}
 p,li{margin:.85em 0;text-wrap:pretty}
@@ -157,7 +165,7 @@ em{color:var(--ink)}
 ul{padding-left:1.15rem}
 li::marker{color:var(--brass)}
 
-code{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:.88em;
+code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.88em;
   background:var(--dusk);border:1px solid var(--ridge);padding:.1em .38em;border-radius:4px;
   color:var(--gold)}
 pre{background:var(--dusk);border:1px solid var(--ridge);border-radius:9px;
@@ -187,18 +195,28 @@ footer p{margin:0}
 
 // HeroJS draws the signal.
 //
-// Canvas rather than SVG: the beam is a gradient sweeping a path with a glow
-// that has to stay smooth at 60fps on a laptop, and the terrain is generated
-// rather than drawn.
+// A heliograph does not emit one smooth beam. It flashes: a shutter opens and
+// closes, and the message is in the rhythm. So the signal is a TRAIN of pulses
+// crossing the valley, not a line being drawn, and the far station answers with
+// a shorter one. That is the difference between an animation about light and an
+// animation about signalling.
 //
-// prefers-reduced-motion paints one frame of the scene mid-signal. It is still
-// legible and still says what the product does; it simply does not move.
+// Canvas rather than SVG: dozens of glowing pulses with additive blending are
+// what canvas is for, and the terrain is generated rather than drawn.
+//
+// prefers-reduced-motion paints one frame mid-exchange. It is still legible and
+// still says what the product does; it simply does not move.
 const HeroJS = `
 (function(){
   var c=document.getElementById('signal'); if(!c) return;
   var ctx=c.getContext('2d'), dpr=Math.min(window.devicePixelRatio||1,2);
-  var W=0,H=0,ridges=[],stars=[],t0=performance.now();
+  var W=0,H=0,ridges=[],stars=[],haze=[],t0=performance.now();
   var reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // The message, as a heliograph would send it. Dots and dashes, because the
+  // rhythm is the whole point: "HG" in Morse.
+  var CODE=[1,1,1,1, 0, 2,2,1];   // 1 = dot, 2 = dash, 0 = word gap
+  var REPLY=[2,1,2];
 
   function resize(){
     var r=c.getBoundingClientRect();
@@ -207,20 +225,14 @@ const HeroJS = `
     c.width=W*dpr; c.height=H*dpr;
     ctx.setTransform(dpr,0,0,dpr,0,0);
     build();
-    // Repaint after a resize. Under reduced motion nothing else will: the one
-    // frame has already run, so a later ResizeObserver callback would rebuild
-    // the terrain and leave the canvas blank. Which is exactly what it did -
-    // the animated path looked fine and the accessible path showed nothing.
     if(reduced) requestAnimationFrame(frame);
   }
 
-  // Three ridges. Two read as a backdrop; three read as distance, which is the
-  // whole subject.
   function build(){
     ridges=[];
-    var cfg=[[0.62,0.085,'#0B0D11','rgba(168,122,46,.16)'],
-             [0.75,0.105,'#090A0D','rgba(168,122,46,.26)'],
-             [0.90,0.075,'#060709','rgba(168,122,46,.40)']];
+    var cfg=[[0.62,0.085,'#0A1216','rgba(31,168,152,.22)'],
+             [0.75,0.105,'#080F13','rgba(31,168,152,.32)'],
+             [0.90,0.075,'#060B0E','rgba(31,168,152,.48)']];
     for(var k=0;k<cfg.length;k++){
       var pts=[], n=64, base=H*cfg[k][0], amp=H*cfg[k][1], seed=k*29.3+3;
       for(var i=0;i<=n;i++){
@@ -231,102 +243,145 @@ const HeroJS = `
       }
       ridges.push({pts:pts,fill:cfg[k][2],line:cfg[k][3]});
     }
-    stars=[];
-    for(var j=0;j<58;j++) stars.push([Math.random()*W,Math.random()*H*0.62,Math.random()*0.9+0.25]);
+    stars=[]; for(var j=0;j<64;j++) stars.push([Math.random()*W,Math.random()*H*0.6,Math.random()*0.9+0.25]);
+    // Valley mist, which is what gives the distance a middle.
+    haze=[]; for(var m=0;m<7;m++) haze.push({x:Math.random()*W,y:H*(0.60+Math.random()*0.22),
+      w:W*(0.22+Math.random()*0.30),h:H*(0.030+Math.random()*0.045),v:0.004+Math.random()*0.010});
+  }
+
+  // Where a pulse train sits at time p (0..1 across the whole message).
+  // Returns the list of pulses currently in flight, each with its own position
+  // and brightness, so the beam reads as light travelling rather than a bar.
+  function pulses(code,p,speed){
+    var out=[], unit=1/(code.length*3+3), t=0;
+    for(var i=0;i<code.length;i++){
+      var len=code[i]===2?unit*2.2:(code[i]===1?unit*0.9:0);
+      if(code[i]!==0){
+        var head=(p-t)*speed, tail=(p-t-len)*speed;
+        if(head>0&&tail<1) out.push([Math.min(head,1),Math.max(tail,0)]);
+      }
+      t+=len+unit*0.7;
+    }
+    return out;
   }
 
   function frame(now){
-    // The first frame can beat the first layout: resize() bails when the
-    // element still has no width, which leaves ridges empty and made the whole
-    // scene throw on ridges[2]. A blank hero and a working one look identical
-    // in a screenshot, so this is guarded rather than assumed.
     if(!W||!H||ridges.length<3){ requestAnimationFrame(frame); return; }
     var el=(now-t0)/1000;
     ctx.clearRect(0,0,W,H);
 
-    // A valley at dusk, warmer toward the horizon where the sun has gone.
     var sky=ctx.createLinearGradient(0,0,0,H);
-    sky.addColorStop(0,'#08090B'); sky.addColorStop(0.52,'#0A0C10');
-    sky.addColorStop(0.78,'#12100E'); sky.addColorStop(1,'#0A0B0D');
+    sky.addColorStop(0,'#060A0D'); sky.addColorStop(0.5,'#071216');
+    sky.addColorStop(0.8,'#0A1D21'); sky.addColorStop(1,'#060F12');
     ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
 
-    // The sun, low and to the right: the source the mirror is catching.
-    var sx=W*0.80, sy=H*0.66, sr=Math.max(W,H)*0.45;
+    var sx=W*0.80, sy=H*0.70, sr=Math.max(W,H)*0.50;
     var glow=ctx.createRadialGradient(sx,sy,0,sx,sy,sr);
-    glow.addColorStop(0,'rgba(232,176,75,.17)');
-    glow.addColorStop(0.35,'rgba(232,176,75,.06)');
-    glow.addColorStop(1,'rgba(232,176,75,0)');
+    glow.addColorStop(0,'rgba(62,224,203,.16)');
+    glow.addColorStop(0.35,'rgba(62,224,203,.055)');
+    glow.addColorStop(1,'rgba(62,224,203,0)');
     ctx.fillStyle=glow; ctx.fillRect(0,0,W,H);
 
     for(var s2=0;s2<stars.length;s2++){
       var st=stars[s2];
-      ctx.globalAlpha=st[2]*0.4*(0.7+0.3*Math.sin(el*0.7+st[0]));
-      ctx.fillStyle='#FFF6E0';
-      ctx.fillRect(st[0],st[1],1.2,1.2);
+      ctx.globalAlpha=st[2]*0.42*(0.7+0.3*Math.sin(el*0.7+st[0]));
+      ctx.fillStyle='#E4FDF8'; ctx.fillRect(st[0],st[1],1.2,1.2);
     }
     ctx.globalAlpha=1;
 
     for(var k=0;k<ridges.length;k++){
-      var R=ridges[k], p=R.pts;
-      ctx.beginPath(); ctx.moveTo(0,H+2); ctx.lineTo(p[0][0],p[0][1]);
-      for(var i=1;i<p.length;i++) ctx.lineTo(p[i][0],p[i][1]);
+      var R=ridges[k], pp=R.pts;
+      ctx.beginPath(); ctx.moveTo(0,H+2); ctx.lineTo(pp[0][0],pp[0][1]);
+      for(var i2=1;i2<pp.length;i2++) ctx.lineTo(pp[i2][0],pp[i2][1]);
       ctx.lineTo(W,H+2); ctx.closePath();
       ctx.fillStyle=R.fill; ctx.fill();
-      ctx.beginPath(); ctx.moveTo(p[0][0],p[0][1]);
-      for(var j2=1;j2<p.length;j2++) ctx.lineTo(p[j2][0],p[j2][1]);
+      ctx.beginPath(); ctx.moveTo(pp[0][0],pp[0][1]);
+      for(var j2=1;j2<pp.length;j2++) ctx.lineTo(pp[j2][0],pp[j2][1]);
       ctx.strokeStyle=R.line; ctx.lineWidth=1.1; ctx.stroke();
+
+      // Mist, drawn between ridges so it sits IN the valley.
+      if(k===1){
+        for(var hz=0;hz<haze.length;hz++){
+          var Hz=haze[hz];
+          if(!reduced){ Hz.x+=Hz.v*W*0.016; if(Hz.x-Hz.w>W) Hz.x=-Hz.w; }
+          var hg=ctx.createLinearGradient(Hz.x-Hz.w,0,Hz.x+Hz.w,0);
+          hg.addColorStop(0,'rgba(143,247,232,0)');
+          hg.addColorStop(0.5,'rgba(143,247,232,.045)');
+          hg.addColorStop(1,'rgba(143,247,232,0)');
+          ctx.fillStyle=hg; ctx.fillRect(Hz.x-Hz.w,Hz.y,Hz.w*2,Hz.h);
+        }
+      }
     }
 
     var near=ridges[2].pts;
     var ax=W*0.09, ay=near[Math.round(near.length*0.09)][1]-9;
     var bx=W*0.91, by=near[Math.round(near.length*0.91)][1]-9;
 
-    var CYCLE=9.0, u=reduced?0.30:((el%CYCLE)/CYCLE);
-    var out=Math.max(0,Math.min(1,(u-0.03)/0.38));
-    var back=Math.max(0,Math.min(1,(u-0.55)/0.38));
+    var CYCLE=11.0, u=reduced?0.26:((el%CYCLE)/CYCLE);
+    var outP=(u-0.04)/0.40, backP=(u-0.58)/0.30;
 
-    function beam(x1,y1,x2,y2,pr,warm){
-      if(pr<=0||pr>=1) return;
-      var hx=x1+(x2-x1)*pr, hy=y1+(y2-y1)*pr;
-      var tail=Math.max(0,pr-0.42), tx=x1+(x2-x1)*tail, ty=y1+(y2-y1)*tail;
-      ctx.save();
-      ctx.shadowColor=warm?'rgba(255,246,224,.55)':'rgba(232,176,75,.45)';
-      ctx.shadowBlur=16;
-      var g=ctx.createLinearGradient(tx,ty,hx,hy);
-      g.addColorStop(0,'rgba(232,176,75,0)');
-      g.addColorStop(1,warm?'rgba(255,246,224,1)':'rgba(232,176,75,.95)');
-      ctx.strokeStyle=g; ctx.lineWidth=2.4; ctx.lineCap='round';
-      ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(hx,hy); ctx.stroke();
-      ctx.restore();
-      var r=16, rg=ctx.createRadialGradient(hx,hy,0,hx,hy,r);
-      rg.addColorStop(0,'rgba(255,246,224,.95)');
-      rg.addColorStop(0.3,'rgba(255,246,224,.35)');
-      rg.addColorStop(1,'rgba(255,246,224,0)');
-      ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(hx,hy,r,0,7); ctx.fill();
+    // Additive blending: where two pulses overlap the light gets brighter,
+    // which is how light actually behaves and what stops this reading as paint.
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+
+    function train(x1,y1,x2,y2,code,p,speed,col,warm){
+      if(p<=0||p>=1.6) return 0;
+      var ps=pulses(code,p,speed), landed=0;
+      for(var i=0;i<ps.length;i++){
+        var h=ps[i][0], t=ps[i][1];
+        if(h>=0.999) landed=1;
+        var hx=x1+(x2-x1)*h, hy=y1+(y2-y1)*h;
+        var tx=x1+(x2-x1)*t, ty=y1+(y2-y1)*t;
+        var g=ctx.createLinearGradient(tx,ty,hx,hy);
+        g.addColorStop(0,'rgba('+col+',0)');
+        g.addColorStop(0.5,'rgba('+col+',.55)');
+        g.addColorStop(1,'rgba('+col+',.95)');
+        ctx.strokeStyle=g; ctx.lineWidth=warm?2.6:2.1; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(hx,hy); ctx.stroke();
+        var r=warm?15:12, rg=ctx.createRadialGradient(hx,hy,0,hx,hy,r);
+        rg.addColorStop(0,'rgba('+col+',.85)');
+        rg.addColorStop(0.35,'rgba('+col+',.25)');
+        rg.addColorStop(1,'rgba('+col+',0)');
+        ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(hx,hy,r,0,7); ctx.fill();
+      }
+      return landed;
     }
 
+    var arrived=train(ax,ay,bx,by,CODE,outP,1.0,'228,253,248',true);
+    var returned=train(bx,by,ax,ay,REPLY,backP,1.0,'62,224,203',false);
+    ctx.restore();
+
+    // A landing flash: the far side has received something. This is the moment
+    // the whole scene exists to show, so it gets its own ring rather than just
+    // a brighter dot.
+    function land(x,y,p){
+      if(p<=0||p>=1) return;
+      var e=1-Math.pow(1-p,3), r=6+e*34;
+      ctx.beginPath(); ctx.arc(x,y,r,0,7);
+      ctx.strokeStyle='rgba(143,247,232,'+(0.5*(1-p))+')';
+      ctx.lineWidth=1.6; ctx.stroke();
+    }
+    land(bx,by,(u-0.42)/0.14);
+    land(ax,ay,(u-0.92)/0.12);
+
     function station(x,y,lit,label){
-      var r=lit?28:17;
+      var r=lit?30:18;
       var g=ctx.createRadialGradient(x,y,0,x,y,r);
-      g.addColorStop(0,lit?'rgba(255,246,224,.55)':'rgba(232,176,75,.24)');
-      g.addColorStop(1,'rgba(232,176,75,0)');
+      g.addColorStop(0,lit?'rgba(223,251,246,.5)':'rgba(62,224,203,.24)');
+      g.addColorStop(1,'rgba(62,224,203,0)');
       ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
       ctx.beginPath(); ctx.arc(x,y,lit?5:3.8,0,7);
-      ctx.fillStyle=lit?'#FFF6E0':'#C9922F'; ctx.fill();
-      // A short mast, so a station reads as a thing somebody put there.
+      ctx.fillStyle=lit?'#E4FDF8':'#3EE0CB'; ctx.fill();
       ctx.beginPath(); ctx.moveTo(x,y+4); ctx.lineTo(x,y+14);
-      ctx.strokeStyle='rgba(168,122,46,.6)'; ctx.lineWidth=1.4; ctx.stroke();
+      ctx.strokeStyle='rgba(31,168,152,.68)'; ctx.lineWidth=1.4; ctx.stroke();
       if(label){
-        ctx.font='500 10px "IBM Plex Mono",monospace';
-        ctx.fillStyle='rgba(167,173,182,.6)'; ctx.textAlign='center';
+        ctx.font='500 10px "JetBrains Mono",monospace';
+        ctx.fillStyle='rgba(159,182,191,.62)'; ctx.textAlign='center';
         ctx.fillText(label,x,y+29);
       }
     }
-
-    beam(ax,ay,bx,by,out,true);
-    beam(bx,by,ax,ay,back,false);
-    station(ax,ay, out<0.08||back>0.92, 'control');
-    station(bx,by, out>0.9&&back<0.06, 'station');
+    station(ax,ay, u<0.05||returned===1, 'control');
+    station(bx,by, arrived===1, 'station');
 
     if(!reduced) requestAnimationFrame(frame);
   }
