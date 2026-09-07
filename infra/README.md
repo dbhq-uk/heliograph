@@ -29,25 +29,24 @@ and a repository is a thing people clone. It lives in R2 instead.
 Tokens come from 1Password at apply time. Nothing is written to disk.
 
 ```bash
-set -a; . ~/.scentverdict/env.sh; set +a          # 1Password service account
-export TF_VAR_cloudflare_api_token="$(op read 'op://DBHQ/Cloudflare/api_token')"
+set -a; . ~/.dbhq/env.sh; set +a                  # 1Password, DBHQ vault
 export TF_VAR_github_token="$(gh auth token)"
-export AWS_ACCESS_KEY_ID="$(op read 'op://DBHQ/heliograph - R2 terraform state/access_key_id')"
-export AWS_SECRET_ACCESS_KEY="$(op read 'op://DBHQ/heliograph - R2 terraform state/secret_access_key')"
 
-terraform init \
-  -backend-config="bucket=heliograph-tfstate" \
-  -backend-config="key=public-surface.tfstate" \
-  -backend-config="endpoints={s3=\"https://<account>.r2.cloudflarestorage.com\"}" \
-  -backend-config="region=auto" \
-  -backend-config="skip_credentials_validation=true" \
-  -backend-config="skip_region_validation=true" \
-  -backend-config="skip_requesting_account_id=true" \
-  -backend-config="skip_s3_checksum=true" \
-  -backend-config="use_path_style=true"
-
-terraform plan
+terraform -chdir=infra init -backend-config=backend.hcl
+terraform -chdir=infra plan
 ```
+
+`~/.dbhq/env.sh` holds the service account token and nothing else. Every
+credential is read from the **DBHQ** vault at source time by `op inject`, from
+`~/.dbhq/env.sh.tpl`. Nothing is written to disk and nothing is read from
+another project's vault.
+
+The backend settings live in [`backend.hcl`](backend.hcl), committed, because
+every value in it is an identifier rather than a credential. The alternative
+was nine `-backend-config` flags typed by hand, and a nine-flag command is one
+somebody eventually gets wrong. Getting it wrong here means terraform quietly
+initialises a *different* state file and then plans to create infrastructure
+that already exists.
 
 Secret variables have **no default**. That is the mechanism rather than a
 convention: terraform refuses to plan without them, so there is no path where a

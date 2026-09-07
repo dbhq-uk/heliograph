@@ -39,19 +39,11 @@ terraform {
   # values that were never meant to be read, and a repository is a thing people
   # clone. R2 keeps it in one place with one access path.
   #
-  # Configured at init rather than here, so no endpoint or bucket has to be
-  # guessed by a reader:
+  # Configured at init from backend.hcl, which is committed because every value
+  # in it is an identifier rather than a credential. The keys come from
+  # 1Password by way of ~/.dbhq/env.sh and never touch disk.
   #
-  #   terraform init \
-  #     -backend-config="bucket=heliograph-tfstate" \
-  #     -backend-config="key=public-surface.tfstate" \
-  #     -backend-config="endpoints={s3=\"https://<account>.r2.cloudflarestorage.com\"}" \
-  #     -backend-config="region=auto" \
-  #     -backend-config="skip_credentials_validation=true" \
-  #     -backend-config="skip_region_validation=true" \
-  #     -backend-config="skip_requesting_account_id=true" \
-  #     -backend-config="skip_s3_checksum=true" \
-  #     -backend-config="use_path_style=true"
+  #   terraform init -backend-config=backend.hcl
   backend "s3" {}
 }
 
