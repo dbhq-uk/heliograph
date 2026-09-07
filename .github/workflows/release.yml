@@ -163,3 +163,72 @@ jobs:
           printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' \
             | ./node_modules/.bin/heliograph mcp \
             | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const t=JSON.parse(s).result.tools;if(t.length!==7){console.error('::error::got '+t.length+' tools, want 7');process.exit(1)}console.log('installed from npm and served '+t.length+' tools')})"
+
+  image:
+    name: Publish the container image
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # For the build provenance attestation, which is what lets somebody
+      # verify this image came from this workflow and not from a laptop.
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # arm64 as well as amd64: an Apple laptop and a Graviton box are both
+          # ordinary places to run this, and an amd64-only image emulates on
+          # both, slowly and silently.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          tags: |
+            ghcr.io/dbhq-uk/heliograph:${{ github.ref_name }}
+            ghcr.io/dbhq-uk/heliograph:latest
+          labels: |
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/dbhq-uk/heliograph
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: It answers introspection
+        # The Dockerfile's header tells people to run this image. Publishing one
+        # that starts and then does nothing useful would make that a lie in a
+        # more expensive way than not publishing at all.
+        run: |
+          set -euo pipefail
+          out="$(printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | docker run -i --rm "ghcr.io/dbhq-uk/heliograph:${GITHUB_REF_NAME}")"
+          echo "$out"
+          n="$(printf '%s' "$out" | grep -c '"name":"heliograph_' || true)"
+          if [ "$n" -lt 1 ]; then
+            echo "::error::the published image did not list its tools"
+            exit 1
+          fi
+          echo "the published image serves its tools"

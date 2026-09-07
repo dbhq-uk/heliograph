@@ -19,13 +19,33 @@
 #  stdout, and without an attached stdin it starts, reads EOF and exits, which
 #  looks exactly like a crash.
 #
-#  WHAT THIS IS FOR
+#  WHEN TO USE IT, AND WHEN NOT TO
 #
-#  Two things. Directories that verify a server by running it need something
-#  they can start, and an OCI image is one of the package types the MCP
-#  registry accepts. For ordinary use the released binary is better: it is one
-#  static file, and heliograph reads estate configuration from the host's
-#  ~/.config, which a container does not have unless it is mounted.
+#  Use it when you want the server without putting anything on the host, or
+#  when something else needs an OCI image - that is one of the package types
+#  the MCP registry accepts.
+#
+#  For ordinary use the released binary or the npm package is better, and it
+#  is worth being plain about why rather than leaving somebody to find out:
+#  heliograph reads its estates from the host's ~/.config, and a container does
+#  not have that unless it is mounted. Started with nothing mounted this image
+#  answers introspection and correctly reports that no estates are configured,
+#  which is honest but is not yet useful for doing any work.
+#
+#    npx -y @dbhq/heliograph mcp        # the usual way
+#    docker run -i --rm ... mcp         # this file
+#
+#  To actually drive a station from the container, mount the configuration:
+#
+#    docker run -i --rm -v ~/.config/heliograph:/home/nonroot/.config/heliograph \
+#      ghcr.io/dbhq-uk/heliograph mcp
+#
+#  or, if you would rather be explicit than rely on where HOME points:
+#
+#    docker run -i --rm -e XDG_CONFIG_HOME=/config -v ~/.config:/config \
+#      ghcr.io/dbhq-uk/heliograph mcp
+#
+#  Both were checked against a real estate file, not assumed from the paths.
 #
 #  IT CARRIES NO CREDENTIALS AND NO ESTATE. Started with nothing mounted, the
 #  server answers introspection and reports honestly that no estates are
