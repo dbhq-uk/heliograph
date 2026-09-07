@@ -21,3 +21,6 @@
 *.pem
 .git-token
 site/dist/
+
+# Release artefacts, built by CI and by packaging/mcpb/build.sh
+/dist/

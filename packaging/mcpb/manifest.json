@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/dist/manifest.schema.json",
+  "manifest_version": "0.1",
+  "name": "heliograph",
+  "display_name": "heliograph",
+  "version": "0.3.0",
+  "description": "Run commands on a machine you cannot SSH into.",
+  "long_description": "Publishes a step to a transport the far side already reaches - git, a file share, S3-compatible storage, a relay, or a file carried by hand - and the whole run comes back as a log with every line timestamped in UTC, whether it passed or failed. For air-gapped, bastion-only and change-controlled estates. No tunnel, no proxy, nothing held open. The gates live on the far side: a tool call can ask, but cannot authorise.",
+  "author": { "name": "DBHQ", "url": "https://dbhq.uk" },
+  "homepage": "https://heliograph.dbhq.uk",
+  "documentation": "https://heliograph.dbhq.uk/mcp",
+  "support": "https://github.com/dbhq-uk/heliograph/issues",
+  "license": "MIT",
+  "keywords": ["mcp", "devops", "remote-execution", "air-gapped", "ssh-alternative", "sysadmin"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/heliograph",
+    "mcp_config": {
+      "command": "${__dirname}/server/heliograph",
+      "args": ["mcp"]
+    }
+  },
+  "tools": [
+    { "name": "heliograph_estates",  "description": "What is configured here, and which transport each estate uses" },
+    { "name": "heliograph_send",     "description": "Publish a step for the station to run, and return without waiting" },
+    { "name": "heliograph_status",   "description": "What the station is doing now" },
+    { "name": "heliograph_logs",     "description": "The captured logs, newest first" },
+    { "name": "heliograph_read_log", "description": "One log, whole and never truncated" },
+    { "name": "heliograph_gaps",     "description": "Where a run stalled, longest interval first" },
+    { "name": "heliograph_doctor",   "description": "Will this work from here, changing nothing" }
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {}
+  }
+}
