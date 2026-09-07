@@ -2,7 +2,7 @@
 
 **Remote, captured, auditable execution on a machine you cannot log into.**
 
-Someone can reach the machine. You cannot, and you are the one who knows what to
+A CLI, and a [Claude Code skill](/claude-code). Someone can reach the machine. You cannot, and you are the one who knows what to
 ask it. heliograph runs that gap as a loop rather than a relay: you push a step,
 it runs on the far side, and the whole run comes back as a log with every line
 timestamped in UTC, whether it passed or failed.
@@ -16,6 +16,17 @@ If you can SSH in yourself, do that instead. This is for when you cannot.
 - A client-owned estate where only their staff can log in
 - Blocked by policy rather than capability: regulated, restricted, change-controlled
 - The fourth round of "can you run this and paste the output", and what came back was a screenshot of half a terminal
+
+## For an AI agent that cannot reach the machine
+
+Claude Code is excellent on a box it can run commands on. On a production
+machine behind a bastion, in a client-owned estate, or behind a change-control
+policy, it cannot run anything at all.
+
+heliograph gives it a way to ask: publish a step, and read back a log with every
+line timestamped, whether the run passed or failed. The operator runs one
+command, once, and stops being anybody's terminal.
+[How it works with Claude Code](/claude-code).
 
 ## The three components
 

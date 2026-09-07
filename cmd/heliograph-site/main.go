@@ -20,7 +20,7 @@ import (
 
 // order fixes the navigation. Alphabetical would put the CLI reference before
 // the quick start, which is the wrong way round for somebody arriving.
-var order = []string{"index", "install", "quickstart", "transports", "cli", "method"}
+var order = []string{"index", "install", "quickstart", "claude-code", "transports", "cli", "method"}
 
 const baseURL = "https://heliograph.dbhq.uk"
 
@@ -108,6 +108,16 @@ func build(src, out string) error {
 	if err := os.WriteFile(filepath.Join(out, "style.css"), []byte(site.CSS), 0o644); err != nil {
 		return err
 	}
+	if err := os.WriteFile(filepath.Join(out, "sitemap.xml"), []byte(sitemap(pages)), 0o644); err != nil {
+		return err
+	}
+	// robots.txt names the sitemap and the markdown mirrors. Agents are the
+	// heavier readership here, and llms.txt is not discoverable on its own.
+	robots := "User-agent: *\nAllow: /\n\nSitemap: " + baseURL + "/sitemap.xml\n" +
+		"\n# Markdown mirrors of every page at <path>.md, and " + baseURL + "/llms.txt\n"
+	if err := os.WriteFile(filepath.Join(out, "robots.txt"), []byte(robots), 0o644); err != nil {
+		return err
+	}
 	// Fonts and the logo. Copied by the build rather than by a step in the
 	// deploy workflow: a site that renders locally and ships without its
 	// typeface is a failure nobody sees until it is live.
@@ -153,6 +163,21 @@ func copyTree(from, to string) error {
 		return fmt.Errorf("%s is empty", from)
 	}
 	return nil
+}
+
+func sitemap(pages []site.Page) string {
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	for _, p := range pages {
+		loc := baseURL + "/" + p.Slug
+		if p.Slug == "index" {
+			loc = baseURL + "/"
+		}
+		fmt.Fprintf(&b, "  <url><loc>%s</loc></url>\n", loc)
+	}
+	b.WriteString("</urlset>\n")
+	return b.String()
 }
 
 func inOrder(s string) bool {
@@ -203,13 +228,24 @@ func page(p site.Page, all []site.Page) string {
 		hero, wide = heroHTML, " wide"
 	}
 
+	title := titles[p.Slug]
+	if title == "" {
+		title = p.Title + " - heliograph"
+	}
+
 	return fmt.Sprintf(`<!doctype html>
 <html lang="en-GB">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>%s - heliograph</title>
+<title>%s</title>
 <meta name="description" content="%s">
-<meta name="theme-color" content="#08090B">
+<meta name="theme-color" content="#080C12">
+<meta property="og:title" content="%[1]s">
+<meta property="og:description" content="%[2]s">
+<meta property="og:type" content="website">
+<meta property="og:url" content="%[3]s">
+<meta property="og:site_name" content="heliograph">
+<meta name="twitter:card" content="summary">
 <link rel="canonical" href="%s">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <!-- The markdown mirror, announced so an agent does not have to guess. -->
@@ -230,8 +266,27 @@ func page(p site.Page, all []site.Page) string {
 <p><a href="https://github.com/dbhq-uk/heliograph">Source</a> &middot; <a href="/%s.md">This page as markdown</a></p>
 </div></footer>
 <script>%s</script>
-`, escAttr(p.Title), escAttr(site.Summary(p.Body)), canonical, p.Slug,
+`, escAttr(title), escAttr(site.Summary(p.Body)), canonical, p.Slug,
 		site.Mark, nav.String(), hero, wide, site.RenderBody(p.Body), p.Slug, site.HeroJS)
+}
+
+// titles are written per page rather than derived from the H1.
+//
+// A title tag is the one piece of copy that has to work with no page around it:
+// in a search result, a browser tab, a shared link. "Transports - heliograph"
+// says nothing to somebody who has never heard of either word.
+//
+// They also carry the words people actually search. heliograph ships as a
+// Claude Code skill, and that is what a reader is looking for when they find
+// this - not a category name nobody types.
+var titles = map[string]string{
+	"index":       "heliograph - run commands on a machine you cannot log into",
+	"install":     "Install heliograph - a single binary, and nothing on the far side",
+	"quickstart":  "Quick start - from nothing to a captured log in five steps",
+	"claude-code": "heliograph for Claude Code - drive a machine the agent cannot reach",
+	"transports":  "Transports - git, relay, file share and bundle",
+	"cli":         "CLI reference - send, watch, logs --gaps, plant, doctor",
+	"method":      "The method - how to debug across a gap you cannot cross",
 }
 
 // heroHTML is the index's opening: the signal crossing the valley, then a real
