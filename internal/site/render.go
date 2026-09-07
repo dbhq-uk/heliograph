@@ -251,3 +251,27 @@ const Mark = `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">` +
 	`stroke-width="5" stroke-linecap="round" opacity=".72"/>` +
 	`<path d="M35.4 30.8 L67.7 -3.2 L77.3 6.0 L36.6 33.2 Z" fill="currentColor"/>` +
 	`<circle cx="32" cy="32" r="8.2" fill="currentColor"/></svg>`
+
+// Headings returns the H2s of a body, in order, as (id, text) pairs.
+//
+// For the "on this page" rail. Only H2: an H3 rail on a page with several of
+// them becomes a second navigation competing with the first, and the reader
+// then has two lists and no hierarchy.
+func Headings(md string) [][2]string {
+	var out [][2]string
+	inFence := false
+	for _, line := range strings.Split(md, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			inFence = !inFence
+			continue
+		}
+		// A `## ` inside a fence is shell output or a comment, not a heading.
+		// Without this check the rail fills with lines nobody can jump to.
+		if inFence || !strings.HasPrefix(line, "## ") {
+			continue
+		}
+		text := strings.TrimSpace(strings.TrimPrefix(line, "## "))
+		out = append(out, [2]string{slugify(text), stripInline(text)})
+	}
+	return out
+}

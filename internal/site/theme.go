@@ -48,6 +48,7 @@ const CSS = `
   --ink-3:#7A8CA0;          /* 5.2:1, captions only */
 
   --measure:68ch;
+  --gutter:clamp(1rem,2.2vw,1.8rem);
   --ease:cubic-bezier(.16,1,.3,1);
 }
 
@@ -81,7 +82,12 @@ a:hover{color:var(--flash);text-decoration-color:var(--flash)}
 header{
   position:sticky;top:0;z-index:50;
   display:flex;gap:2rem;align-items:center;flex-wrap:wrap;
-  padding:.85rem clamp(1.1rem,4vw,2.5rem);
+  /* Full-bleed background and border, content aligned to the shell. Without
+     the max() the brand sits a few pixels off the sidebar below it, which is
+     the kind of misalignment nobody names and everybody sees. */
+  --gutter:clamp(1rem,2.2vw,1.8rem);
+  --edge:max(var(--gutter),calc((100vw - 90rem)/2 + var(--gutter)));
+  padding:.85rem var(--edge);
   background:color-mix(in srgb,var(--night) 82%,transparent);
   backdrop-filter:blur(14px) saturate(1.3);
   border-bottom:1px solid var(--ridge);
@@ -91,6 +97,10 @@ header{
 .brand:hover{color:var(--ink)}
 .brand svg{width:26px;height:26px;color:var(--gold);flex:none}
 nav{display:flex;gap:1.35rem;flex-wrap:wrap;margin-left:auto}
+/* On a docs page the sidebar carries these links, so the header keeps only
+   the brand. Two copies of one navigation is a choice a reader has to make
+   twice. */
+body:has(.shell) header nav{display:none}
 nav a{color:var(--ink-2);text-decoration:none;font-size:.93rem;position:relative;padding:.15rem 0}
 nav a::after{content:'';position:absolute;left:0;right:100%;bottom:-2px;height:1px;
   background:var(--gold);transition:right .3s var(--ease)}
@@ -148,9 +158,97 @@ nav a.here{color:var(--flash)}
   color-mix(in srgb,var(--gold) 13%,transparent),transparent 62%);
   display:block;padding-left:.4rem;margin-left:-.4rem;border-radius:3px}
 
+/* ---------------------------------------------------------------- shell */
+/* Three columns on a docs page: navigation, the reading column, and the
+   page's own headings.
+
+   The layout this replaces was a full-bleed header above a centred 68ch
+   column. The logo sat hard left, the first word of the body began a third of
+   the way across, and nothing shared an edge with anything - which reads as
+   broken even to a reader who could not say why, and wastes most of a wide
+   window doing it.
+
+   The gutters are deliberately small. Width here is not decoration: it is how
+   much of a captured log fits on one line before it wraps, and a wrapped log
+   line is harder to scan for the gap that matters. */
+.shell{
+  display:grid;
+  grid-template-columns:15.5rem minmax(0,1fr) 13.5rem;
+  gap:0 2.4rem;
+  max-width:90rem;margin:0 auto;
+  padding:0 var(--gutter,clamp(1rem,2.2vw,1.8rem));
+  align-items:start;
+}
+.side{
+  position:sticky;top:3.6rem;align-self:start;
+  max-height:calc(100vh - 3.6rem);overflow-y:auto;
+  padding:2.6rem 0 3rem;
+  border-right:1px solid var(--ridge);
+}
+.side nav{display:flex;flex-direction:column;gap:.08rem;margin:0}
+.side .grp{
+  font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3,var(--ink-2));font-weight:600;
+  margin:1.5rem 0 .5rem;padding-right:2rem;
+}
+.side .grp:first-child{margin-top:0}
+.side nav a{
+  color:var(--ink-2);text-decoration:none;font-size:.92rem;
+  padding:.34rem .7rem;margin-right:1.6rem;border-radius:6px;
+  line-height:1.35;transition:color .15s var(--ease),background .15s var(--ease);
+}
+.side nav a::after{display:none}          /* the top nav's underline, not wanted here */
+.side nav a:hover{color:var(--ink);background:var(--dusk)}
+.side nav a.here{color:var(--ink);background:var(--dusk);font-weight:500}
+
+.col{min-width:0}                          /* so a wide <pre> scrolls instead of stretching the grid */
+
+/* The rail. Quiet by construction: it is a way back to a heading, not a
+   second navigation competing with the first. */
+.rail{
+  position:sticky;top:3.6rem;align-self:start;
+  max-height:calc(100vh - 3.6rem);overflow-y:auto;
+  padding:3.9rem 0 3rem;
+}
+.rail .grp{
+  font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-2);font-weight:600;margin:0 0 .6rem;
+}
+.rail nav{display:flex;flex-direction:column;gap:.05rem;margin:0}
+.rail nav a{
+  color:var(--ink-2);text-decoration:none;font-size:.85rem;line-height:1.4;
+  padding:.25rem 0 .25rem .7rem;border-left:1px solid var(--ridge);
+}
+.rail nav a::after{display:none}
+.rail nav a:hover{color:var(--ink);border-left-color:var(--gold)}
+
 /* ----------------------------------------------------------------- main */
-main{max-width:var(--measure);margin:0 auto;padding:3.4rem clamp(1.1rem,4vw,2.5rem) 6rem}
-main.wide{max-width:min(76rem,92vw)}
+/* Inside the shell the column already sets the width, so main only sets the
+   measure it will not exceed. --measure is the line length prose is readable
+   at; the column is wider than that so tables and code can use the room. */
+main{max-width:var(--measure);margin:0;padding:2.6rem 0 6rem}
+.shell main{max-width:min(80ch,100%)}
+main.wide{max-width:min(76rem,92vw);margin:0 auto;padding:3.4rem clamp(1.1rem,4vw,2.5rem) 6rem}
+
+/* A table or a code block may use the whole column: they are scanned, not
+   read, and a 68ch table wraps cells that were meant to line up. */
+.shell main table,.shell main pre{max-width:none;width:100%}
+
+@media(max-width:1180px){
+  .shell{grid-template-columns:14rem minmax(0,1fr);gap:0 2rem}
+  .rail{display:none}                      /* the first column to go: it is the least load-bearing */
+}
+@media(max-width:820px){
+  .shell{grid-template-columns:1fr;padding:0 1.1rem}
+  .side{
+    position:static;max-height:none;border-right:0;
+    border-bottom:1px solid var(--ridge);padding:1.2rem 0;
+  }
+  .side nav{flex-direction:row;flex-wrap:wrap;gap:.2rem}
+  .side .grp{display:none}                 /* group headings in a wrapped row are noise */
+  .side nav a{margin-right:0}
+  main{padding:2rem 0 4rem}
+}
 h1,h2,h3,h4{text-wrap:balance}
 main h1{font-family:'Archivo',sans-serif;font-weight:600;
   font-size:clamp(2.1rem,4.4vw,3rem);line-height:1.08;letter-spacing:-.032em;margin:.2em 0 .5em}
