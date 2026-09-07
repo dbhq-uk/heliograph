@@ -97,6 +97,31 @@ func (p PublicIdentity) Encode() string {
 	return base64.RawURLEncoding.EncodeToString(append(append([]byte{}, p.Enc...), p.Sign...))
 }
 
+// Encode renders the SECRET half, for an identity file.
+//
+// Named Encode rather than String, and never included in any Stringer, so it
+// cannot reach a log by accident.
+func (id *Identity) Encode() string {
+	b := append(append([]byte{}, id.enc.Bytes()...), id.sign.Seed()...)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// DecodeIdentity reads one back.
+func DecodeIdentity(s string) (*Identity, error) {
+	b, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(s))
+	if err != nil {
+		return nil, fmt.Errorf("not a usable identity: %w", err)
+	}
+	if len(b) != 64 {
+		return nil, fmt.Errorf("an identity is 64 bytes, got %d", len(b))
+	}
+	enc, err := ecdh.X25519().NewPrivateKey(b[:32])
+	if err != nil {
+		return nil, fmt.Errorf("not a usable identity: %w", err)
+	}
+	return &Identity{enc: enc, sign: ed25519.NewKeyFromSeed(b[32:])}, nil
+}
+
 func DecodePublic(s string) (PublicIdentity, error) {
 	b, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(s))
 	if err != nil {
