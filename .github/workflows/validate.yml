@@ -35,15 +35,40 @@ jobs:
       - name: unit tests
         run: go test ./... -count=1
 
-      - name: no dependencies crept in
-        # The sibling repository promises none, and this one starts with none.
-        # Every addition should be argued for in the PR that makes it, which
-        # cannot happen if they arrive unnoticed.
+      - name: only the dependencies that were argued for
+        # This repository had none, and the check that enforced it did its job:
+        # it forced the argument before the first one arrived.
+        #
+        # golang.org/x/crypto is here for ChaCha20-Poly1305, which is the one
+        # primitive the seal construction needs that the standard library does
+        # not have. Everything else - X25519, HKDF, Ed25519, SHA-256 - is
+        # stdlib. The alternative was AES-GCM, and it was rejected because Go's
+        # software AES is not constant time on a machine without AES-NI, which
+        # a station may well be.
+        #
+        # x/sys is x/crypto's own dependency, for CPU feature detection.
+        #
+        # Adding to this list needs a sentence in the PR saying what the
+        # standard library could not do.
+        #
+        # Checked against what is actually LINKED, not the module graph.
+        # `go list -m all` includes modules nothing imports - x/net, x/text and
+        # x/term arrive as x/crypto's declared requirements without a single
+        # byte of them reaching the binary - so gating on that reports
+        # dependencies the product does not have.
         run: |
-          if [ -f go.sum ]; then
-            echo "::error::go.sum exists. A dependency was added; say why in the PR and delete this check if that is now the plan."
-            exit 1
-          fi
+          set -euo pipefail
+          allowed="golang.org/x/crypto golang.org/x/sys"
+          bad=0
+          while read -r pkg; do
+            root="$(echo "$pkg" | cut -d/ -f1-3)"
+            case " $allowed " in
+              *" $root "*) ;;
+              *) echo "::error::undeclared dependency linked into the binary: $pkg"; bad=1 ;;
+            esac
+          done < <(go list -deps ./... | grep '\.' | grep -v '^github.com/dbhq-uk/heliograph' | grep -v '^crypto/internal/')
+          [ "$bad" = "0" ] || exit 1
+          echo "linked dependencies: $allowed"
 
   e2e:
     name: The CLI drives a real station

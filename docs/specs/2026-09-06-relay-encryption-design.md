@@ -237,6 +237,63 @@ Size and timing are not concealed. Padding to buckets was considered and rejecte
 
 The station verifying every message is what makes all of this hold **without** trusting the relay, which is the only form of the claim worth making.
 
+## Checked against a real implementation
+
+Paseo's relay is open source, and reading it was worth more than any amount of
+further reasoning. The comparison is recorded because the differences are
+decisions, not oversights on either side.
+
+### What was taken from it
+
+**Reject an all-zero shared secret.** A low-order or small-subgroup public key
+makes X25519 produce all zeroes, and a peer supplying one could then read
+everything. Paseo checks for it explicitly. Go's `crypto/ecdh` returns an error
+for the same case, so it comes free here, but it is asserted in a test rather
+than assumed: "the standard library handles it" is exactly the belief worth
+measuring once.
+
+**A random nonce even where a fixed one would be safe.** The key here is derived
+from an ephemeral key that is fresh per message, so a zero nonce is sound. It is
+also the sort of line that stops a review dead, correctly, and then costs the
+reviewer an argument about ephemeral generation to clear. Twelve bytes buys
+that argument away. Paseo does the same.
+
+**Never infer a message's type from its contents.** Their note that "the
+receiver never guesses whether authenticated plaintext is text or binary from
+its byte contents" is the same principle as `kind` being a signed metadata field
+here rather than something parsed out of the payload.
+
+### Where the two designs genuinely differ
+
+**Their phone is ephemeral-only; our control has a long-term identity.** In
+Paseo the daemon holds a persistent keypair and the client generates a fresh one
+per connection, so the daemon is authenticated to the client but the client is
+not authenticated to the daemon. Their trust anchor is the pairing link, and
+their security note says so plainly: *"Treat it like a password."* Anyone holding
+it can drive the daemon.
+
+Here a station is enrolled against a specific control public key and every
+request must be **signed** by it. Possession of an enrolment token lets you
+enrol once; it does not let you command a station afterwards. That is a
+deliberately higher bar, and it is bought with a heavier enrolment: a token plus
+a fingerprint read back aloud, rather than scanning a QR code.
+
+The reason for the difference is what is on the other end. Paseo's daemon runs
+on a machine its owner controls and can go and fix. A heliograph station runs
+where nobody can reach it, so a credential that is enough to command it forever
+is a credential that can never be rotated after a leak.
+
+**Replay.** Paseo's security note is explicit that within a live session
+"replay protection is not yet implemented". Sequence numbers are enforced here,
+monotonically per estate, station and direction, because the attack is concrete:
+`--allow-actions` and `CONFIRM=yes` are decided days before the request that
+uses them, so a replayed request is a destructive step re-running with all its
+gates already satisfied.
+
+**Session versus message.** Theirs is a live WebSocket with one shared key per
+session. Ours is store-and-forward, so each message carries its own ephemeral
+key. Neither shape is better; they answer different questions.
+
 ## Open questions
 
 1. **Multi-user control.** One estate, several engineers, each with their own key. Straightforward to add as a set of accepted control keys, but rotation and revocation need designing. Deferred to the point where a second person actually needs it
