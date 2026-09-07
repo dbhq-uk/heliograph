@@ -20,7 +20,7 @@ import (
 
 // order fixes the navigation. Alphabetical would put the CLI reference before
 // the quick start, which is the wrong way round for somebody arriving.
-var order = []string{"index", "install", "quickstart", "claude-code", "transports", "cli", "method"}
+var order = []string{"index", "install", "quickstart", "claude-code", "mcp", "transports", "cli", "method"}
 
 const baseURL = "https://heliograph.dbhq.uk"
 
