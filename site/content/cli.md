@@ -4,7 +4,8 @@ Every command the control side has, and the reasoning behind the ones that are
 not obvious.
 
 ```
-heliograph init <estate> --dir <path> [--transport git|share|bundle] [--scope <name>]
+heliograph init <estate> --dir <path> [--transport git|share|bundle|objstore]
+                          [--scope <name>] [--bucket <b>] [--prefix <p>] [--region <r>]
 heliograph estates
 heliograph plant [--service] [--script]
 heliograph send <step> [KEY=VALUE ...] [--note <text>]
@@ -12,6 +13,7 @@ heliograph watch [--interval 10s] [--timeout 0]
 heliograph status
 heliograph logs [--last] [<name>] [--gaps] [--min 10s]
 heliograph doctor
+heliograph mcp
 heliograph version
 ```
 
@@ -57,6 +59,42 @@ Values containing spaces are re-quoted on the way out. The shell that invoked
 the CLI has already eaten your quotes, and the station splits that line the way
 a shell would, so an unquoted value would set the first word and try to *run*
 the rest.
+
+## mcp
+
+Serves every command above as typed tools to any MCP-capable agent, over stdio.
+
+```bash
+claude mcp add heliograph -- heliograph mcp
+```
+
+It is the same binary, so there is nothing extra to install, and the tools call
+the same code the commands do. Full detail on the [MCP page](/mcp).
+
+The gates do not move. A tool call publishes a request; the station still
+decides whether to run it.
+
+## Object store estates
+
+`--transport objstore` needs three things the other transports do not: where the
+store is, which bucket, and which lane.
+
+```bash
+export HELIOGRAPH_S3_ACCESS_KEY=... HELIOGRAPH_S3_SECRET_KEY=...
+
+heliograph init payments --transport objstore \
+  --dir https://s3.eu-west-2.amazonaws.com \
+  --bucket heliograph-transport \
+  --scope net-probe
+```
+
+The keys come from the environment and are **never written to the estate file**.
+That file is on disk, gets copied between machines and ends up in backups; a
+secret in it would be a secret in all three.
+
+`--scope` is the lane: one per investigation, so two running at once do not
+overwrite each other. `--region` defaults to `auto`, which is what R2 and MinIO
+want. See [transports](/transports).
 
 ## logs --gaps
 
