@@ -1,0 +1,12 @@
+# State, and anything that becomes state. None of this may ever be committed:
+# state stores resource attributes verbatim, including values that were never
+# meant to be read.
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json

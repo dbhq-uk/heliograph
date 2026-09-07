@@ -16,7 +16,7 @@ side, so a container can start cleanly on a host with no network at all.
 | **git** | the far side can reach a git host | works |
 | **file share** | both machines mount the same directory | works |
 | **bundle** | nothing crosses the gap but a person | works |
-| **relay** | there is no git host, no storage, no share | designed |
+| **relay** | there is no git host, no storage, no share | works |
 | **object store** | S3 or Azure Blob is permitted where git is not | designed |
 
 ## git
@@ -71,6 +71,40 @@ Carry the file. Run it. Carry the log back.
 It is not a loop and does not pretend to be: a run takes as long as it takes
 somebody to walk. The value is that the format, the gates and the log are
 identical to every other transport, so the method survives the walk.
+
+## Relay
+
+The only transport that needs no estate infrastructure at all. Both sides dial
+**out** over ordinary HTTPS and meet at a server neither of them trusts.
+
+```bash
+heliograph init payments --transport relay \
+  --url https://heliograph-relay.dbhq.uk --estate payments
+```
+
+**The relay cannot read your logs, and cannot make a station run anything.** The
+second half is the one that matters: a relay able to forge a request would have
+code execution inside every estate at once, through a channel the estate
+installed deliberately. Everything is sealed and signed before it leaves, and
+verified before it is acted on.
+
+Nothing bespoke: X25519, HKDF-SHA256, ChaCha20-Poly1305 and Ed25519. The server
+holds no keys, and its source is public precisely so that claim can be checked
+rather than trusted.
+
+It is the one transport that needs a binary on the far side. `openssl enc`
+refuses AEAD ciphers outright, so a shell implementation would hand-assemble
+encrypt-then-MAC and key agreement across openssl version differences, which is
+where crypto bugs live and where they are silent. `heliograph-seal` does the
+sealing and no networking at all. Every other transport stays pure bash.
+
+Run your own, or use the hosted one:
+
+```bash
+docker run -p 8080:8080 \
+  -e HELIOGRAPH_RELAY_ESTATES="payments:$CTL:$STN" \
+  ghcr.io/dbhq-uk/heliograph-relay:latest
+```
 
 ## What a transport must implement
 

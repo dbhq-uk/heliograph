@@ -240,3 +240,14 @@ func Summary(md string) string {
 	}
 	return ""
 }
+
+// Mark is the logo, inlined.
+//
+// Inline rather than an <img> because it is in the sticky header on every page
+// and inherits currentColor, so it cannot fall out of step with the palette and
+// costs no request.
+const Mark = `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">` +
+	`<path d="M51.7 24.8 A21 21 0 1 1 39.2 12.3" fill="none" stroke="currentColor" ` +
+	`stroke-width="5" stroke-linecap="round" opacity=".72"/>` +
+	`<path d="M35.4 30.8 L67.7 -3.2 L77.3 6.0 L36.6 33.2 Z" fill="currentColor"/>` +
+	`<circle cx="32" cy="32" r="8.2" fill="currentColor"/></svg>`

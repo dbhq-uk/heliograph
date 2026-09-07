@@ -22,7 +22,7 @@ If you can SSH in yourself, do that instead. This is for when you cannot.
 | | |
 |---|---|
 | **control** | your machine: the `heliograph` CLI, and you |
-| **transport** | the channel: git, file share, bundle, and more coming |
+| **transport** | the channel: git, relay, file share, bundle |
 | **station** | the far side: the box, and the loop running on it |
 
 ## Two properties that make a log-only loop workable

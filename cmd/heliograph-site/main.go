@@ -105,10 +105,53 @@ func build(src, out string) error {
 	if err := os.WriteFile(filepath.Join(out, "llms-full.txt"), []byte(llmsFull(pages)), 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(out, "style.css"), []byte(css), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(out, "style.css"), []byte(site.CSS), 0o644); err != nil {
 		return err
 	}
+	// Fonts and the logo. Copied by the build rather than by a step in the
+	// deploy workflow: a site that renders locally and ships without its
+	// typeface is a failure nobody sees until it is live.
+	if err := copyTree(filepath.Join(filepath.Dir(src), "assets"), filepath.Join(out, "assets")); err != nil {
+		return fmt.Errorf("copying assets: %w", err)
+	}
 	fmt.Printf("built %d pages into %s\n", len(pages), out)
+	return nil
+}
+
+// copyTree copies a directory, and refuses an empty one.
+//
+// An empty assets directory means the fonts and the mark are missing, and the
+// site would still build, deploy, and serve in a fallback typeface. Better to
+// fail here than to find out from the live page.
+func copyTree(from, to string) error {
+	ents, err := os.ReadDir(from)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(to, 0o755); err != nil {
+		return err
+	}
+	n := 0
+	for _, e := range ents {
+		src, dst := filepath.Join(from, e.Name()), filepath.Join(to, e.Name())
+		if e.IsDir() {
+			if err := copyTree(src, dst); err != nil {
+				return err
+			}
+			continue
+		}
+		b, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(dst, b, 0o644); err != nil {
+			return err
+		}
+		n++
+	}
+	if n == 0 && len(ents) == 0 {
+		return fmt.Errorf("%s is empty", from)
+	}
 	return nil
 }
 
@@ -141,34 +184,83 @@ func page(p site.Page, all []site.Page) string {
 		if o.Slug == p.Slug {
 			cls = ` class="here"`
 		}
-		fmt.Fprintf(&nav, `<a href="%s"%s>%s</a>`, href, cls, o.Title)
+		label := o.Title
+		if o.Slug == "index" {
+			label = "Overview"
+		}
+		fmt.Fprintf(&nav, `<a href="%s"%s>%s</a>`, href, cls, escAttr(label))
 	}
 	canonical := baseURL + "/" + p.Slug
 	if p.Slug == "index" {
 		canonical = baseURL + "/"
 	}
+
+	// The index carries the hero and the log strip. Every other page is a
+	// reading surface and gets neither: a docs page competing with its own
+	// header is a docs page nobody finishes.
+	hero, wide := "", ""
+	if p.Slug == "index" {
+		hero, wide = heroHTML, " wide"
+	}
+
 	return fmt.Sprintf(`<!doctype html>
 <html lang="en-GB">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%s - heliograph</title>
 <meta name="description" content="%s">
+<meta name="theme-color" content="#08090B">
 <link rel="canonical" href="%s">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <!-- The markdown mirror, announced so an agent does not have to guess. -->
 <link rel="alternate" type="text/markdown" href="/%s.md">
+<link rel="preload" href="/assets/fonts/InstrumentSerif-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/InstrumentSans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
-<header><a class="brand" href="/">heliograph</a><nav>%s</nav></header>
-<main>
+<header>
+  <a class="brand" href="/">%s heliograph</a>
+  <nav>%s</nav>
+</header>
+%s
+<main class="doc%s">
 %s
 </main>
-<footer>
-<p>A free, open-source tool by <a href="https://dbhq.uk">DBHQ</a>.
-<a href="https://github.com/dbhq-uk/heliograph">Source</a>.
-This page as <a href="/%s.md">markdown</a>.</p>
-</footer>
+<footer><div class="inner">
+<p>A free, open-source tool by <a href="https://dbhq.uk">DBHQ</a>.</p>
+<p><a href="https://github.com/dbhq-uk/heliograph">Source</a> &middot; <a href="/%s.md">This page as markdown</a></p>
+</div></footer>
+<script>%s</script>
 `, escAttr(p.Title), escAttr(site.Summary(p.Body)), canonical, p.Slug,
-		nav.String(), site.RenderBody(p.Body), p.Slug)
+		site.Mark, nav.String(), hero, wide, site.RenderBody(p.Body), p.Slug, site.HeroJS)
 }
+
+// heroHTML is the index's opening: the signal crossing the valley, then a real
+// captured log with a real gap in its timestamp column.
+//
+// The log is not decoration. It is the single most distinctive fact about the
+// product - a hang shows up as a gap, and nothing else in the category shows
+// you that - so it is shown rather than described, above the fold.
+const heroHTML = `<section class="hero">
+  <canvas id="signal" aria-hidden="true"></canvas>
+  <div class="hero-inner">
+    <h1>Run it on a machine you <em>cannot log into</em>.</h1>
+    <p class="lede">You push a step. It runs on the far side. The whole run comes
+    back as a log with every line timestamped in UTC, whether it passed or failed.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="/quickstart">Quick start</a>
+      <a class="btn btn-ghost" href="https://github.com/dbhq-uk/heliograph">Source</a>
+    </div>
+  </div>
+</section>
+<section class="strip"><div class="strip-inner">
+  <h2>A hang is a gap, and the gap is the finding</h2>
+  <pre class="log"><code><span class="t">09:14:00</span> | ---------- terraform plan ----------
+<span class="t">09:14:02</span> | Refreshing state...
+<span class="gap">           3m12s   nothing was produced here. This is the answer.</span>
+<span class="t">09:17:14</span> | Plan: 3 to add, 0 to change
+<span class="t">09:17:15</span> | done</code></pre>
+</div></section>
+`
 
 func escAttr(s string) string {
 	r := strings.NewReplacer(`&`, "&amp;", `"`, "&quot;", `<`, "&lt;", `>`, "&gt;")
@@ -204,33 +296,3 @@ func llmsFull(pages []site.Page) string {
 	}
 	return b.String()
 }
-
-const css = `:root{--ink:#1a1a1a;--dim:#5a5a5a;--line:#e2e2e2;--bg:#fff;--code:#f6f6f4;--link:#0b5cad}
-@media(prefers-color-scheme:dark){:root{--ink:#e8e8e8;--dim:#a0a0a0;--line:#333;--bg:#141414;--code:#1e1e1e;--link:#79b8ff}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
-  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-header{display:flex;gap:1.5rem;align-items:baseline;flex-wrap:wrap;
-  padding:1rem 1.5rem;border-bottom:1px solid var(--line)}
-.brand{font-weight:700;text-decoration:none;color:var(--ink)}
-nav{display:flex;gap:1.1rem;flex-wrap:wrap}
-nav a{color:var(--dim);text-decoration:none;font-size:.94rem}
-nav a:hover,nav a.here{color:var(--ink)}
-nav a.here{font-weight:600}
-main{max-width:46rem;margin:0 auto;padding:2rem 1.5rem 4rem}
-h1{font-size:2rem;line-height:1.2;margin:.4em 0 .5em}
-h2{font-size:1.35rem;margin:2.2em 0 .6em;padding-top:.4em;border-top:1px solid var(--line)}
-h3{font-size:1.1rem;margin:1.8em 0 .4em}
-h4{font-size:1rem;margin:1.4em 0 .3em;color:var(--dim)}
-p,li{margin:.7em 0}
-a{color:var(--link)}
-code{background:var(--code);padding:.12em .35em;border-radius:3px;font-size:.88em}
-pre{background:var(--code);padding:.9rem 1.1rem;border-radius:5px;overflow-x:auto;
-  border:1px solid var(--line)}
-pre code{background:none;padding:0;font-size:.86rem;line-height:1.55}
-table{border-collapse:collapse;width:100%;margin:1.2em 0;font-size:.94rem}
-th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-weight:600}
-footer{border-top:1px solid var(--line);padding:1.5rem;color:var(--dim);font-size:.88rem}
-footer p{max-width:46rem;margin:0 auto}
-`

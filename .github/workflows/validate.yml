@@ -167,6 +167,58 @@ jobs:
           fi
           echo "No em dashes."
 
+      - name: nothing secret is in this public repository
+        # The whole argument for committing account ids, zone ids and the
+        # deployment itself rests on nothing secret being here. An argument
+        # nobody checks is a hope, so it is checked.
+        run: |
+          set -uo pipefail
+          bad=0
+          # Credential shapes, by the prefixes vendors publish so that scanners
+          # can spot them. Not a guarantee, a floor.
+          # Matches outside the baseline. A baseline rather than a mute: these
+          # fixtures exist to prove that redaction and the plant instructions
+          # work, so they must stay readable, while anything NEW fails.
+          hits="$(grep -rInE "(ghp_|github_pat_|glpat-|xox[abposr]-|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{20,})" \
+                    --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist \
+                    --exclude=.secret-scan-allow . || true)"
+          unexpected=0
+          while IFS= read -r hit; do
+            [ -n "$hit" ] || continue
+            file="${hit%%:*}"
+            grep -q "^${file#./}:" .secret-scan-allow || { echo "UNEXPECTED: $hit"; unexpected=1; }
+          done <<< "$hits"
+          if [ "$unexpected" = "1" ]; then
+            echo "::error::a credential shape appears in a file that is not in .secret-scan-allow"
+            bad=1
+          fi
+          # Cloudflare API tokens are 40 chars of [A-Za-z0-9_-] with no prefix,
+          # so they cannot be matched by shape. What CAN be caught is the
+          # variable being assigned a literal.
+          if grep -rInE "(CLOUDFLARE_API_TOKEN|TF_VAR_cloudflare_api_token|api_token)[[:space:]]*=[[:space:]]*[\"'"'"'][A-Za-z0-9_-]{20,}" \
+               --exclude-dir=.git --exclude-dir=node_modules . ; then
+            echo "::error::an API token appears to be assigned a literal value"
+            bad=1
+          fi
+          # State, which is the real risk and the one people forget.
+          if git ls-files | grep -E "\.tfstate|\.tfvars$|\.terraform/" ; then
+            echo "::error::terraform state or variables are tracked. State holds secret values verbatim."
+            bad=1
+          fi
+          # A private key of any kind.
+          if grep -rIn "BEGIN [A-Z ]*PRIVATE KEY" --exclude-dir=.git . ; then
+            echo "::error::a private key is present"
+            bad=1
+          fi
+          [ "$bad" = "0" ] || exit 1
+          echo "no credential shapes, no state, no private keys"
+
+      - name: terraform is valid and formatted
+        run: |
+          terraform -chdir=infra fmt -check -diff
+          terraform -chdir=infra init -backend=false >/dev/null
+          terraform -chdir=infra validate
+
       - name: the specs are still there
         # They are the only thing in this repository that is finished, and a
         # PR that removes one should have to say so out loud.
