@@ -22,30 +22,30 @@ const CSS = `
 
 /* --------------------------------------------------------------- tokens */
 :root{
-  /* A signal lamp at dusk. Blue-greens because that is what a cold light
-     reads as against a warm horizon, and because saturated teal BURNS on a
-     dark surface - every accent here is drawn from the 300-400 lightness band
-     with saturation pulled back, not from a full-strength swatch.
+  /* Denim. A worn, slightly desaturated blue rather than a screen blue, on a
+     blue-black valley - and every accent drawn from the 300-400 lightness band
+     with saturation pulled back, because a full-strength blue BURNS on a dark
+     surface and loses the scarcity that makes an accent work at all.
 
      Every pair below is measured against --night, not eyeballed:
-       ink    16.6:1   ink-2  9.3:1   ink-3  5.6:1
-       teal   11.9:1   signal 15.6:1  flash 18.4:1
-       dark text on the teal button: 10.3:1
+       ink    16.6:1   ink-2  9.2:1   ink-3  5.7:1
+       denim   7.8:1   signal 11.7:1  flash 17.1:1
+       dark text on the denim button: 7.4:1
      The commonest failure in dev tooling is a slate-500 secondary at 4.0:1.
-     --ink-3 is the floor here and it is 5.6:1. */
-  --night:#070C0F;          /* the valley */
-  --dusk:#0C1418;           /* raised surfaces */
-  --ridge:#172227;          /* borders, edges */
-  --slate:#22333B;
+     --ink-3 is the floor here and it is 5.7:1. */
+  --night:#080C12;          /* the valley */
+  --dusk:#0D141C;           /* raised surfaces */
+  --ridge:#18222E;          /* borders, edges */
+  --slate:#243244;
 
-  --brass:#1FA898;          /* the instrument, in shade */
-  --gold:#3EE0CB;           /* the signal */
-  --flash:#E4FDF8;          /* the light itself. The only near-white on the page. */
-  --signal:#8FF7E8;
+  --brass:#4E7FB3;          /* the instrument, in shade */
+  --gold:#7BA7D4;           /* the signal */
+  --flash:#E6F1FB;          /* the light itself. The only near-white on the page. */
+  --signal:#A8CCEC;
 
-  --ink:#E7EEF2;
-  --ink-2:#9FB6BF;
-  --ink-3:#778C96;          /* 5.2:1, captions only */
+  --ink:#E7EDF4;
+  --ink-2:#A3B4C6;
+  --ink-3:#7A8CA0;          /* 5.2:1, captions only */
 
   --measure:68ch;
   --ease:cubic-bezier(.16,1,.3,1);
@@ -127,10 +127,10 @@ nav a.here{color:var(--flash)}
   font-size:.97rem;font-weight:500;letter-spacing:.005em;
   transition:transform .2s var(--ease),box-shadow .2s var(--ease),background .2s var(--ease);
 }
-.btn-primary{background:var(--gold);color:#04211D;
-  box-shadow:0 1px 2px rgba(0,0,0,.5),0 10px 26px -12px rgba(62,224,203,.55)}
-.btn-primary:hover{background:var(--signal);color:#04211D;transform:translateY(-1px);
-  box-shadow:0 2px 4px rgba(0,0,0,.5),0 16px 34px -12px rgba(62,224,203,.75)}
+.btn-primary{background:var(--gold);color:#08131F;
+  box-shadow:0 1px 2px rgba(0,0,0,.5),0 10px 26px -12px rgba(123,167,212,.5)}
+.btn-primary:hover{background:var(--signal);color:#08131F;transform:translateY(-1px);
+  box-shadow:0 2px 4px rgba(0,0,0,.5),0 16px 34px -12px rgba(123,167,212,.7)}
 .btn-ghost{color:var(--ink);border:1px solid var(--slate);background:color-mix(in srgb,var(--dusk) 70%,transparent)}
 .btn-ghost:hover{color:var(--flash);border-color:var(--brass);transform:translateY(-1px)}
 
@@ -230,9 +230,9 @@ const HeroJS = `
 
   function build(){
     ridges=[];
-    var cfg=[[0.62,0.085,'#0A1216','rgba(31,168,152,.22)'],
-             [0.75,0.105,'#080F13','rgba(31,168,152,.32)'],
-             [0.90,0.075,'#060B0E','rgba(31,168,152,.48)']];
+    var cfg=[[0.62,0.085,'#0A1216','rgba(78,127,179,.24)'],
+             [0.75,0.105,'#080F13','rgba(78,127,179,.34)'],
+             [0.90,0.075,'#060B0E','rgba(78,127,179,.50)']];
     for(var k=0;k<cfg.length;k++){
       var pts=[], n=64, base=H*cfg[k][0], amp=H*cfg[k][1], seed=k*29.3+3;
       for(var i=0;i<=n;i++){
@@ -271,21 +271,21 @@ const HeroJS = `
     ctx.clearRect(0,0,W,H);
 
     var sky=ctx.createLinearGradient(0,0,0,H);
-    sky.addColorStop(0,'#060A0D'); sky.addColorStop(0.5,'#071216');
-    sky.addColorStop(0.8,'#0A1D21'); sky.addColorStop(1,'#060F12');
+    sky.addColorStop(0,'#070A10'); sky.addColorStop(0.5,'#08111C');
+    sky.addColorStop(0.8,'#0D1B2C'); sky.addColorStop(1,'#070C14');
     ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
 
     var sx=W*0.80, sy=H*0.70, sr=Math.max(W,H)*0.50;
     var glow=ctx.createRadialGradient(sx,sy,0,sx,sy,sr);
-    glow.addColorStop(0,'rgba(62,224,203,.16)');
-    glow.addColorStop(0.35,'rgba(62,224,203,.055)');
-    glow.addColorStop(1,'rgba(62,224,203,0)');
+    glow.addColorStop(0,'rgba(123,167,212,.17)');
+    glow.addColorStop(0.35,'rgba(123,167,212,.06)');
+    glow.addColorStop(1,'rgba(123,167,212,0)');
     ctx.fillStyle=glow; ctx.fillRect(0,0,W,H);
 
     for(var s2=0;s2<stars.length;s2++){
       var st=stars[s2];
       ctx.globalAlpha=st[2]*0.42*(0.7+0.3*Math.sin(el*0.7+st[0]));
-      ctx.fillStyle='#E4FDF8'; ctx.fillRect(st[0],st[1],1.2,1.2);
+      ctx.fillStyle='#E6F1FB'; ctx.fillRect(st[0],st[1],1.2,1.2);
     }
     ctx.globalAlpha=1;
 
@@ -305,9 +305,9 @@ const HeroJS = `
           var Hz=haze[hz];
           if(!reduced){ Hz.x+=Hz.v*W*0.016; if(Hz.x-Hz.w>W) Hz.x=-Hz.w; }
           var hg=ctx.createLinearGradient(Hz.x-Hz.w,0,Hz.x+Hz.w,0);
-          hg.addColorStop(0,'rgba(143,247,232,0)');
-          hg.addColorStop(0.5,'rgba(143,247,232,.045)');
-          hg.addColorStop(1,'rgba(143,247,232,0)');
+          hg.addColorStop(0,'rgba(168,204,236,0)');
+          hg.addColorStop(0.5,'rgba(168,204,236,.045)');
+          hg.addColorStop(1,'rgba(168,204,236,0)');
           ctx.fillStyle=hg; ctx.fillRect(Hz.x-Hz.w,Hz.y,Hz.w*2,Hz.h);
         }
       }
@@ -347,8 +347,8 @@ const HeroJS = `
       return landed;
     }
 
-    var arrived=train(ax,ay,bx,by,CODE,outP,1.0,'228,253,248',true);
-    var returned=train(bx,by,ax,ay,REPLY,backP,1.0,'62,224,203',false);
+    var arrived=train(ax,ay,bx,by,CODE,outP,1.0,'230,241,251',true);
+    var returned=train(bx,by,ax,ay,REPLY,backP,1.0,'123,167,212',false);
     ctx.restore();
 
     // A landing flash: the far side has received something. This is the moment
@@ -358,7 +358,7 @@ const HeroJS = `
       if(p<=0||p>=1) return;
       var e=1-Math.pow(1-p,3), r=6+e*34;
       ctx.beginPath(); ctx.arc(x,y,r,0,7);
-      ctx.strokeStyle='rgba(143,247,232,'+(0.5*(1-p))+')';
+      ctx.strokeStyle='rgba(168,204,236,'+(0.5*(1-p))+')';
       ctx.lineWidth=1.6; ctx.stroke();
     }
     land(bx,by,(u-0.42)/0.14);
@@ -367,16 +367,16 @@ const HeroJS = `
     function station(x,y,lit,label){
       var r=lit?30:18;
       var g=ctx.createRadialGradient(x,y,0,x,y,r);
-      g.addColorStop(0,lit?'rgba(223,251,246,.5)':'rgba(62,224,203,.24)');
-      g.addColorStop(1,'rgba(62,224,203,0)');
+      g.addColorStop(0,lit?'rgba(223,251,246,.5)':'rgba(123,167,212,.26)');
+      g.addColorStop(1,'rgba(123,167,212,0)');
       ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill();
       ctx.beginPath(); ctx.arc(x,y,lit?5:3.8,0,7);
-      ctx.fillStyle=lit?'#E4FDF8':'#3EE0CB'; ctx.fill();
+      ctx.fillStyle=lit?'#E6F1FB':'#7BA7D4'; ctx.fill();
       ctx.beginPath(); ctx.moveTo(x,y+4); ctx.lineTo(x,y+14);
-      ctx.strokeStyle='rgba(31,168,152,.68)'; ctx.lineWidth=1.4; ctx.stroke();
+      ctx.strokeStyle='rgba(78,127,179,.7)'; ctx.lineWidth=1.4; ctx.stroke();
       if(label){
         ctx.font='500 10px "JetBrains Mono",monospace';
-        ctx.fillStyle='rgba(159,182,191,.62)'; ctx.textAlign='center';
+        ctx.fillStyle='rgba(163,180,198,.62)'; ctx.textAlign='center';
         ctx.fillText(label,x,y+29);
       }
     }
