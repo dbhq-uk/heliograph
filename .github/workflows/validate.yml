@@ -117,6 +117,40 @@ jobs:
             exit 1
           fi
 
+      - name: the docs agree with the station
+        # The end-to-end test proves the two halves INTEROPERATE. This proves
+        # they DESCRIBE each other correctly, which is a different failure.
+        #
+        # The MCP tool descriptions tell a model that an action needs
+        # CONFIRM=yes and --allow-actions. A model follows that literally. If
+        # the station ever spelled a gate differently, every such request would
+        # be refused, the model would read the refusal as a fault, and it would
+        # retry forever against a machine nobody here can reach - with both
+        # repositories' own test suites green, because each checks itself
+        # against its own idea of the contract.
+        working-directory: heliograph
+        env:
+          HELIOGRAPH_SKILL_DIR: ${{ github.workspace }}/heliograph-skill
+        run: |
+          set -euo pipefail
+          out="$(go test ./cmd/heliograph/ -v -count=1 \
+                   -run 'GateSpellingsMatchTheStation|WirePathsMatchTheStation|StatusStatesAreAllKnownHere|TheIDIsTheTrigger')"
+          echo "$out"
+          if echo "$out" | grep -q -- '--- SKIP'; then
+            echo "::error::a cross-repository coherence check skipped instead of running."
+            exit 1
+          fi
+          # Four checks, named individually rather than counted loosely: a
+          # renamed test that stops matching the -run pattern would otherwise
+          # pass this step by not existing.
+          for want in GateSpellingsMatchTheStation WirePathsMatchTheStation \
+                      StatusStatesAreAllKnownHere TheIDIsTheTrigger; do
+            echo "$out" | grep -q -- "--- PASS: Test$want" || {
+              echo "::error::Test$want did not run. If it was renamed, rename it here too."
+              exit 1
+            }
+          done
+
   site:
     name: The site builds
     runs-on: ubuntu-latest
