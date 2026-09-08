@@ -22,8 +22,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOLKIT="$(cd "$HERE/../station/bash" && pwd)"
 
 # Required of every transport, no exceptions.
+#
+# tp_put_log is required rather than optional, and that is the whole point of
+# it. Delivering the finished log was git's alone - run.sh called cap_push,
+# which is git unconditionally - so relay and blob captured perfect logs and
+# shipped nothing at all. A transport that cannot deliver a completed log is
+# not a transport; there is no version of this loop worth running without it.
 REQUIRED="tp_capabilities tp_init tp_scope tp_revision tp_describe tp_check
-          tp_fetch_request tp_put_status tp_put_progress"
+          tp_fetch_request tp_put_status tp_put_progress tp_put_log"
 
 # Optional, but a transport that ADVERTISES one must define it. Advertising a
 # verb you have not written is worse than not having it: the loop calls it.

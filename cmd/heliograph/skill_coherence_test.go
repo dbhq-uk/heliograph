@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -96,15 +97,74 @@ func TestWirePathsMatchTheStation(t *testing.T) {
 // The station publishes these and this side reports them. A state this side
 // does not know about is printed as a bare string a reader has to interpret,
 // which is the moment somebody guesses.
-func TestStatusStatesAreAllKnownHere(t *testing.T) {
-	dir := stationDir(t)
-	station := read(t, filepath.Join(dir, "station", "bash", "station.sh"))
+//
+// knownStates is what wire.Status understands and what heliograph_status names
+// to a model.
+var knownStates = []string{
+	"starting", "running", "idle", "cancelled", "refused", "stopped", "undelivered",
+}
 
-	// wire.Status documents these, and heliograph_status names them to a model.
-	known := []string{"running", "idle", "cancelled", "refused", "stopped"}
-	for _, state := range known {
-		if !strings.Contains(station, state) {
-			t.Errorf("this side tells a model the state can be %q, but the station never publishes it", state)
+// publishes finds the states a station script actually publishes.
+var publishes = regexp.MustCompile(`publish_status\s+"([a-z]+)"`)
+
+// stationScripts are the loops that ship. Both are read, because both are
+// shipped and an operator runs whichever their host was built around: the
+// Azure Function template still drives pigeonhole.sh.
+var stationScripts = []string{"station.sh", "pigeonhole.sh"}
+
+// published collects every state the shipped stations actually publish.
+func published(t *testing.T) map[string][]string {
+	t.Helper()
+	dir := stationDir(t)
+	out := map[string][]string{}
+	for _, name := range stationScripts {
+		body := read(t, filepath.Join(dir, "station", "bash", name))
+		for _, m := range publishes.FindAllStringSubmatch(body, -1) {
+			out[m[1]] = append(out[m[1]], name)
+		}
+	}
+	if len(out) == 0 {
+		t.Fatal("no publish_status call was found in any station, so these checks assert nothing")
+	}
+	return out
+}
+
+// The two directions are separate tests because they fail for opposite reasons
+// and want opposite fixes. This one catches a state named here that no station
+// produces - documentation of something that does not happen.
+func TestStatusStatesAreAllKnownHere(t *testing.T) {
+	live := published(t)
+	for _, state := range knownStates {
+		if len(live[state]) == 0 {
+			t.Errorf("this side tells a model the state can be %q, but no station publishes it", state)
+		}
+	}
+}
+
+// And the direction that was missing, which is the one that had already gone
+// wrong twice.
+//
+// The check above only ever proved that every state this side knows about
+// appears in a station script. It could not catch a station publishing a state
+// this side has never heard of, and both of these were live when it was
+// written: pigeonhole.sh has published `undelivered` and `starting` since it
+// was written, and wire.Status listed neither.
+//
+// The cost is not cosmetic. wire.Status.Done treats an unrecognised state as
+// NOT terminal, deliberately, so that a newer station is never abandoned
+// mid-run. The price of that safe default is this test: meet `undelivered` and
+// the control side waits for a log which has already been declared
+// undeliverable, quietly, which is the worst way to wait.
+func TestEveryStatePublishedIsKnownHere(t *testing.T) {
+	known := map[string]bool{}
+	for _, s := range knownStates {
+		known[s] = true
+	}
+	for state, scripts := range published(t) {
+		if !known[state] {
+			t.Errorf("%s publishes state %q, which wire.Status does not know. "+
+				"Done() treats an unknown state as still-running, so a reader would wait on it",
+				strings.Join(scripts, " and "), state)
 		}
 	}
 }

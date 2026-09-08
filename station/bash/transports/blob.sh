@@ -39,8 +39,10 @@ tp_init() {
     echo "station: the blob transport needs curl, which is not on PATH." >&2
     return 1
   }
-  : "${PIGEONHOLE_ACCOUNT:?the blob transport needs PIGEONHOLE_ACCOUNT}"
-  : "${PIGEONHOLE_LANE:?the blob transport needs PIGEONHOLE_LANE, which is what a run is bound to}"
+  # cap_need rather than `${VAR:?}`, which exits the SHELL rather than failing
+  # this function. See cap_need in caplib.sh for what that cost.
+  cap_need PIGEONHOLE_ACCOUNT "the storage account the lane lives in" || return 1
+  cap_need PIGEONHOLE_LANE    "the lane, which is what a run is bound to" || return 1
 
   BLOB_BASE="https://${PIGEONHOLE_ACCOUNT}.blob.core.windows.net"
   BLOB_PREFIX="${PIGEONHOLE_CONTAINER:-heliograph}"
@@ -180,4 +182,20 @@ tp_put_progress() {
   # The partial log, under its own name, so a reader can pull it while the step
   # is still running.
   _blob_put "$(_lane "log")" "$logfile"
+}
+
+# Deliver the finished log, under its own name.
+#
+# UNDER ITS OWN NAME, not over `log`, and the difference matters. The progress
+# snapshot above overwrites a single fixed blob because there is only ever one
+# run in flight and a reader wants the latest. A finished log is evidence, and
+# the next run's progress must not scribble over the last run's conclusion:
+# pigeonhole.sh named finished logs `logs/<step>-<UTC>.txt` for that reason and
+# this keeps the property.
+#
+# The message is ignored. It is a git commit subject; there is no history here.
+tp_put_log() {
+  local logfile="$1"
+  [ -f "$logfile" ] || return 1
+  _blob_put "$(_lane "logs/$(basename "$logfile")")" "$logfile"
 }
