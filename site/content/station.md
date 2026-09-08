@@ -90,6 +90,18 @@ Details of each: [the runner](/runner), [writing a step](/steps).
 | `cancelled` | signalled mid-run. The partial log is kept |
 | `stopped` | the loop ended, by `stop: yes` or by Ctrl-C |
 
+Every status also carries `host:` and `payload:`. The payload is a digest of
+`station.sh`, `run.sh` and `caplib.sh` - what a step's behaviour actually rests
+on. `HEAD` cannot answer "which payload is running", because every status
+commit and every log advances it, so two stations on identical payloads report
+different revisions within a minute. Branches carry independent copies and
+self-update pulls only its own, so drift between stations is real, and worth
+seeing rather than discovering when a step behaves differently on one machine.
+
+The steps themselves are deliberately **not** in the digest: they are supposed
+to differ per branch, and including them would make it change for the ordinary
+reason and stop meaning anything.
+
 `undelivered` matters more than it looks. Without it, "the log exists and
 cannot be shipped" and "the step is still running" are the same silence from
 your side, and only one of them is worth waiting on.

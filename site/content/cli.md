@@ -41,6 +41,47 @@ path. It **attaches before saving**: an estate that names a directory which is
 not a usable transport is worse than no estate at all, because it fails later,
 from a command that had every reason to expect it to work.
 
+## station add
+
+A second station on the same repository, on its own branch.
+
+```bash
+heliograph station add db-a
+heliograph send net-probe -e db-a     # reaches that machine and no other
+```
+
+It does three things that have to happen together, because doing two is worse
+than doing none:
+
+1. creates `station/db-a` and pushes it **with an upstream** - without one the
+   station's own first push fails on the far side, where nobody can see it
+2. checks it out into a git worktree beside the existing clone, so the control
+   side has one checkout per station and never switches between them
+3. records the estate, so `-e db-a` routes to that machine
+
+Then it prints what to send the operator, which is the point of the other three.
+
+`--dir` puts the checkout somewhere other than beside the existing one.
+
+**It refuses a branch origin already has**, because that is somebody else's
+station and creating it from this HEAD would be about to rewrite their history.
+It does not move your checkout either: it uses `git branch`, not `checkout -b`.
+
+### An estate it creates is pinned to its branch
+
+`station add` records the branch as the estate's **scope**, and every later
+command verifies the checkout is still on it. Move that checkout and the CLI
+refuses, naming both branches, rather than sending your next request to a
+different machine.
+
+An estate from `init` is **not** pinned - it records the branch it found and
+follows the checkout - because working on `task/<slug>` and then sending is the
+ordinary workflow.
+
+Several stations in one repository only makes sense where they share a blast
+radius: a repo credential usually spans every branch. See
+[transports](/transports#one-repository-several-stations).
+
 ## plant
 
 Prints the message to send the operator. Generated rather than typed, because
@@ -130,6 +171,8 @@ rather than "no gaps found". That log is a buffered capture, it reads perfectly,
 and calling it clean would be the exact opposite of true.
 
 ## doctor
+
+`heliograph check` is the same command under another name.
 
 Answers "will this work from here" and changes nothing. Every line that reports
 a problem also says what to do about it: a preflight line that names a fault

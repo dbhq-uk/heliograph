@@ -246,3 +246,99 @@ func TestEveryGitCredentialMechanismIsDocumented(t *testing.T) {
 		}
 	}
 }
+
+// topLevel finds the commands main() actually dispatches on.
+//
+// Read from the switch rather than from `usage`, because usage is itself a
+// piece of documentation and checking documentation against documentation
+// proves only that two copies agree.
+var topLevel = regexp.MustCompile(`(?m)^\tcase "([a-z]+)"(?:, "([a-z-]+)")?:`)
+
+// Every command the binary dispatches must be on the CLI reference page.
+//
+// `station` was not. It shipped with its own subcommand, a worktree, an estate
+// and printed operator instructions, and the page listing every command did not
+// name it - so the only way to discover it was to read main.go or run the
+// binary with no arguments.
+func TestEveryCommandIsOnTheCLIPage(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Skipf("main.go is not here: %v", err)
+	}
+	// Only the dispatch switch in main(), which ends at its default arm.
+	body := string(src)
+	start := strings.Index(body, "switch os.Args[1] {")
+	if start < 0 {
+		t.Fatal("main() has no dispatch switch, so this check found nothing to assert")
+	}
+	end := strings.Index(body[start:], "\tdefault:")
+	if end < 0 {
+		t.Fatal("the dispatch switch has no default arm")
+	}
+	body = body[start : start+end]
+
+	page, err := os.ReadFile("../../site/content/cli.md")
+	if err != nil {
+		t.Skipf("the CLI page is not here: %v", err)
+	}
+	doc := string(page)
+
+	// Not commands: version reporting and the help flags, which no reference
+	// page needs to teach.
+	exempt := map[string]bool{"version": true, "help": true}
+
+	found := 0
+	for _, m := range topLevel.FindAllStringSubmatch(body, -1) {
+		if exempt[m[1]] {
+			continue
+		}
+		found++
+		// An arm may carry an alias - `case "check", "doctor":`. Documenting
+		// one canonical spelling is legitimate, so either satisfies this;
+		// documenting NEITHER does not.
+		names := []string{m[1]}
+		if m[2] != "" {
+			names = append(names, m[2])
+		}
+		ok := false
+		for _, n := range names {
+			if strings.Contains(doc, "heliograph "+n) {
+				ok = true
+			}
+		}
+		if !ok {
+			t.Errorf("`heliograph %s` is a command and the CLI page names none of %v, "+
+				"so the only way to find it is to read main.go", m[1], names)
+		}
+	}
+	if found == 0 {
+		t.Fatal("no commands were found in the dispatch switch, so this check asserted nothing")
+	}
+}
+
+// Every field the station publishes in its status must be documented, because
+// the CLI prints them and a reader meeting one it cannot interpret is the
+// moment somebody guesses.
+func TestEveryStatusFieldIsDocumented(t *testing.T) {
+	site := siteText(t)
+	dir := stationDir(t)
+	station := read(t, filepath.Join(dir, "station", "bash", "station.sh"))
+
+	// NOT anchored to the start of the line. Anchored, this matched only the
+	// fields inside the plain `{ echo ...; }` blocks and silently missed every
+	// conditional one - `[ -n "$PAYLOAD" ] && echo "payload:  ..."` among them,
+	// which is the field this check was written for. It passed vacuously.
+	fields := regexp.MustCompile(`echo "([a-z]+): *\$?`).FindAllStringSubmatch(station, -1)
+	seen := map[string]bool{}
+	for _, f := range fields {
+		seen[f[1]] = true
+	}
+	if len(seen) < 5 {
+		t.Fatalf("found only %d status fields in station.sh, so this asserts almost nothing", len(seen))
+	}
+	for f := range seen {
+		if !strings.Contains(site, f) {
+			t.Errorf("the station publishes a %q field and no site page mentions it", f)
+		}
+	}
+}
