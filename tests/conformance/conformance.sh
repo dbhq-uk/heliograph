@@ -310,4 +310,57 @@ else
   t_skip "p8: driver does not support cancel"
 fi
 
+# --- property 9: the FINISHED log reaches the far side -----------------------
+# The property whose absence let a real defect ship, which is the best argument
+# for it existing.
+#
+# Properties 1 to 4 all assert things about the log FILE. Every one of them
+# passed on every transport, because the file is written correctly to local disk
+# every single time. None of them asks the only question that matters to the
+# person the log is for: did it arrive.
+#
+# It had not, on two transports out of three. `run.sh` finished with `cap_push`,
+# which is git unconditionally, so a station on the relay or the blob transport
+# captured a perfect log and delivered nothing - no footer, no exit code, no
+# RESULT line, and with PROGRESS_EVERY=0 not a single byte. AGENTS.md constraint
+# 2 says a failed run still ships and a failed push never loses a log; the first
+# half was quietly untrue wherever git was not the channel.
+#
+# So this asserts DELIVERY, from the receiving end, and it deliberately does not
+# care how: the driver hands back whatever the far side would have. A driver
+# that cannot observe the far side skips, and says so, rather than passing.
+#
+# The footer is what is looked for, not merely the log's existence. A partial
+# log delivered by a progress snapshot would satisfy "something arrived" while
+# still leaving the reader unable to tell a finished run from a hung one, which
+# is the same failure wearing a different hat.
+if drv_supports deliver; then
+  P9="$WORK/deliver"
+  if drv_bootstrap "$P9"; then
+    cat > "$P9/steps/ships.sh" <<'EOS'
+#!/usr/bin/env bash
+# heliograph-mode: read-only
+echo the evidence
+exit 7
+EOS
+    chmod +x "$P9/steps/ships.sh"
+
+    drv_deliver "$P9" steps/ships.sh
+    p9_body="$(drv_delivered "$P9")"
+
+    assert_contains "p9: the delivered log carries the output" \
+      "the evidence" "$p9_body"
+    assert_contains "p9: the delivered log carries the footer, so it is COMPLETE" \
+      "finished UTC" "$p9_body"
+    assert_contains "p9: the delivered log carries the real exit code" \
+      "exit code    : 7" "$p9_body"
+    assert_contains "p9: a failed run is delivered too, and says so" \
+      "RESULT       : FAILED" "$p9_body"
+  else
+    t_skip "p9: could not bootstrap a transport repo"
+  fi
+else
+  t_skip "p9: driver cannot observe the far side, so delivery is unchecked here"
+fi
+
 t_summary

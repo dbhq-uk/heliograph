@@ -142,7 +142,12 @@ done
 # Every command that crosses the gap lives behind tp_*, so this loop no longer
 # knows what it is talking to. TRANSPORT selects one; git is the default and
 # the only one this build ships.
-TRANSPORT="${TRANSPORT:-git}"
+# EXPORTED, because run.sh is a separate process and now loads a transport of
+# its own in order to deliver the finished log. Left unexported, every station
+# would hand its runner the git default and a relay station would capture
+# perfect logs and push them nowhere - which is the exact defect tp_put_log
+# exists to fix, reintroduced one variable lower down.
+export TRANSPORT="${TRANSPORT:-git}"
 TP_FILE="$REPO_ROOT/transports/${TRANSPORT}.sh"
 [ -f "$TP_FILE" ] || { echo "station: no transport named '$TRANSPORT' (looked for $TP_FILE)" >&2; exit 2; }
 # shellcheck source=transports/git.sh disable=SC1090
@@ -651,9 +656,25 @@ while :; do
     publish_status "cancelled" "$ID" "$STEP" "$(printf 'started:  %s\ncancelled:%s\nexit:     %s\nlog:      %s\nnote:     partial - the step was signalled, so the log stops where it stopped' \
         "$START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "${LOGFILE:-<none>}")" "$LOGFILE"
   else
+    # Did the log actually get out? run.sh delivers it, in its own process, so
+    # this cannot be inferred from $RC - that belongs to the STEP and may not be
+    # borrowed to report on the transport.
+    #
+    # "The log exists and could not be shipped" and "the step is still running"
+    # are indistinguishable from the far side unless one of them is published,
+    # and only one of them is worth waiting on. pigeonhole.sh published
+    # `undelivered` for this reason; porting the loop onto the transport
+    # interface dropped it along with the delivery it reported.
+    DELIVERED="$(sed -n 's/^delivered:[[:space:]]*//p' "$REPO_ROOT/.station-delivery" 2>/dev/null | head -1)"
     say "step '$STEP' finished exit=$RC${LOGFILE:+  ($LOGFILE)}"
-    publish_status "idle" "$ID" "$STEP" "$(printf 'started:  %s\nfinished: %s\nexit:     %s\nlog:      %s' \
-        "$START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "${LOGFILE:-<none>}")"
+    if [ "$DELIVERED" = "no" ]; then
+      say "the log was captured and could NOT be delivered over '$TRANSPORT'"
+      publish_status "undelivered" "$ID" "$STEP" "$(printf 'started:  %s\nfinished: %s\nexit:     %s\nlog:      %s\nnote:     the run completed and the log is on the station, but the transport would not take it' \
+          "$START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "${LOGFILE:-<none>}")"
+    else
+      publish_status "idle" "$ID" "$STEP" "$(printf 'started:  %s\nfinished: %s\nexit:     %s\nlog:      %s' \
+          "$START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "${LOGFILE:-<none>}")"
+    fi
   fi
 
   [ "$ONCE" = "1" ] && cleanup
