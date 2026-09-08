@@ -82,10 +82,18 @@ push-only and never rebases, so it degrades worst. It spends the strongest
 property the git transport has - that two stations on two branches never
 conflict - to save creating a branch.
 
-**Worktrees as the channel.** A worktree is useful as checkout *storage* on the
-far side: one clone, several stations, less disk and one fetch. It is not the
-channel. The branch is, and conflating the two would make the model depend on
-how somebody arranged their disk.
+**Worktrees as the channel.** A worktree is not the channel; the branch is, and
+conflating the two would make the model depend on how somebody arranged their
+disk.
+
+**Corrected 2026-09-08.** The first draft filed worktrees as far-side storage
+and that had it backwards. **The control side is where they are needed.**
+Talking to three stations means three checkouts, because both sides read the
+branch from the checkout - and switching one checkout between branches is
+exactly the accident hazard 1 describes. A worktree gives one clone, one fetch
+and one credential with a directory per station, and git's refusal to check one
+branch out in two worktrees is a useful refusal rather than a limitation: it is
+two stations on one branch, caught locally.
 
 **A `station:` field in the request.** Routing belongs to the branch. A station
 old enough to ignore the field would run the request anyway, so the field would
@@ -100,7 +108,16 @@ Small, and mostly hardening.
 - **`Estate.Scope` becomes the canonical routing field** for every transport,
   with git's scope being its branch. Records with an empty `Scope` fall back to
   `Branch`, so estate files in the field keep working
-- **`heliograph init <name> --branch station/db-a`** records the binding
+- **`heliograph station add <name>`** creates a station and is the answer to a
+  question the first draft left open. Nothing in `internal/transport` ran
+  `checkout`, `switch` or `branch`, and `bootstrap` runs no git at all - so
+  `init --branch` would have *recorded* a branch somebody else had to create by
+  hand. `station add` does the three things that must happen together, because
+  doing two is worse than doing none: create the branch and push it **with an
+  upstream**, check it out into its own worktree, and record the estate. Then it
+  prints what to send the operator
+- **`heliograph init <name> --branch station/db-a`** records the binding for a
+  branch that already exists
 - **`open()` verifies the checkout is still on the configured branch** and
   fails closed if it is not, naming both. This is the fix for hazard 1
 - **`heliograph estates`** prints the repository and the scope, so which

@@ -49,6 +49,8 @@ const usage = `heliograph - run things on a machine you cannot log into
       objstore: --dir <https endpoint> --bucket <name> --scope <lane> [--prefix p] [--region r]
                 keys come from HELIOGRAPH_S3_ACCESS_KEY and HELIOGRAPH_S3_SECRET_KEY
   heliograph estates                        what is configured here
+  heliograph station add <name>             a second station on this repo, on its own branch
+      [-e <estate>] [--dir <path>]
   heliograph plant                          what to send the operator
   heliograph send <step> [K=V ...]          publish a request, and return
   heliograph status                         what the station is doing now
@@ -79,6 +81,8 @@ func main() {
 		err = cmdInit(os.Args[2:])
 	case "estates":
 		err = cmdEstates()
+	case "station":
+		err = cmdStation(os.Args[2:])
 	case "plant":
 		err = cmdPlant(os.Args[2:])
 	case "send":
@@ -131,6 +135,108 @@ func resolve(name string) (estate.Estate, error) {
 		return estate.Estate{}, fmt.Errorf("several estates configured (%s): name one with --estate",
 			strings.Join(names, ", "))
 	}
+}
+
+// cmdStation manages the stations a git transport repo carries.
+//
+// One repository can already talk to several machines, one per branch: both
+// sides read the branch from whatever is checked out. Nothing designed that and
+// nothing could set it up - this package ran no checkout, switch or branch at
+// all, so a second station meant doing it by hand.
+//
+// `station add` does the three things that have to happen together, because
+// doing two of them is worse than doing none:
+//
+//  1. create the branch and push it WITH AN UPSTREAM
+//  2. check it out into its own directory, so the control side has one
+//     checkout per station and never switches between them
+//  3. record it as an estate, so `-e <name>` reaches that machine and only
+//     that machine
+//
+// It then prints what to send the operator, which is the whole point of having
+// done the other three.
+func cmdStation(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: heliograph station add <name> [-e <estate>] [--dir <path>]")
+	}
+	switch args[0] {
+	case "add":
+		return cmdStationAdd(args[1:])
+	default:
+		return fmt.Errorf("unknown station command %q: the only one is `add`", args[0])
+	}
+}
+
+func cmdStationAdd(args []string) error {
+	fs := flag.NewFlagSet("station add", flag.ExitOnError)
+	from := estateFlag(fs)
+	dir := fs.String("dir", "", "where to put the new checkout (default: beside the existing one)")
+	service := fs.Bool("service", false, "the operator installs it to survive logout")
+	pos, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return fmt.Errorf("usage: heliograph station add <name> [-e <estate>] [--dir <path>]")
+	}
+	name := pos[0]
+	if err := estate.ValidName(name); err != nil {
+		return err
+	}
+
+	op, err := open(*from)
+	if err != nil {
+		return err
+	}
+	if op.Estate.Transport != "git" {
+		return fmt.Errorf("estate %q uses the %s transport, and only git has branches to divide",
+			op.Estate.Name, op.Estate.Transport)
+	}
+	g, ok := op.Transport.(*transport.Git)
+	if !ok {
+		return fmt.Errorf("estate %q is not a git checkout", op.Estate.Name)
+	}
+	if _, err := estate.Load(name); err == nil {
+		return fmt.Errorf("an estate called %q is already configured: pick another name, or `heliograph estates` to see it", name)
+	}
+
+	// station/<name>, so a branch that routes a machine is distinguishable
+	// from a task branch at a glance. Not enforced anywhere - deployments in
+	// the field use task/* and cannot be reached to be upgraded - but it is
+	// what this command creates.
+	branch := "station/" + name
+	target := *dir
+	if target == "" {
+		target = filepath.Join(filepath.Dir(op.Dir), filepath.Base(op.Dir)+"-"+name)
+	}
+	target, err = filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+
+	if err := g.CreateBranch(branch); err != nil {
+		return err
+	}
+	if err := g.AddWorktree(target, branch); err != nil {
+		return fmt.Errorf("pushed %s but could not check it out: %w", branch, err)
+	}
+
+	e := estate.Estate{Name: name, Transport: "git", Dir: target, Branch: branch, Scope: branch}
+	if err := e.Save(); err != nil {
+		return fmt.Errorf("created %s and its checkout, but could not record the estate: %w", branch, err)
+	}
+
+	url, _ := g.RemoteURL()
+	fmt.Printf("station %s -> %s on %s\n", name, target, branch)
+	fmt.Printf("  drive it with: heliograph send <step> -e %s\n\n", name)
+
+	t := plant.Target{RepoURL: url, Branch: branch, Service: *service}
+	out, err := t.Instructions()
+	if err != nil {
+		return err
+	}
+	fmt.Print(out)
+	return nil
 }
 
 // opened is what a command needs: the transport, plus the two facts every
