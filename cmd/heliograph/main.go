@@ -29,6 +29,18 @@ import (
 // not one.
 var version = "dev"
 
+// initTransports is what `init --transport` accepts, in ONE place.
+//
+// It was three places - the flag's help text, the default arm's error, and the
+// documentation - and the documentation is the one that drifted: the site
+// carried an `init --transport relay --url ... --estate ...` example naming
+// flags that have never existed. internal/transport implements the relay
+// perfectly well; nothing here can select it.
+//
+// A list a test can read is what makes that checkable, which is the whole
+// reason this is a variable rather than three string literals.
+var initTransports = []string{"git", "share", "bundle", "objstore"}
+
 const usage = `heliograph - run things on a machine you cannot log into
 
   heliograph bootstrap <dir>                plant the station payload into a transport repo
@@ -248,7 +260,7 @@ func cmdBootstrap(args []string) error {
 func cmdInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	dir := fs.String("dir", "", "the working clone, share directory, bundle directory, or object store endpoint")
-	kind := fs.String("transport", "git", "git | share | bundle | objstore")
+	kind := fs.String("transport", "git", strings.Join(initTransports, " | "))
 	scopeFlag := fs.String("scope", "", "share: one directory per investigation. objstore: one lane")
 	bucket := fs.String("bucket", "", "with --transport objstore: the bucket")
 	prefix := fs.String("prefix", "", "with --transport objstore: a key prefix, for a bucket shared with something else")
@@ -325,7 +337,8 @@ func cmdInit(args []string) error {
 		}
 		tp, scope = o, o.Branch()
 	default:
-		return fmt.Errorf("unknown transport %q: this build knows git, share, bundle and objstore", *kind)
+		return fmt.Errorf("unknown transport %q: this build knows %s",
+			*kind, strings.Join(initTransports, ", "))
 	}
 
 	e := estate.Estate{Name: name, Transport: *kind, Dir: abs, Branch: scope, Scope: *scopeFlag,
