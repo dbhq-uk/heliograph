@@ -154,4 +154,77 @@ assert_eq "and did not run" "3" "$(logs_for reader)"
 # cleanly rather than sitting there polling over a question it has responded to.
 assert_eq "and --once exits 0, because a refusal is an answer" "0" "$RC"
 
+# --- delivery: did the log actually leave the machine ------------------------
+# Everything above asserts what the loop RUNS. This asserts what the far side
+# RECEIVES, which is a different question and was the one nobody was asking.
+#
+# run.sh used to end at cap_push, which is git unconditionally, so on the relay
+# and blob transports a perfect log was captured and never shipped. The status
+# said `idle` either way, so from the far side a delivered log and a stranded
+# one were the same event.
+DELIVERY="$TR/.station-delivery"
+delivery_field() { sed -n "s/^$1:[[:space:]]*//p" "$DELIVERY" 2>/dev/null | head -1; }
+
+# Read back from the BARE REMOTE, never the working tree: the tree holds the log
+# whether or not it was ever delivered.
+remote_logs() { git -C "$TMP/origin.git" ls-tree -r --name-only HEAD 2>/dev/null | grep -c '^ops-logs/.*\.txt$'; }
+
+before="$(remote_logs)"
+request d1 reader
+agent
+assert_eq "a completed run is published as idle" "idle" "$(status_field state)"
+assert_eq "and the log actually reached the remote" \
+  "$((before + 1))" "$(remote_logs)"
+assert_eq "and the runner recorded that it was delivered" "yes" "$(delivery_field delivered)"
+
+# Now break WRITES ONLY, and the distinction is the whole point of the test.
+#
+# The first attempt at this pointed origin at a path that does not exist, which
+# breaks the FETCH as well: the station never saw the request, never ran a step,
+# and the assertions passed or failed on a stale marker from the previous run.
+# A test that breaks the thing it is not measuring measures nothing.
+#
+# A pre-receive hook rejects every push while leaving fetch working, so the
+# request arrives, the step runs, the log is captured, and only delivery fails -
+# which is exactly the state a real credential with read but not write access
+# puts a station in, and the one this whole change exists to report.
+#
+# The status is read from the LOCAL file, deliberately: publish_status writes it
+# before pushing, so a station that cannot push can still be seen to have drawn
+# the right conclusion. On git the status and the log go the same way, so a far
+# side would see neither - which is honest, and is why `undelivered` also gets
+# said on the operator's terminal.
+cat > "$TMP/origin.git/hooks/pre-receive" <<'EOS'
+#!/bin/sh
+echo "remote: refusing every write, for the test" >&2
+exit 1
+EOS
+chmod +x "$TMP/origin.git/hooks/pre-receive"
+
+stranded_before="$(remote_logs)"
+logs_before="$(logs_for reader)"
+request d2 reader
+agent
+assert_eq "with writes refused, the step still ran and captured a log" \
+  "$((logs_before + 1))" "$(logs_for reader)"
+assert_eq "the runner recorded that delivery FAILED" "no" "$(delivery_field delivered)"
+assert_eq "and the loop published undelivered, not idle" \
+  "undelivered" "$(status_field state)"
+assert_eq "and nothing reached the remote, so this was a real failure" \
+  "$stranded_before" "$(remote_logs)"
+
+# The marker is cleared before each run, so its ABSENCE means "the runner never
+# reached delivery". Left stale, the previous run's verdict would be published
+# as though it described this one - `undelivered` for a run that produced no log
+# at all, or `idle` for one nobody received. Both are lies told to somebody who
+# cannot check.
+rm -f "$TMP/origin.git/hooks/pre-receive"
+printf 'delivered: no\nlog:       stale\ntransport: git\n' > "$DELIVERY"
+request d3 reader
+agent
+assert_eq "a stale 'no' from an earlier run does not leak into the next status" \
+  "idle" "$(status_field state)"
+assert_eq "because the marker is rewritten by the run that owns it" \
+  "yes" "$(delivery_field delivered)"
+
 t_summary

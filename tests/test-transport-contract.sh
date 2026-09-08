@@ -11,8 +11,18 @@
 # on a machine nobody can reach. So it is checked here, where somebody is
 # listening, rather than there.
 #
-# This asserts SHAPE, not behaviour. Behaviour against a real store needs that
-# store, and test-pigeonhole.sh already covers the blob primitives.
+# Most of this asserts SHAPE: a verb is defined, and a transport that advertises
+# an optional capability has actually written it.
+#
+# tp_put_log is the exception, and it had to be. `tp_put_log() { return 0; }`
+# satisfies every shape check here, satisfies conformance property 9 as well
+# (that driver runs the git transport), and reproduces precisely the defect the
+# verb was added to fix - relay and blob capturing perfect logs and shipping
+# nothing. A no-op reporting success IS the failure mode, so for that one verb
+# the request each transport would send is asserted, against a fake curl.
+#
+# Still not a round trip. Behaviour against a real store needs that store, and
+# test-pigeonhole.sh already covers the blob primitives.
 # =============================================================================
 set -uo pipefail
 
@@ -100,5 +110,95 @@ case " $(probe "$TOOLKIT/transports/blob.sh" tp_capabilities) " in
   *" self "*) t_no "blob claims self-update, which it cannot do" ;;
   *) t_ok "blob does not claim self-update, which it cannot do" ;;
 esac
+
+# --- tp_put_log must actually PUT the log ------------------------------------
+# Everything above asserts that a verb is DEFINED. That is not enough for this
+# one, and the reason is uncomfortable: `tp_put_log() { return 0; }` satisfies
+# every check so far, satisfies conformance property 9 as well - because the
+# conformance driver runs the git transport - and reproduces exactly the defect
+# the verb was added to fix. A no-op that reports success is the failure mode.
+#
+# So the two transports the conformance suite cannot reach are exercised here,
+# against a fake `curl` on PATH, asserting the REQUEST THEY WOULD SEND. Shape
+# rather than a round trip, but the shape is what was missing.
+FAKE="$(mktemp -d)"
+trap 'rm -rf "$FAKE"' EXIT
+cat > "$FAKE/curl" <<'EOS'
+#!/usr/bin/env bash
+# Record the whole invocation, answer with whatever the caller wants to see.
+printf '%s\n' "$*" >> "$FAKE_CALLS"
+for a in "$@"; do case "$a" in --data-binary) : ;; esac; done
+case " $* " in *' -X PUT '*) printf '201' ;; *' -X POST '*) printf '202' ;; *) printf '200' ;; esac
+EOS
+chmod +x "$FAKE/curl"
+
+# --- blob ---------------------------------------------------------------------
+BLOB_CALLS="$FAKE/blob.calls"; : > "$BLOB_CALLS"
+printf 'the finished log\n' > "$FAKE/reader-20260908T120000Z.txt"
+(
+  export PATH="$FAKE:$PATH" FAKE_CALLS="$BLOB_CALLS"
+  export PIGEONHOLE_ACCOUNT=acct PIGEONHOLE_LANE=lane1 PIGEONHOLE_SAS='sv=x&sig=y'
+  REPO_ROOT="$TOOLKIT"
+  # caplib first: tp_init calls cap_need, and without it the check that reports
+  # a missing variable is itself "command not found" - which fails tp_init for
+  # the wrong reason and would make these assertions pass on a broken transport.
+  # shellcheck disable=SC1091
+  . "$TOOLKIT/caplib.sh"
+  # shellcheck disable=SC1091
+  . "$TOOLKIT/transports/blob.sh"
+  tp_init >/dev/null 2>&1
+  tp_put_log "$FAKE/reader-20260908T120000Z.txt" "msg"
+) >/dev/null 2>&1
+blob_put="$(grep -- '-X PUT' "$BLOB_CALLS" 2>/dev/null | tail -1)"
+
+assert_eq "blob: tp_put_log actually issues a PUT, rather than returning 0" \
+  "1" "$([ -n "$blob_put" ] && echo 1 || echo 0)"
+assert_contains "blob: it PUTs the log under the lane" "lane1" "$blob_put"
+assert_contains "blob: under logs/, so a finished log is not overwritten by the next run's progress" \
+  "logs/reader-20260908T120000Z.txt" "$blob_put"
+assert_contains "blob: and it sends the log FILE, not the status body" \
+  "reader-20260908T120000Z.txt" "$blob_put"
+
+# --- relay --------------------------------------------------------------------
+# heliograph-seal is faked too: this asserts what the transport ASKS for, which
+# is the part that can silently be wrong. The cryptography has its own tests.
+RELAY_CALLS="$FAKE/relay.calls"; : > "$RELAY_CALLS"
+SEAL_CALLS="$FAKE/seal.calls"; : > "$SEAL_CALLS"
+cat > "$FAKE/seal" <<'EOS'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$SEAL_CALLS"
+for i in $(seq 1 $#); do
+  if [ "${!i}" = "--out" ]; then j=$((i + 1)); printf 'sealed\n' > "${!j}"; fi
+done
+exit 0
+EOS
+chmod +x "$FAKE/seal"
+printf 'the finished log\n' > "$FAKE/relay-log.txt"
+(
+  export PATH="$FAKE:$PATH" FAKE_CALLS="$RELAY_CALLS" SEAL_CALLS="$SEAL_CALLS"
+  export RELAY_URL=https://relay.invalid RELAY_ESTATE=e1 RELAY_STATION=s1 \
+         RELAY_TOKEN=tok RELAY_IDENTITY="$FAKE/id" RELAY_PEER="$FAKE/peer" \
+         RELAY_SEAL="$FAKE/seal" RELAY_STATE="$FAKE/relay.state"
+  : > "$FAKE/id"; : > "$FAKE/peer"
+  # Read by relay.sh at source time to default RELAY_SEAL and RELAY_STATE.
+  # shellcheck disable=SC2034
+  REPO_ROOT="$TOOLKIT"
+  # shellcheck disable=SC1091
+  . "$TOOLKIT/caplib.sh"
+  # shellcheck disable=SC1091
+  . "$TOOLKIT/transports/relay.sh"
+  tp_init >/dev/null 2>&1
+  tp_put_log "$FAKE/relay-log.txt" "msg"
+) >/dev/null 2>&1
+seal_log="$(grep -- '--kind log' "$SEAL_CALLS" 2>/dev/null | tail -1)"
+
+assert_eq "relay: tp_put_log actually seals something, rather than returning 0" \
+  "1" "$([ -n "$seal_log" ] && echo 1 || echo 0)"
+assert_contains "relay: it seals the log under its OWN kind, so the far side can tell a finished log from a progress snapshot" \
+  "--kind log" "$seal_log"
+assert_contains "relay: station to control, never the other way" "--dir s2c" "$seal_log"
+assert_contains "relay: and it seals the log FILE" "relay-log.txt" "$seal_log"
+assert_eq "relay: and POSTs the sealed envelope" "1" \
+  "$([ -n "$(grep -- '-X POST' "$RELAY_CALLS" 2>/dev/null)" ] && echo 1 || echo 0)"
 
 t_summary
