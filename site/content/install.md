@@ -19,15 +19,32 @@ From source, if you would rather:
 go install github.com/dbhq-uk/heliograph/cmd/heliograph@latest
 ```
 
+## The agent skill
+
+The same loop, driven from Claude Code, Codex, Cursor and friends. See
+[Claude Code](/claude-code) for what it does.
+
+```
+/plugin marketplace add dbhq-uk/marketplace
+/plugin install heliograph@dbhq         # Claude Code
+npx skills add dbhq-uk/heliograph       # any agent, via skills.sh
+```
+
+The skill drives the binary above, so install both.
+
 ## The far side
 
-Nothing to install. The station is
-[dbhq-uk/heliograph-skill](https://github.com/dbhq-uk/heliograph-skill): plain
-bash, no interpreter, no packages, no credentials of its own.
+Nothing to install, ever. The station is plain bash - no interpreter, no
+packages, no credentials of its own - and `heliograph bootstrap` plants the
+copy the binary was built with into your transport repo. The source is
+[`station/bash/`](https://github.com/dbhq-uk/heliograph/tree/main/station/bash),
+readable before you run it.
 
 That is not a convenience, it is the proposition. On a locked-down box,
 installing anything is its own change request, and a tool that needs a runtime
 is a tool that never gets approved.
+
+The operator's whole job:
 
 ```bash
 git clone <your-private-transport-repo> transport

@@ -7,7 +7,7 @@ documentation is not separate content for humans and machines: it is one set of
 pages served as HTML, as markdown, as `llms.txt`, and through an MCP server.
 This follows it, with one exception that is real rather than convenient.
 
-The exception is the **skill**. `references/method.md` in `heliograph-skill`
+The exception is the **skill**. `skills/heliograph/references/method.md`
 says "never truncate", "keep a control", "change one thing between runs". That
 is not a description of the product, it is a procedure that changes what an
 agent does, and it has no reader on a documentation site. It stays where it is.
