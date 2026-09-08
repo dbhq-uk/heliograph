@@ -21,12 +21,12 @@ import (
 // against its own idea of the contract, which both halves can satisfy while
 // disagreeing with each other.
 //
-// It reads the real skill, checked out beside this repo in CI, and skips when
-// it is absent. The CI job asserts the skip did not happen: a silently skipped
+// It reads the real station, in this repository since the merge, so there is
+// nothing to check out and nothing to skip: a silently skipped
 // cross-repo check is the same shape of problem as a green suite that checked
 // nothing.
 
-// skillDir lives in e2e_test.go. Shared deliberately: both this and the
+// stationDir lives in e2e_test.go. Shared deliberately: both this and the
 // end-to-end test resolve the same checkout the same way, and two helpers that
 // disagreed about what counts as "the skill repo" would be a bug in the thing
 // meant to catch bugs.
@@ -43,9 +43,9 @@ func read(t *testing.T, path string) string {
 // The gate strings this side tells a model to use must be the strings the
 // station actually looks for.
 func TestGateSpellingsMatchTheStation(t *testing.T) {
-	dir := skillDir(t)
-	station := read(t, filepath.Join(dir, "skills", "heliograph", "toolkit", "station.sh"))
-	runSh := read(t, filepath.Join(dir, "skills", "heliograph", "toolkit", "run.sh"))
+	dir := stationDir(t)
+	station := read(t, filepath.Join(dir, "station", "bash", "station.sh"))
+	runSh := read(t, filepath.Join(dir, "station", "bash", "run.sh"))
 	far := station + runSh
 
 	// Everything this side says about the gates, gathered from the places that
@@ -83,8 +83,8 @@ func TestGateSpellingsMatchTheStation(t *testing.T) {
 // The files the two sides exchange. A rename on the far side that this side
 // does not learn about is a station that goes quiet while looking healthy.
 func TestWirePathsMatchTheStation(t *testing.T) {
-	dir := skillDir(t)
-	station := read(t, filepath.Join(dir, "skills", "heliograph", "toolkit", "station.sh"))
+	dir := stationDir(t)
+	station := read(t, filepath.Join(dir, "station", "bash", "station.sh"))
 
 	for _, path := range []string{"station/request", "station/status"} {
 		if !strings.Contains(station, path) {
@@ -97,8 +97,8 @@ func TestWirePathsMatchTheStation(t *testing.T) {
 // does not know about is printed as a bare string a reader has to interpret,
 // which is the moment somebody guesses.
 func TestStatusStatesAreAllKnownHere(t *testing.T) {
-	dir := skillDir(t)
-	station := read(t, filepath.Join(dir, "skills", "heliograph", "toolkit", "station.sh"))
+	dir := stationDir(t)
+	station := read(t, filepath.Join(dir, "station", "bash", "station.sh"))
 
 	// wire.Status documents these, and heliograph_status names them to a model.
 	known := []string{"running", "idle", "cancelled", "refused", "stopped"}
@@ -114,8 +114,8 @@ func TestStatusStatesAreAllKnownHere(t *testing.T) {
 // treating the id as the only trigger, which is asserted here rather than
 // assumed, because the whole interoperability story falls over without it.
 func TestTheIDIsTheTrigger(t *testing.T) {
-	dir := skillDir(t)
-	station := read(t, filepath.Join(dir, "skills", "heliograph", "toolkit", "station.sh"))
+	dir := stationDir(t)
+	station := read(t, filepath.Join(dir, "station", "bash", "station.sh"))
 	if !strings.Contains(station, "id") {
 		t.Fatal("the station does not read an id, so nothing this side sends would trigger a run")
 	}
