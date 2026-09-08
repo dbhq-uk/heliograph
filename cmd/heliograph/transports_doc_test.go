@@ -110,6 +110,51 @@ func TestEveryStationTransportIsOnThePage(t *testing.T) {
 	}
 }
 
+// Every verb the reference transport implements must appear on the page that
+// claims to list the contract.
+//
+// The page said "ten functions" and listed them, and that list is how somebody
+// writing the next transport - or the PowerShell station - learns what they owe.
+// A verb added to git and not to the page is a verb the second implementation
+// does not write, which is exactly how `tp_put_log` came to exist on git alone
+// while relay and blob shipped nothing at all.
+//
+// git is the one measured because it is the only transport that implements the
+// whole contract including the optional halves. A verb it does not have is not
+// yet a contract.
+func TestEveryVerbGitImplementsIsOnThePage(t *testing.T) {
+	b, err := os.ReadFile("../../site/content/transports.md")
+	if err != nil {
+		t.Skipf("the site content is not here: %v", err)
+	}
+	page := string(b)
+
+	src, err := os.ReadFile("../../station/bash/transports/git.sh")
+	if err != nil {
+		t.Skipf("the station payload is not here: %v", err)
+	}
+
+	// A definition, not a mention: `^tp_name()` at the left margin. The header
+	// comment in that file lists the contract too, and matching it would make
+	// this test agree with a comment rather than with the code.
+	def := regexp.MustCompile(`(?m)^(tp_[a-z_]+)\(\)`)
+	found := map[string]bool{}
+	for _, m := range def.FindAllStringSubmatch(string(src), -1) {
+		found[m[1]] = true
+	}
+	if len(found) < 10 {
+		t.Fatalf("only %d tp_* definitions found in git.sh, so this check is not "+
+			"reading the file it thinks it is", len(found))
+	}
+	for name := range found {
+		if !strings.Contains(page, name) {
+			t.Errorf("transports/git.sh defines %s() and the transports page never names it. "+
+				"That list is what the next transport - and the PowerShell station - "+
+				"is written from", name)
+		}
+	}
+}
+
 // The status table has to name both sides. A single "works" column is what let
 // a control-side-only transport read as finished.
 func TestTheTransportsPageStatesBothSides(t *testing.T) {

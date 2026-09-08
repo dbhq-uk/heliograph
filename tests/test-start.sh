@@ -353,8 +353,17 @@ RC=0
 OUT="$( cd "$TMP/urltoken" && ./start.sh --check 2>&1 )" || RC=$?
 assert_eq "a token in the remote URL is never printed" "" \
   "$(printf '%s' "$OUT" | grep -o glpat-SUPERSECRET)"
+# BOTH SIDES OF THE COLON, and the username is not spared.
+# `https://<token>:x-oauth-basic@github.com/org/repo.git` is a documented git
+# form in which the SECRET is the username, so masking only the password prints
+# the credential in full in the shape most likely to carry a real one. The
+# station's own remote is the only URL this masker is ever given, and that form
+# lives exactly there. cap_redact keeps the username for arbitrary log text, for
+# the opposite reason, and caplib says why.
 assert_contains "the rest of the URL still is, or the line diagnoses nothing" \
-  "https://ci-user:***@git.invalid/p/t.git" "$OUT"
+  "https://***:***@git.invalid/p/t.git" "$OUT"
+assert_eq "and the userinfo USERNAME is masked too, because that position carries the token in the x-oauth-basic form" \
+  "" "$(printf '%s' "$OUT" | grep -o 'ci-user:\*\*\*')"
 # A bare "none" would read as "you have nothing configured" while git is about to
 # authenticate perfectly well with what the URL carries. This is the ONE state in
 # which that sentence is true, and it is true because the colon rule fired.
@@ -545,5 +554,306 @@ RC=0
 OUT="$( cd "$TMP/good" && ./start.sh --branch 2>&1 )" || RC=$?
 assert_eq "--branch with no value is a usage error" "2" "$RC"
 assert_contains "and it names the problem" "--branch" "$OUT"
+
+# =============================================================================
+#  A station whose transport is not git
+# =============================================================================
+# THE DEFECT THESE EXIST FOR. start.sh checked a git remote, a git credential
+# and a git push unconditionally, and one FAIL stops before station.sh runs. So
+# `./start.sh` - the one command every host, every container entrypoint and
+# every page tells the operator to type - could not start a relay or blob
+# station at all. /hosts said "by hand", meaning: set eight variables and skip
+# the only preflight there is, on a machine nobody can log into.
+#
+# The fixture is deliberately NOT a git repository. That is the whole point: it
+# is the state a relay station is actually in, and the state in which every
+# assertion below used to fail.
+FAKE="$TMP/fake"; mkdir -p "$FAKE"
+cat > "$FAKE/curl" <<'EOS'
+#!/usr/bin/env bash
+# Health, then the authenticated poll. Both answer 200, which is what a
+# reachable relay with an accepted token looks like.
+printf '%s\n' "$*" >> "${FAKE_CALLS:-/dev/null}"
+printf '200'
+EOS
+chmod +x "$FAKE/curl"
+cat > "$FAKE/seal" <<'EOS'
+#!/usr/bin/env bash
+[ "${1:-}" = "fingerprint" ] && { printf 'SHA256:fake\n'; exit 0; }
+exit 0
+EOS
+chmod +x "$FAKE/seal"
+
+make_payload() {  # a bootstrapped payload with NO git repository in it
+  "$ROOT/station/bootstrap.sh" "$1" >/dev/null 2>&1
+  cat > "$1/station.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "STUB AGENT pid=$$ args=$*"
+EOF
+  chmod +x "$1/station.sh"
+}
+
+relay_env() {
+  export TRANSPORT=relay
+  export RELAY_URL=https://relay.invalid RELAY_ESTATE=e1 RELAY_STATION=s1 \
+         RELAY_TOKEN=tok RELAY_IDENTITY="$FAKE/id" RELAY_PEER="$FAKE/peer" \
+         RELAY_SEAL="$FAKE/seal" RELAY_SEAL_SHA256="$SEAL_SHA"
+  export PATH="$FAKE:$PATH"
+}
+: > "$FAKE/id"; : > "$FAKE/peer"
+SEAL_SHA="$(sha256sum "$FAKE/seal" | cut -d' ' -f1)"
+
+make_payload "$TMP/relaystation"
+RC=0
+OUT="$( cd "$TMP/relaystation" && relay_env && ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a relay station passes the preflight, in a directory that is not a git repository" \
+  "0" "$RC"
+assert_contains "and says so" "preflight: clear" "$OUT"
+assert_contains "the transport is named, not assumed" "ok    transport     relay" "$OUT"
+assert_contains "and it is reported reachable, which is what tp_check answered" \
+  "relay reach" "$OUT"
+# EVERY git row, not just the write check. Asserting on `git write` alone proved
+# nothing: the old code never reached it in a directory with no repository,
+# because `git read` failed first and returned early. It would have passed
+# against the very code this change exists to replace.
+assert_eq "not one git check runs: there is no git here to check" "0" \
+  "$(printf '%s\n' "$OUT" | grep -cE '^(ok|warn|FAIL) +(git|branch|remote|token|ssh key)\b')"
+assert_eq "and it never asks for an origin remote that this station has no use for" "" \
+  "$(printf '%s\n' "$OUT" | grep -o "no remote named 'origin'")"
+
+# base64 was a universal blocking check, and its only caller is cap_git building
+# an HTTPS auth header. A relay station has no auth header to build, so it was
+# being refused for the absence of a tool it never uses - and told the reason
+# was a git remote it does not have.
+#
+# SHADOWED, not assumed absent. The machine running this has base64, so
+# asserting "no FAIL base64 appeared" would have passed whatever the code did.
+mkdir -p "$FAKE/nob64"
+printf '#!/usr/bin/env bash\nexit 127\n' > "$FAKE/nob64/base64"
+chmod +x "$FAKE/nob64/base64"
+cp "$FAKE/curl" "$FAKE/nob64/curl"; cp "$FAKE/seal" "$FAKE/nob64/seal"
+RC=0
+OUT="$( cd "$TMP/relaystation" && relay_env && export PATH="$FAKE/nob64:$PATH" \
+        && ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a relay station with no usable base64 still passes: it never builds an auth header" \
+  "0" "$RC"
+assert_eq "and is not told to install one for a git remote it does not have" "" \
+  "$(printf '%s\n' "$OUT" | grep -o 'FAIL  base64')"
+
+# The same shadowing on the git transport must still block, or the check has
+# been dropped rather than moved.
+RC=0
+OUT="$( cd "$TMP/good" && PATH="$FAKE/nob64:$PATH" ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a git station with no usable base64 still blocks" "1" "$RC"
+assert_contains "and the check moved rather than vanished" "FAIL  base64" "$OUT"
+
+# --- a tp_preflight that fails without saying so ------------------------------
+# FAIL CLOSED. A tp_preflight is expected to speak through `report`, but one
+# that simply returns non-zero - a future transport, a half-written one - left
+# FAILED untouched, and start.sh reported the preflight clear on a channel that
+# had just said it was not usable.
+make_payload "$TMP/silentfail"
+cat > "$TMP/silentfail/transports/probe.sh" <<'EOF'
+#!/usr/bin/env bash
+tp_capabilities() { printf 'request status progress\n'; }
+tp_init() { return 0; }
+tp_scope() { printf 'probe'; }
+tp_revision() { printf 'probe'; }
+tp_describe() { printf 'a transport that fails quietly'; }
+tp_check() { return 0; }
+tp_fetch_request() { printf ''; }
+tp_put_status() { return 0; }
+tp_put_progress() { return 0; }
+tp_put_log() { return 0; }
+tp_preflight() { return 1; }
+EOF
+RC=0
+OUT="$( cd "$TMP/silentfail" && TRANSPORT=probe ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a tp_preflight that returns non-zero blocks even if it reported nothing" "1" "$RC"
+assert_contains "and the missing explanation is called what it is" \
+  "that is a defect in transports/probe.sh" "$OUT"
+
+# The handover, not just the checks: a preflight that passes and then refuses to
+# hand over would be the same wasted trip in a different place.
+RC=0
+OUT="$( cd "$TMP/relaystation" && relay_env && ./start.sh 2>&1 )" || RC=$?
+assert_eq "and without --check it hands over to station.sh" "0" "$RC"
+assert_contains "which actually ran" "STUB AGENT" "$OUT"
+assert_eq "no git pull is attempted on a transport that cannot sync" "" \
+  "$(printf '%s\n' "$OUT" | grep -o 'ok    pull')"
+
+# --- a relay that is misconfigured says WHICH variable -------------------------
+# tp_init's own words, folded into the table. Without this the operator gets
+# either silence or a git message about a remote they were never going to have.
+make_payload "$TMP/relaybad"
+RC=0
+OUT="$( cd "$TMP/relaybad" && export TRANSPORT=relay PATH="$FAKE:$PATH" && ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a relay station with nothing configured blocks" "1" "$RC"
+assert_contains "and the failure is the transport's, named as such" \
+  "FAIL  transport" "$OUT"
+assert_contains "and it names the variable that is missing" "RELAY_URL" "$OUT"
+assert_eq "rather than blaming a git remote it was never going to have" "" \
+  "$(printf '%s\n' "$OUT" | grep -o "no remote named 'origin'")"
+
+# --- a relay that cannot be reached ------------------------------------------
+# tp_check's answer, which is the generic question every transport can answer.
+# A curl that never returns 200 is a relay that is down or a token that is wrong.
+mkdir -p "$FAKE/down"
+cat > "$FAKE/down/curl" <<'EOS'
+#!/usr/bin/env bash
+printf '503'
+EOS
+chmod +x "$FAKE/down/curl"
+cp "$FAKE/seal" "$FAKE/down/seal"
+make_payload "$TMP/relaydown"
+RC=0
+OUT="$( cd "$TMP/relaydown" && relay_env && export PATH="$FAKE/down:$PATH" && ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "an unreachable relay blocks rather than starting the station" "1" "$RC"
+assert_contains "and it is reported as the transport failing to answer" \
+  "FAIL  relay reach" "$OUT"
+assert_contains "and it says where to look for the variables" \
+  "transports/relay.sh" "$OUT"
+
+# --- --branch is refused where a branch means nothing --------------------------
+# REFUSED, NOT IGNORED. Accepting it silently would let somebody believe they
+# had pointed a relay station somewhere it is not pointed, and being wrong about
+# which machine a station answers for is the failure this design exists to stop.
+RC=0
+OUT="$( cd "$TMP/relaystation" && relay_env && ./start.sh --check --branch station/db-a 2>&1 )" || RC=$?
+assert_eq "--branch on a non-git transport blocks" "1" "$RC"
+assert_contains "and says whose flag it is" "the git transport's" "$OUT"
+assert_contains "and names the transport that was actually selected" "relay" "$OUT"
+
+# --- a transport name that is not one -----------------------------------------
+# The name becomes a filename that gets SOURCED. `TRANSPORT=../station` resolves
+# to $REPO_ROOT/transports/../station.sh, which is the LOOP, sourced into the
+# middle of the preflight. caplib refuses anything but lowercase, digits and
+# hyphens, and this is that check reaching the operator.
+#
+# THE FIXTURE'S station.sh IS A STUB THAT ANNOUNCES ITSELF. Asserting the
+# absence of a marker no file in the fixture ever prints is asserting nothing,
+# and the first version of this test did exactly that.
+make_repo "$TMP/traversal"
+cat > "$TMP/traversal/station.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "SOURCED THE LOOP"
+EOF
+chmod +x "$TMP/traversal/station.sh"
+RC=0
+OUT="$( cd "$TMP/traversal" && TRANSPORT=../station ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a transport name that is a path blocks" "1" "$RC"
+assert_contains "and says why the name itself is the problem" \
+  "sourced" "$OUT"
+assert_eq "and the loop is never sourced into the preflight" "" \
+  "$(printf '%s\n' "$OUT" | grep -o 'SOURCED THE LOOP')"
+
+RC=0
+OUT="$( cd "$TMP/good" && TRANSPORT=carrierpigeon ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "an unknown transport blocks" "1" "$RC"
+assert_contains "and lists what this payload actually ships, rather than saying 'a valid one'" \
+  "git" "$OUT"
+assert_contains "including the ones that are not the default" "relay" "$OUT"
+
+# --- the git transport is unchanged -------------------------------------------
+# Everything moved, so this pins that nothing was lost on the way: the git
+# station still gets its own credential diagnosis and its own write check, which
+# tp_check alone would never have made.
+run_start "$TMP/good" --check
+assert_contains "git still reports the transport it selected" "ok    transport     git" "$OUT"
+assert_contains "git still proves write, which no generic tp_check does" "git write" "$OUT"
+assert_contains "and still reports the branch it is on" "ok    branch" "$OUT"
+
+# --- a token in the remote URL never reaches the TRANSPORT line ---------------
+# tp_describe prints the remote, and station.sh says it at start straight to the
+# terminal and the journal. cap_redact cannot help: that is a stream filter on
+# the capture path and this line does not go down it.
+#
+# PINNED TO THAT ONE LINE, not to the whole output. `credential()` has masked
+# the `remote` row since long before this change, so asserting "the token is
+# absent from $OUT" passes against the old code and proves nothing about
+# tp_describe. Isolating the row makes it fail there twice over: the token is
+# present, and the row does not exist at all.
+make_repo "$TMP/tokenurl"
+( cd "$TMP/tokenurl" && git remote set-url origin \
+    'https://ci-user:glpat-SECRETVALUE@git.invalid/org/repo.git' ) >/dev/null 2>&1
+run_start "$TMP/tokenurl" --check
+tline="$(printf '%s\n' "$OUT" | grep '^ok    transport')"
+assert_contains "there IS a transport line to inspect" "git" "$tline"
+assert_eq "and it never prints the token the remote URL carries" "" \
+  "$(printf '%s\n' "$tline" | grep -o 'glpat-SECRETVALUE')"
+assert_contains "while the host and path survive, or the line identifies nothing" \
+  "git.invalid/org/repo.git" "$tline"
+
+# --- one trip names every blocker it can see ----------------------------------
+# A REGRESSION THIS CHANGE NEARLY SHIPPED. git's tp_init refuses a detached
+# HEAD, and stopping there reported only that - so an operator with a detached
+# HEAD and a broken remote fixed the branch, ran it again, and only then learnt
+# about the remote. Two trips to a machine nobody can log into, where the old
+# preflight named both at once. tp_preflight is contracted to be callable after
+# a failed tp_init for exactly this.
+make_repo "$TMP/detachedandbroken"
+( cd "$TMP/detachedandbroken" \
+    && git remote set-url origin https://nonexistent.invalid/p/t.git \
+    && git checkout -q --detach HEAD ) >/dev/null 2>&1
+run_start "$TMP/detachedandbroken" --check
+assert_eq "a detached HEAD still blocks" "1" "$RC"
+assert_contains "and it is still named in those words" "detached HEAD" "$OUT"
+assert_contains "and the remote is diagnosed in the SAME trip, not the next one" \
+  "git read" "$OUT"
+assert_contains "including which credential was in force for it" "remote" "$OUT"
+
+# =============================================================================
+#  The blob transport gets the same treatment
+# =============================================================================
+# Relay alone would leave an implementation that handles relay and still refuses
+# every blob station passing this file green.
+BLOBFAKE="$TMP/blobfake"; mkdir -p "$BLOBFAKE"
+cat > "$BLOBFAKE/curl" <<'EOS'
+#!/usr/bin/env bash
+# A PUT is what tp_check now makes: 201 is Azure's "created".
+case " $* " in *' -X PUT '*) printf '201' ;; *) printf '404' ;; esac
+EOS
+chmod +x "$BLOBFAKE/curl"
+
+make_payload "$TMP/blobstation"
+RC=0
+OUT="$( cd "$TMP/blobstation" && export TRANSPORT=blob PATH="$BLOBFAKE:$PATH" \
+        PIGEONHOLE_ACCOUNT=acct PIGEONHOLE_LANE=lane1 PIGEONHOLE_SAS='sv=x&sig=y' \
+        && ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a blob station passes the preflight, in a directory that is not a git repository" \
+  "0" "$RC"
+assert_contains "and the transport is named" "ok    transport     blob" "$OUT"
+assert_contains "and the lane is in the description, because that is its scope" \
+  "lane1" "$OUT"
+assert_eq "and no git row appears" "0" \
+  "$(printf '%s\n' "$OUT" | grep -cE '^(ok|warn|FAIL) +(git|branch|remote|token)\b')"
+
+# A SAS that can read and not write is the failure this check exists for: it
+# answers 200 to every read it will ever be asked for, and fails on the first
+# status upload an hour later with nobody left to tell.
+mkdir -p "$BLOBFAKE/ro"
+cat > "$BLOBFAKE/ro/curl" <<'EOS'
+#!/usr/bin/env bash
+case " $* " in *' -X PUT '*) printf '403' ;; *) printf '200' ;; esac
+EOS
+chmod +x "$BLOBFAKE/ro/curl"
+RC=0
+OUT="$( cd "$TMP/blobstation" && export TRANSPORT=blob PATH="$BLOBFAKE/ro:$PATH" \
+        PIGEONHOLE_ACCOUNT=acct PIGEONHOLE_LANE=lane1 PIGEONHOLE_SAS='sv=x&sig=y' \
+        && ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a read-only SAS blocks, because reading is not what a station needs" "1" "$RC"
+assert_contains "and it is reported as the transport failing" "FAIL  blob reach" "$OUT"
+
+# --- a relay whose peer key is missing -----------------------------------------
+# Readable was never checked for RELAY_PEER, only for RELAY_IDENTITY. A station
+# with no peer key started perfectly, then failed every verification and every
+# seal, for a reason the preflight had already been told and swallowed.
+make_payload "$TMP/relaynopeer"
+RC=0
+OUT="$( cd "$TMP/relaynopeer" && relay_env && export RELAY_PEER="$TMP/does-not-exist" \
+        && ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a relay station with no peer key blocks" "1" "$RC"
+assert_contains "and names the file it cannot read" "does-not-exist" "$OUT"
+assert_contains "and says what would have failed" "verified against" "$OUT"
 
 t_summary

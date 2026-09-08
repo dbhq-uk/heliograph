@@ -201,4 +201,47 @@ assert_contains "relay: and it seals the log FILE" "relay-log.txt" "$seal_log"
 assert_eq "relay: and POSTs the sealed envelope" "1" \
   "$([ -n "$(grep -- '-X POST' "$RELAY_CALLS" 2>/dev/null)" ] && echo 1 || echo 0)"
 
+# --- the two verbs only start.sh calls ----------------------------------------
+# tp_preflight and tp_sync are optional, so they are not in REQUIRED, and they
+# are not tied to a declared capability, so they are not in OPTIONAL either.
+# That leaves them unguarded, and losing tp_preflight is not a loud failure: a
+# git station would quietly drop from "proves it can PUSH" to "can reach the
+# remote", which is the exact difference between catching a read-only deploy key
+# now and catching it after an hour-long step has captured a log it cannot ship.
+assert_eq "git defines tp_preflight, so the write check cannot be lost silently" \
+  "yes" "$(has_fn "$TOOLKIT/transports/git.sh" tp_preflight)"
+assert_eq "git defines tp_sync, so the payload is still brought up to date before the loop starts" \
+  "yes" "$(has_fn "$TOOLKIT/transports/git.sh" tp_sync)"
+
+# --- tp_describe is PRINTED, so it may not carry a secret ---------------------
+# station.sh says `transport: $(tp_describe)` at start, straight to the terminal
+# and to whatever journal is capturing it, and start.sh puts it in the preflight
+# table. cap_redact never sees either: that is a stream filter on the capture
+# path, and neither line goes down it.
+#
+# git's returned `git remote get-url origin` verbatim, and
+# `https://ci-user:glpat-...@host/repo` is a shape references/transport.md tells
+# people they will meet. So every station using that form printed its own token
+# on its first line of output, once per restart, into a log somebody keeps.
+DESC="$(
+  cd "$(mktemp -d)" || exit 1
+  git init -q . 2>/dev/null
+  git -c user.email=ci@example.com -c user.name=ci commit -q --allow-empty -m init 2>/dev/null
+  git remote add origin 'https://ci-user:glpat-SECRETVALUE@git.invalid/org/repo.git' 2>/dev/null
+  # Read by caplib at source time. Unused by this script itself, which is what
+  # SC2034 is about, and that is the point of it.
+  # shellcheck disable=SC2034
+  REPO_ROOT="$TOOLKIT"
+  # shellcheck disable=SC1091
+  . "$TOOLKIT/caplib.sh"
+  # shellcheck disable=SC1091
+  . "$TOOLKIT/transports/git.sh"
+  tp_init >/dev/null 2>&1
+  tp_describe
+)"
+assert_eq "git: tp_describe never returns a token, because both callers print it" \
+  "" "$(printf '%s' "$DESC" | grep -o 'glpat-SECRETVALUE')"
+assert_contains "git: and the rest of the remote survives, or the line identifies nothing" \
+  "git.invalid/org/repo.git" "$DESC"
+
 t_summary

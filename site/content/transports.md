@@ -37,6 +37,22 @@ still needs is in
 This page describes each one as designed, so that the design can be reviewed -
 not as though you could reach for it this afternoon.
 
+### Selecting one on the station
+
+`TRANSPORT` picks the channel, and it is the same command whichever you pick:
+
+```bash
+TRANSPORT=relay ./start.sh --check     # will this work here?
+TRANSPORT=relay ./start.sh             # check, then run
+```
+
+The preflight asks *that* transport rather than assuming git, so a missing
+`RELAY_URL` or an unreachable relay is reported by name, in the same table, with
+the same remedies. See [the runner](/runner#it-asks-the-transport-rather-than-assuming-git).
+
+A request may **not** override `TRANSPORT`. The channel is the operator's
+decision and the far side does not get a vote on it.
+
 ## git
 
 The default. A private repository is the transport in both directions: you push
@@ -301,8 +317,15 @@ tp_fetch_self          bring a newer station payload, if this transport can
 tp_put_status          publish a status document
 tp_put_progress        publish a partial-log snapshot
 tp_put_log             deliver the FINISHED log
-tp_check               can this station reach the transport at all
+tp_check               can this station WRITE through the transport
 ```
+
+`tp_check` proves a write, not a read, and every implementation does it the
+cheapest way its store allows: git dry-runs a push, Azure Blob puts a
+`heliograph-write-check` blob in the lane, the relay makes an authenticated
+call. **Read access is not write access**, and a credential that reads
+perfectly and cannot write fails on the log, an hour later, with nobody left to
+tell.
 
 `tp_put_log` is required of every transport, with no capability flag and no way
 to opt out, and it is the newest of the seven for an uncomfortable reason. It
@@ -313,6 +336,20 @@ optional. See [the capture contract](/conformance), property 9.
 
 `tp_capabilities` reports which of the genuinely optional verbs a transport
 offers, and the station says at **start** what it will not be able to do later.
+
+### Two more that only `start.sh` calls
+
+Both optional, and neither is on the capture path:
+
+```
+tp_preflight           checks worth more than "can I reach it"
+tp_sync                bring the payload up to date before handing over
+```
+
+git implements both. `tp_preflight` is where its credential diagnosis, its
+`ls-remote` and its `push --dry-run` live, because **read access is not write
+access** and only git knows how to prove the difference. A transport that
+defines neither still gets the full machine preflight and `tp_check`.
 
 That last part was learned rather than designed. The loop self-updates: a pull
 brings a newer `station.sh` and it re-executes into it, which is what lets a fix

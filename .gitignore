@@ -59,6 +59,7 @@ __pycache__/
 .station-approved
 .station-delivery
 .station-relay-state
+.station-tp-init
 .station-service.log
 
 # Terraform local state and provider cache. State for the templates under

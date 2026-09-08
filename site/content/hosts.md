@@ -28,7 +28,7 @@ twenty untested templates would spend the credibility of the ones that work.
 
 | host | what starts the loop | status |
 |---|---|---|
-| operator's terminal | `./start.sh` | **proven** - 94 assertions, every CI run |
+| operator's terminal | `./start.sh` | **proven** - 145 assertions, every CI run |
 | Docker | `entrypoint.sh`, then `exec ./start.sh` | **proven** - CI builds the image and runs a loop in it |
 | Kubernetes | the same image, one replica | **proven** - CI applies the manifest to a real cluster |
 | systemd `--user` + lingering | `service.sh install` | **proven** - CI installs a unit and finds a running loop |
@@ -46,28 +46,33 @@ twenty untested templates would spend the credibility of the ones that work.
 
 ## Which transport works on which host
 
-**Git, everywhere, and almost nothing else yet.** The reason is one line: every
-host above except the Azure Function App starts the loop through `start.sh`,
-and `start.sh` refuses to continue without a git `origin` remote.
+`start.sh` asks the transport rather than assuming git. Set `TRANSPORT` and that
+transport's variables and the preflight checks *that* channel - so a relay or
+blob station now starts with the same command, and gets the same table.
+
+What is still git-only is how a host **passes those variables in**. That is the
+next thing on [the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md),
+not a property of the station.
 
 | host | git | Azure Blob | relay | share, bundle, object store |
 |---|---|---|---|---|
-| operator's terminal | yes | by hand | by hand | no station side |
-| Docker, Kubernetes | yes | no | no | no station side |
-| systemd, launchd, setsid | yes | not as a service | not as a service | no station side |
-| Windows scheduled task | yes | not as a service | not as a service | no station side |
-| pipelines | yes | no | no | no station side |
-| Azure ACI, Web App, Apps Job, VM | yes | no | no | no station side |
-| Azure Function App | no `git` in the image | **yes** | no | no station side |
+| operator's terminal | yes | **yes** | **yes** | no station side |
+| Docker, Kubernetes | yes | not plumbed | not plumbed | no station side |
+| systemd, launchd, setsid | yes | not plumbed | not plumbed | no station side |
+| Windows scheduled task | yes | not plumbed | not plumbed | no station side |
+| pipelines | yes | not plumbed | not plumbed | no station side |
+| Azure ACI, Web App, Apps Job, VM | yes | not plumbed | not plumbed | no station side |
+| Azure Function App | no `git` in the image | **yes** | not plumbed | no station side |
 
-**"by hand"** means: skip `start.sh`, set `TRANSPORT` and the transport's
-variables yourself, and run `./station.sh` directly. Nothing configures it for
-you, and the relay also needs `heliograph-seal` planted.
+**"yes"** means: export `TRANSPORT` and the transport's variables, then run
+`./start.sh` exactly as you would for git. The relay also needs
+`heliograph-seal` present, and `./start.sh --check` says so if it is not.
 
-**"not as a service"** is the same thing with a sting. `service.sh` and
-`service.ps1` both start the loop through `start.sh`, so running a non-git
-transport under them means bypassing the very mechanism you installed - and
-with it the restart policy, which is the reason to use a service at all.
+**"not plumbed"** means the station can do it and the host recipe cannot carry
+it there. `entrypoint.sh`, the Kubernetes manifest, the service units and the
+Azure templates all set up a git checkout and pass no `TRANSPORT` through, so
+selecting another transport means editing the recipe. Nothing refuses it - it
+just is not wired.
 
 **"no station side"** means the CLI implements the transport and the station
 has no code to read it, so the combination cannot work at all.

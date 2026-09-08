@@ -220,6 +220,44 @@ cap_redact() {
     -e "s/-----BEGIN [A-Z ]*PRIVATE KEY-----/***REDACTED PRIVATE KEY***/g"
 }
 
+# --- masking ONE url, rather than filtering a stream --------------------------
+# cap_redact above is a stream filter, and it is the wrong tool where a script
+# prints a URL it is holding in a variable. Nothing pipes those through it: the
+# preflight table is printed directly, and `say "transport: $(tp_describe)"`
+# goes straight to the terminal and the journal.
+#
+# Same two positional rules as cap_redact's, spelled once each so a value and a
+# stream can never disagree about what a credential looks like. `***` rather
+# than `***REDACTED***` because these appear mid-sentence in a table where the
+# line has to stay readable.
+#
+# WHY TWO, AND WHY SEPARATELY CALLABLE. Rule 1 needs a colon, so it misses the
+# bare `https://ghp_TOKEN@host/...` form, which is the commonest GitHub PAT
+# clone URL there is. Rule 2 covers that but cannot tell a token from a plain
+# username, and the git preflight has to tell the operator which of the two it
+# is looking at - so it applies them one at a time and compares. That is the
+# only reason they are exposed individually; anything that just wants a URL it
+# can safely print wants cap_mask_url.
+#
+# RULE 1 MASKS BOTH SIDES OF THE COLON, and cap_redact's does not. That
+# difference is deliberate and it is the one thing here worth arguing about.
+#
+# `https://<token>:x-oauth-basic@github.com/org/repo.git` is a documented git
+# form: the SECRET is the username and the password is a fixed placeholder.
+# Masking only the password prints the token in full, which is the exact defect
+# this function exists to remove, in the shape most likely to carry a real
+# credential. So the username goes too.
+#
+# cap_redact keeps the username, because it filters ARBITRARY LOG TEXT where
+# `postgres://appuser:pw@db` is evidence somebody is trying to read, and it has
+# a dozen pattern rules that catch a token-shaped username anyway. This one
+# filters a URL a script is about to PRINT, with no pattern rules in front of
+# it, and the only URL it is ever given is the station's own git remote - which
+# is precisely where that form lives. Different input, different trade.
+cap_mask_url_password() { printf '%s' "$1" | sed -E 's#://[^/@:]*:[^/@]*@#://***:***@#'; }
+cap_mask_url_userinfo() { printf '%s' "$1" | sed -E 's%(https?://)[^/@:?#,]*@%\1***@%I'; }
+cap_mask_url() { cap_mask_url_userinfo "$(cap_mask_url_password "$1")"; }
+
 # --- the account IS the blast radius -----------------------------------------
 # This toolkit holds no credentials: no cloud auth, no API keys, nothing but the
 # git remote. So the honest answer to "what could this do to the estate" is
@@ -668,6 +706,42 @@ cap_push() {
 # a fix to either would otherwise have to be made twice - which is exactly how
 # this went wrong the first time.
 
+# cap_transport_file <name> - the path to a transport, or a refusal
+#
+# Exit 0 and print the path; 1 when there is no such file; 2 when the name is
+# not one that may become a filename at all.
+#
+# THE NAME IS A FILENAME, so it is validated before it becomes one.
+#
+# It is interpolated straight into a path that is then SOURCED, and it arrives
+# from the environment. `TRANSPORT=../station` resolves to $REPO_ROOT/station.sh
+# and would source the loop into the middle of the runner. Lowercase, digits and
+# hyphens only - which is every transport that exists and every one anybody would
+# write - so a name that is not one is a mistake or an attempt, and both get
+# refused rather than resolved.
+#
+# This is the same posture station.sh takes towards the request's env line: the
+# request is a trusted control channel because it names the step to run, and
+# "trusted" is still not a reason to hand it a path.
+#
+# IT IS A FUNCTION, rather than the two lines it looks like, because it now has
+# two callers. cap_transport_load below loads the transport in order to DELIVER;
+# start.sh loads it in order to CHECK, and reports a failure through its own
+# table rather than to stderr. A security check with two copies is a security
+# check that gets fixed once.
+cap_transport_file() {
+  local name="$1"
+  case "$name" in
+    ''|*[!a-z0-9-]*)
+      echo "refusing transport name '$name': it becomes a filename that gets sourced," >&2
+      echo "  so only lowercase letters, digits and hyphens are accepted." >&2
+      return 2 ;;
+  esac
+  local f="${REPO_ROOT:-.}/transports/${name}.sh"
+  [ -f "$f" ] || return 1
+  printf '%s' "$f"
+}
+
 # Load the transport, once. Idempotent, so an early call to report problems
 # while somebody is still listening costs nothing at delivery time.
 #
@@ -680,28 +754,13 @@ cap_transport_load() {
   [ -n "$_CAP_TP_STATE" ] && return 0
   CAP_TRANSPORT="${TRANSPORT:-git}"
 
-  # THE NAME IS A FILENAME, so it is validated before it becomes one.
-  #
-  # It is interpolated straight into a path that is then SOURCED, and it arrives
-  # from the environment. `TRANSPORT=../station` resolves to
-  # $REPO_ROOT/station.sh and would source the loop into the middle of the
-  # runner. Lowercase, digits and hyphens only - which is every transport that
-  # exists and every one anybody would write - so a name that is not one is a
-  # mistake or an attempt, and both get refused rather than resolved.
-  #
-  # This is the same posture station.sh takes towards the request's env line:
-  # the request is a trusted control channel because it names the step to run,
-  # and "trusted" is still not a reason to hand it a path.
-  case "$CAP_TRANSPORT" in
-    ''|*[!a-z0-9-]*)
-      _CAP_TP_STATE="unusable"
-      echo "refusing transport name '$CAP_TRANSPORT': it becomes a filename that gets sourced," >&2
-      echo "  so only lowercase letters, digits and hyphens are accepted." >&2
-      return 0 ;;
-  esac
-
-  local f="${REPO_ROOT:-.}/transports/${CAP_TRANSPORT}.sh"
-  if [ ! -f "$f" ]; then
+  local f rc
+  f="$(cap_transport_file "$CAP_TRANSPORT")"; rc=$?
+  if [ "$rc" = "2" ]; then
+    _CAP_TP_STATE="unusable"
+    return 0
+  fi
+  if [ "$rc" != "0" ]; then
     # No transports directory at all: an older payload, or a checkout somebody
     # is running by hand. cap_push is what that has always done.
     _CAP_TP_STATE="none"
