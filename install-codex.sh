@@ -30,12 +30,9 @@ for src in "$SCRIPT_DIR"/skills/*/; do
   # link fails more confusingly than a missing file, because it looks
   # installed. Only symlinks are removed, so a real SKILL.md is never at risk.
   find "$target" -mindepth 1 -maxdepth 1 -type l -exec rm -f {} +
-  # Every directory SKILL.md can reference, so each one exists under the
-  # rewritten path too. The skill drives the heliograph CLI, so references/
-  # is the only payload it carries - the station ships inside the binary.
-  for sub in references; do
-    [ -d "$src/$sub" ] && ln -sfn "$src/$sub" "$target/$sub"
-  done
+  # The skill drives the heliograph CLI, so references/ is the only payload
+  # it carries - the station ships inside the binary.
+  [ -d "$src/references" ] && ln -sfn "$src/references" "$target/references"
   sed "s#\${CLAUDE_SKILL_DIR}#$target#g" "$src/SKILL.md" > "$target/SKILL.md"
 done
 
