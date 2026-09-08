@@ -28,7 +28,7 @@ twenty untested templates would spend the credibility of the ones that work.
 
 | host | what starts the loop | status |
 |---|---|---|
-| operator's terminal | `./start.sh` | **proven** - 124 assertions, every CI run |
+| operator's terminal | `./start.sh` | **proven** - 145 assertions, every CI run |
 | Docker | `entrypoint.sh`, then `exec ./start.sh` | **proven** - CI builds the image and runs a loop in it |
 | Kubernetes | the same image, one replica | **proven** - CI applies the manifest to a real cluster |
 | systemd `--user` + lingering | `service.sh install` | **proven** - CI installs a unit and finds a running loop |

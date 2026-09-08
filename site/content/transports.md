@@ -317,8 +317,15 @@ tp_fetch_self          bring a newer station payload, if this transport can
 tp_put_status          publish a status document
 tp_put_progress        publish a partial-log snapshot
 tp_put_log             deliver the FINISHED log
-tp_check               can this station reach the transport at all
+tp_check               can this station WRITE through the transport
 ```
+
+`tp_check` proves a write, not a read, and every implementation does it the
+cheapest way its store allows: git dry-runs a push, Azure Blob puts a
+`heliograph-write-check` blob in the lane, the relay makes an authenticated
+call. **Read access is not write access**, and a credential that reads
+perfectly and cannot write fails on the log, an hour later, with nobody left to
+tell.
 
 `tp_put_log` is required of every transport, with no capability flag and no way
 to opt out, and it is the newest of the seven for an uncomfortable reason. It

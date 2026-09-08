@@ -238,7 +238,23 @@ cap_redact() {
 # is looking at - so it applies them one at a time and compares. That is the
 # only reason they are exposed individually; anything that just wants a URL it
 # can safely print wants cap_mask_url.
-cap_mask_url_password() { printf '%s' "$1" | sed -E 's#(://[^/@:]*):[^/@]*@#\1:***@#'; }
+#
+# RULE 1 MASKS BOTH SIDES OF THE COLON, and cap_redact's does not. That
+# difference is deliberate and it is the one thing here worth arguing about.
+#
+# `https://<token>:x-oauth-basic@github.com/org/repo.git` is a documented git
+# form: the SECRET is the username and the password is a fixed placeholder.
+# Masking only the password prints the token in full, which is the exact defect
+# this function exists to remove, in the shape most likely to carry a real
+# credential. So the username goes too.
+#
+# cap_redact keeps the username, because it filters ARBITRARY LOG TEXT where
+# `postgres://appuser:pw@db` is evidence somebody is trying to read, and it has
+# a dozen pattern rules that catch a token-shaped username anyway. This one
+# filters a URL a script is about to PRINT, with no pattern rules in front of
+# it, and the only URL it is ever given is the station's own git remote - which
+# is precisely where that form lives. Different input, different trade.
+cap_mask_url_password() { printf '%s' "$1" | sed -E 's#://[^/@:]*:[^/@]*@#://***:***@#'; }
 cap_mask_url_userinfo() { printf '%s' "$1" | sed -E 's%(https?://)[^/@:?#,]*@%\1***@%I'; }
 cap_mask_url() { cap_mask_url_userinfo "$(cap_mask_url_password "$1")"; }
 

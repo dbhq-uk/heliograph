@@ -80,6 +80,17 @@ tp_init() {
   cap_need RELAY_IDENTITY "this station's key file" || return 1
   cap_need RELAY_PEER     "the control side's public identity, which is what a request is verified against" || return 1
   [ -r "$RELAY_IDENTITY" ] || { echo "station: cannot read $RELAY_IDENTITY" >&2; return 1; }
+  # BOTH of them. Only the identity was checked, and a station with an
+  # unreadable or absent RELAY_PEER started perfectly: tp_describe turned the
+  # failed fingerprint into "<unreadable>" and tp_check only ever tested HTTP.
+  # Every request then failed verification and every log failed to seal, on a
+  # machine nobody can log into, for a reason the preflight had already been
+  # told and swallowed.
+  [ -r "$RELAY_PEER" ] || {
+    echo "station: cannot read $RELAY_PEER, and that file is what a request is verified against." >&2
+    echo "         Without it this station can neither accept a request nor seal a log." >&2
+    return 1
+  }
 
   RELAY_BASE="${RELAY_URL%/}"
   RELAY_STATE="${RELAY_STATE:-$REPO_ROOT/.station-relay-state}"
@@ -112,6 +123,16 @@ _relay_url() { printf '%s/v1/%s/%s/%s' "$RELAY_BASE" "$RELAY_ESTATE" "$RELAY_STA
 
 tp_check() {
   local code
+  # THE KEYS FIRST, before any network. Readable is not the same as usable: a
+  # truncated peer key, or the wrong file entirely, is readable and fails every
+  # verification afterwards. `fingerprint` parses it and is the cheapest thing
+  # that does, so a key that will not parse is caught here rather than on the
+  # first request that never runs.
+  "$RELAY_SEAL" fingerprint --peer "$RELAY_PEER" >/dev/null 2>&1 || {
+    say "the control side's public identity at $RELAY_PEER will not parse."
+    say "  Every request would fail verification and every log would fail to seal."
+    return 1
+  }
   code="$(curl -sS -o /dev/null -w '%{http_code}' -m 20 \
             "$RELAY_BASE/health" 2>/dev/null)" || return 1
   [ "$code" = "200" ] || { say "relay health: HTTP $code"; return 1; }

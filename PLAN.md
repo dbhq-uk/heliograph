@@ -100,6 +100,18 @@ station could never run a step at all. Nothing else had noticed.
 env guard, `cap_push` returning 0 on failure, a committed test artefact that
 `bootstrap` would have planted into every station.
 
+**A reachability check is not a delivery check.** `tp_check` on the blob
+transport counted an HTTP 404 as success, on the argument that an absent request
+proves the account and the credential. A misspelt container, a wrong account and
+a read-only SAS all answer exactly like that, so all three cleared the preflight
+and failed on the first upload - an hour later, with nobody left to tell. Every
+`tp_check` now proves a WRITE, the cheapest way its store allows.
+
+**Checking one of a pair is checking neither.** The relay verified
+`RELAY_IDENTITY` was readable and never `RELAY_PEER`, so a station with no peer
+key started, then failed every verification and every seal. `tp_describe` turned
+the failed fingerprint into `<unreadable>` and printed it beside an `ok`.
+
 **A command substitution is a subshell, and a transport's `tp_init` sets
 variables the rest of the run needs.** `why="$(tp_init 2>&1)"` looked like the
 tidy way to fold a failure into the preflight table. It reported the transport

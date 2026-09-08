@@ -141,7 +141,7 @@ tp_check() {
 tp_describe() {
   local url
   url="$(git remote get-url origin 2>/dev/null)"
-  printf 'git %s on %s' "$(cap_mask_url "${url:-<no origin>}")" "$BRANCH"
+  printf 'git %s on %s' "$(cap_mask_url "${url:-<no origin>}")" "${BRANCH:-<no branch>}"
 }
 
 # The ordinary poll: bring the branch up to date and read the request from the
@@ -531,7 +531,7 @@ _git_verify() {
 _git_want_scope() {
   local want="$1"
   [ -n "$want" ] || return 0
-  if [ "$BRANCH" = "$want" ]; then
+  if [ "${BRANCH:-}" = "$want" ]; then
     report ok "branch wanted" "$want, already checked out"
   elif cap_git ls-remote --exit-code --heads origin "refs/heads/$want" >/dev/null 2>&1; then
     report ok "branch wanted" "$want exists on origin and would be checked out"
@@ -552,10 +552,37 @@ _git_want_scope() {
   fi
 }
 
+# CALLED EVEN WHEN tp_init FAILED, so every `${BRANCH:-}` here is guarded and
+# nothing assumes a branch. That is the contract start.sh documents, and it is
+# what keeps one trip naming every blocker: a detached HEAD fails tp_init, and a
+# read-only deploy key on the same machine has to be reported in the same table
+# rather than on the operator's second visit.
+#
+# Everything below still works detached. `ls-remote` needs no branch, and the
+# write check pushes `HEAD:refs/heads/heliograph-write-check`, which is a commit
+# on either kind of HEAD.
 tp_preflight() {
-  report ok git "$(git --version)"
-  # tp_init has already refused a detached HEAD, so by here this is a branch.
-  report ok branch "$BRANCH"
+  if command -v git >/dev/null 2>&1; then
+    report ok git "$(git --version)"
+  else
+    # tp_init has already failed and said so. Repeat it as a check rather than
+    # leaving a git preflight with no git line in it at all.
+    report FAIL git "git is this station's transport and it is not on PATH. Install git and put it first on PATH"
+    return 0
+  fi
+
+  # base64 builds the HTTPS auth header, in cap_git, and nowhere else in this
+  # toolkit. It was a universal machine check, which refused a relay station -
+  # which has no auth header to build - for the absence of a tool it never uses.
+  # caplib no longer asks for `-w0`: `base64 | tr -d '\n'` is the same thing and
+  # is universal, so this now only fails where there is no base64 at all.
+  if printf 'x' | base64 | tr -d '\n' >/dev/null 2>&1; then
+    report ok base64 "an HTTPS auth header can be built"
+  else
+    report FAIL base64 "no usable base64 on PATH, so cap_git cannot build an auth header for an HTTPS remote"
+  fi
+
+  [ -n "${BRANCH:-}" ] && report ok branch "$BRANCH"
   _git_want_scope "${TP_WANT_SCOPE:-}"
   _git_credential
   _git_verify

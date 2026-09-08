@@ -132,12 +132,33 @@ _blob_put() {
 
 _lane() { printf '%s/%s/%s' "$BLOB_PREFIX" "$PIGEONHOLE_LANE" "$1"; }
 
+# PROVE THE WRITE, not merely the read.
+#
+# This used to be a GET, and a 404 was counted as success on the argument that
+# an absent request proves the account, the container and the credential. It
+# does not prove enough. A misspelt PIGEONHOLE_CONTAINER answers 404, and so
+# does a nonexistent account path; a SAS with `r` and no `w` answers 200 to
+# every read it will ever be asked for. All three cleared the preflight and
+# then failed on the first status upload, which is an hour later with nobody
+# left to tell - the exact failure a preflight exists to move forward in time.
+#
+# A PUT to a fixed probe blob, and NO delete. Deleting would need `d` on the
+# SAS, which a correctly scoped station credential need not have, so a check
+# that deleted would fail on a credential that is perfectly good. The probe is
+# one small blob with a name that says what it is, overwritten by the next
+# preflight rather than accumulating.
 tp_check() {
-  # Reading an absent blob is a successful round trip: it proves the account,
-  # the container and the credential without needing anything to be there yet.
-  _blob_get "$(_lane request)" /dev/null
-  local rc=$?
-  [ "$rc" = "2" ] && return 1
+  local tmp rc
+  tmp="$(mktemp)" || return 1
+  printf 'heliograph write check\n' > "$tmp"
+  _blob_put "$(_lane "heliograph-write-check")" "$tmp"; rc=$?
+  rm -f "$tmp"
+  [ "$rc" = "0" ] || {
+    say "the blob transport could not write to $BLOB_PREFIX/$PIGEONHOLE_LANE."
+    say "  A read-only SAS, a misspelt container and a wrong account all look"
+    say "  exactly like this. The station would capture logs it could not ship."
+    return 1
+  }
   return 0
 }
 

@@ -144,14 +144,12 @@ preflight() {
     report warn "sed -u" "this sed has no -u (busybox does not). Timestamps are unaffected - they are applied before sed - but a CANCELLED run will lose its partial log, and terminal output arrives in blocks. Install GNU sed and put it first on PATH to get both back"
   fi
 
-  # base64 -w0 is how caplib builds the HTTPS auth header. BSD base64 wraps.
-  if printf 'x' | base64 | tr -d '\n' >/dev/null 2>&1; then
-    report ok "base64" "an HTTPS auth header can be built"
-  else
-    # caplib no longer asks for -w0: `base64 | tr -d '\n'` is the same thing
-    # and is universal, so this only fails where there is no base64 at all.
-    report FAIL "base64" "no usable base64 on PATH, so cap_git cannot build an auth header for an HTTPS remote"
-  fi
+  # base64 is NOT checked here any more, for the same reason git is not. The one
+  # caller is cap_git, building an HTTPS auth header; the relay and blob
+  # transports use curl and never touch it. Blocking a relay station for a
+  # missing base64, and telling its operator it is needed for a git remote they
+  # do not have, is a lie in the one table they can read. It is git's tp_init's
+  # question and it is asked there.
 
   if command -v sha256sum >/dev/null 2>&1; then
     report ok sha256sum "station.sh can detect its own updates"
@@ -241,15 +239,41 @@ transport() {
   # shellcheck disable=SC1090
   . "$f"
 
-  errf="$(mktemp 2>/dev/null || printf '/tmp/hg-tp-init.%s' "$$")"
+  # IN $REPO_ROOT, NOT /tmp, and not behind an `|| mktemp-is-missing` fallback.
+  # `mktemp 2>/dev/null || printf '/tmp/hg-tp-init.%s' "$$"` was the first
+  # version, and on a box without mktemp that is a PREDICTABLE path in a
+  # world-writable directory which this script then opens with truncation: any
+  # other local user pre-creates it as a symlink and start.sh truncates whatever
+  # it points at, or as a FIFO and the preflight hangs. This directory is the
+  # station's own payload; anybody who can plant a symlink here can already edit
+  # station.sh, so there is nothing left to defend.
+  #
+  # Removed before it is written as well as after, because start.sh execs
+  # station.sh at the end and an EXIT trap does not survive an exec.
+  errf="$REPO_ROOT/.station-tp-init"
+  rm -f "$errf"
   tp_init 2>"$errf"; rc=$?
   # Its own words, with the "station: " prefix it writes for the loop's output
   # stripped and the lines joined, because this goes in a one-line table cell.
   why="$(sed -e 's/^ *station: */ /' -e 's/^ *//' "$errf" 2>/dev/null | tr '\n' ' ')"
   why="${why%"${why##*[![:space:]]}"}"
   rm -f "$errf"
+
   if [ "$rc" != "0" ]; then
     report FAIL transport "the '$CAP_TRANSPORT' transport will not initialise here.${why:+ $why}"
+    # NOT a return. ONE TRIP has to name every blocker it can see.
+    #
+    # A detached HEAD fails git's tp_init, and stopping here reported only that
+    # - so an operator with a detached HEAD AND a read-only deploy key fixed the
+    # branch, ran it again, and only then learnt about the key. Two trips to a
+    # machine nobody can log into, where the old preflight named both at once.
+    #
+    # tp_preflight is therefore contracted to be safe to call after a FAILED
+    # tp_init, reporting what it still can. tp_check is not called in that
+    # state: it is a live round trip and a transport that would not initialise
+    # has no configuration to make one with.
+    declare -F tp_preflight >/dev/null 2>&1 &&
+      TP_WANT_SCOPE="$WANT_BRANCH" tp_preflight
     return 0
   fi
   # A tp_init that succeeded but still had something to say has said something
@@ -262,7 +286,14 @@ transport() {
   # A transport with more to say says it. Everything else gets the one question
   # every transport can answer.
   if declare -F tp_preflight >/dev/null 2>&1; then
-    TP_WANT_SCOPE="$WANT_BRANCH" tp_preflight
+    # ITS EXIT STATUS IS HONOURED, and that is not belt and braces. A
+    # tp_preflight is expected to speak through `report`, but one that simply
+    # `return 1`s - a future transport, a half-written one - would otherwise
+    # leave FAILED untouched and the preflight would report clear on a channel
+    # that had just said it was not usable. Fail closed.
+    if ! TP_WANT_SCOPE="$WANT_BRANCH" tp_preflight; then
+      report FAIL "$CAP_TRANSPORT preflight" "the '$CAP_TRANSPORT' transport's own checks returned a failure. If nothing above says why, that is a defect in transports/$CAP_TRANSPORT.sh: a tp_preflight is expected to name what is wrong through the table"
+    fi
     return 0
   fi
   if tp_check; then
