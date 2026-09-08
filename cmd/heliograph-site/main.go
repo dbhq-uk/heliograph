@@ -22,7 +22,7 @@ import (
 // the quick start, which is the wrong way round for somebody arriving.
 var order = []string{
 	"index", "install", "quickstart",
-	"claude-code", "mcp",
+	"claude-code", "codex", "mcp",
 	"station", "bootstrap", "steps", "runner", "conformance",
 	"hosts", "containers", "service", "azure", "pipelines", "windows",
 	"transports", "relay", "intercom", "cli", "secrets", "security", "method",
@@ -274,7 +274,7 @@ var groups = []struct {
 	slugs []string
 }{
 	{"Start here", []string{"index", "install", "quickstart"}},
-	{"Drive it from an agent", []string{"claude-code", "mcp"}},
+	{"Drive it from an agent", []string{"claude-code", "codex", "mcp"}},
 	{"The far side", []string{"station", "bootstrap", "steps", "runner", "conformance"}},
 	{"Where it runs", []string{"hosts", "containers", "service", "azure", "pipelines", "windows"}},
 	{"Reference", []string{"transports", "relay", "intercom", "cli", "secrets", "security", "method"}},
@@ -297,6 +297,7 @@ var labels = map[string]string{
 	"install":     "Install",
 	"quickstart":  "Quick start",
 	"claude-code": "Claude Code",
+	"codex":       "Codex",
 	"mcp":         "MCP server",
 	"station":     "Station",
 	"bootstrap":   "Plant a station",
@@ -549,6 +550,7 @@ var titles = map[string]string{
 	"cli":         "CLI reference - send, watch, logs --gaps, plant, doctor",
 	"method":      "The method - how to debug across a gap you cannot cross",
 	"mcp":         "MCP server - heliograph as typed tools for any agent",
+	"codex":       "heliograph for Codex - drive a machine the agent cannot reach",
 	"station":     "The station - what heliograph runs on the far side",
 	"bootstrap":   "Planting a station - with the CLI, or without it",
 	"steps":       "Writing a step - one file, one question, and the traps",

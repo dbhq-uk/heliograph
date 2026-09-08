@@ -148,3 +148,50 @@ func TestEveryAzureTemplateIsDocumented(t *testing.T) {
 		t.Errorf("expected 5 Azure templates, found %d - the docs claim five", checked)
 	}
 }
+
+// Every agent this repository ships an installer for must be documented.
+//
+// install-codex.sh has existed for as long as install.sh, and the site
+// mentioned Codex in exactly one line of one page while Claude Code had a page
+// of its own. An installer nobody can find is an installer nobody runs, and
+// "which agents does this support" is the first question a reader asks.
+func TestEveryShippedInstallerIsDocumented(t *testing.T) {
+	site := siteText(t)
+
+	// installer file -> the word a reader would search for.
+	agents := map[string]string{
+		"install.sh":       "Claude Code",
+		"install-codex.sh": "Codex",
+	}
+
+	ents, err := os.ReadDir("../..")
+	if err != nil {
+		t.Skipf("the repository root is not here: %v", err)
+	}
+	found := 0
+	for _, e := range ents {
+		name := e.Name()
+		if !strings.HasPrefix(name, "install") || !strings.HasSuffix(name, ".sh") {
+			continue
+		}
+		found++
+		agent, ok := agents[name]
+		if !ok {
+			t.Errorf("%s ships and this test has no agent name for it: add one, "+
+				"and make sure a page documents that agent", name)
+			continue
+		}
+		if !strings.Contains(site, agent) {
+			t.Errorf("%s ships and no site page mentions %q", name, agent)
+		}
+		// And the installer itself has to be findable, or a reader is told the
+		// agent is supported without being told how.
+		if !strings.Contains(site, name) {
+			t.Errorf("the site names %q as supported but never names %s, so there is "+
+				"nothing to run", agent, name)
+		}
+	}
+	if found == 0 {
+		t.Fatal("no installers were found, so this check asserted nothing")
+	}
+}

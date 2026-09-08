@@ -73,6 +73,8 @@ and friends:
 ```
 /plugin marketplace add dbhq-uk/marketplace
 /plugin install heliograph@dbhq         # Claude Code
+./install-codex.sh                      # Codex, from a clone
+./install.sh                            # Claude Code, from a clone
 npx skills add dbhq-uk/heliograph       # any agent, via skills.sh
 ```
 

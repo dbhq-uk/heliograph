@@ -21,12 +21,15 @@ go install github.com/dbhq-uk/heliograph/cmd/heliograph@latest
 
 ## The agent skill
 
-The same loop, driven from Claude Code, Codex, Cursor and friends. See
-[Claude Code](/claude-code) for what it does.
+The same loop, driven from an agent. [Claude Code](/claude-code) and
+[Codex](/codex) each have a page; Cursor, Copilot, Windsurf, Gemini and Cline
+install through skills.sh below, and anything that speaks MCP can use
+[the MCP server](/mcp) instead.
 
 ```
 /plugin marketplace add dbhq-uk/marketplace
 /plugin install heliograph@dbhq         # Claude Code
+./install-codex.sh                      # Codex, from a clone
 npx skills add dbhq-uk/heliograph       # any agent, via skills.sh
 ```
 

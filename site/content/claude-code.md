@@ -15,7 +15,19 @@ on the wrong side of a change-control policy, it cannot run anything at all.
 /plugin install heliograph@dbhq
 ```
 
-Or for any other agent - Cursor, Copilot, Windsurf, Gemini, Cline:
+Or from a clone, which is what you want if you intend to edit the skill:
+
+```bash
+git clone https://github.com/dbhq-uk/heliograph
+cd heliograph && ./install.sh
+```
+
+That one symlinks the whole skill directory into `~/.claude/skills/`, so every
+edit is live with no re-run. Claude Code substitutes `${CLAUDE_SKILL_DIR}` to
+the skill's own directory, which is what makes a pure symlink install possible;
+[Codex does not, so its installer differs](/codex).
+
+For any other agent - Cursor, Copilot, Windsurf, Gemini, Cline:
 
 ```bash
 npx skills add dbhq-uk/heliograph
