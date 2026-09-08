@@ -16,9 +16,9 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=assert.sh disable=SC1091
 . "$HERE/assert.sh"
-TOOLKIT="$(cd "$HERE/../skills/heliograph/toolkit" && pwd)"
+TOOLKIT="$(cd "$HERE/../station/bash" && pwd)"
 
-# shellcheck source=../skills/heliograph/toolkit/caplib.sh disable=SC1091
+# shellcheck source=../station/bash/caplib.sh disable=SC1091
 . "$TOOLKIT/caplib.sh"
 
 red() { printf '%s\n' "$1" | cap_redact; }

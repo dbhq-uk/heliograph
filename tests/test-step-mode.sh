@@ -18,13 +18,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=assert.sh disable=SC1091
 . "$HERE/assert.sh"
 ROOT="$(cd "$HERE/.." && pwd)"
-TOOLKIT="$ROOT/skills/heliograph/toolkit"
+TOOLKIT="$ROOT/station/bash"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 REPO="$TMP/transport"
-"$ROOT/skills/heliograph/scripts/bootstrap.sh" "$REPO" >/dev/null 2>&1
+"$ROOT/station/bootstrap.sh" "$REPO" >/dev/null 2>&1
 
 # PUSH=0 throughout: this file is about the gate, not about git, and a step that
 # reaches cap_push has already passed the thing under test.

@@ -23,7 +23,7 @@ GIT="git -c user.email=ci@example.com -c user.name=ci"
 # to exercise ls-remote and push --dry-run for real.
 make_repo() {
   local d="$1"
-  "$ROOT/skills/heliograph/scripts/bootstrap.sh" "$d" >/dev/null 2>&1
+  "$ROOT/station/bootstrap.sh" "$d" >/dev/null 2>&1
   git init -q --bare "$d.origin.git"
   ( cd "$d" \
       && git init -q \

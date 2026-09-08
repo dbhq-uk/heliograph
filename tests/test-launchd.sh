@@ -63,7 +63,7 @@ mkdir -p "$TR"
 git -C "$TR" init -q .
 git -C "$TR" config user.email test@example.invalid
 git -C "$TR" config user.name test
-bash "$REPO/skills/heliograph/scripts/bootstrap.sh" "$TR" >/dev/null 2>&1
+bash "$REPO/station/bootstrap.sh" "$TR" >/dev/null 2>&1
 git init -q --bare "$BARE"
 git -C "$TR" remote add origin "$BARE"
 git -C "$TR" add -A >/dev/null 2>&1

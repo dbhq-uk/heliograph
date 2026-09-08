@@ -25,7 +25,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 TR="$TMP/tr"
 GIT="git -c user.email=ci@example.invalid -c user.name=ci"
-"$ROOT/skills/heliograph/scripts/bootstrap.sh" "$TR" >/dev/null 2>&1
+"$ROOT/station/bootstrap.sh" "$TR" >/dev/null 2>&1
 ( cd "$TR" && git init -q && $GIT add -A && $GIT commit -qm init ) >/dev/null 2>&1
 
 # A fake `id` that answers 0 to `id -u` and defers to the real one otherwise, so

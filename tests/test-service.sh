@@ -47,7 +47,7 @@ mkdir -p "$TR"
 git -C "$TR" init -q .
 git -C "$TR" config user.email test@example.invalid
 git -C "$TR" config user.name test
-bash "$REPO/skills/heliograph/scripts/bootstrap.sh" "$TR" >/dev/null 2>&1
+bash "$REPO/station/bootstrap.sh" "$TR" >/dev/null 2>&1
 
 # A UNIT NAME OF ITS OWN. Without this the suite would install, stop and then
 # uninstall a unit called heliograph.service - and if the person running the
@@ -385,7 +385,7 @@ PLIST
   )
 }
 
-sv_src="$HERE/../skills/heliograph/toolkit/service.sh"
+sv_src="$HERE/../station/bash/service.sh"
 
 assert_contains "service.sh knows about launchd" "launchd_ok()" "$(cat "$sv_src")"
 assert_contains "it installs a LaunchAgent, where a Mac looks for one" \

@@ -94,7 +94,7 @@ station.ps1: no start.sh beside this script.
 
 This has to run from inside a transport repo. Clone the repo the far side gave
 you and run it from there, or bootstrap one with
-skills/heliograph/scripts/bootstrap.sh.
+station/bootstrap.sh.
 "@
 }
 

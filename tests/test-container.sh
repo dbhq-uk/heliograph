@@ -42,7 +42,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-DOCKERFILE="$ROOT/skills/heliograph/toolkit/docker/Dockerfile"
+DOCKERFILE="$ROOT/station/bash/docker/Dockerfile"
 DOCKER_DIR="$(dirname "$DOCKERFILE")"
 IMAGE="heliograph-toolkit-test:local"
 
@@ -274,7 +274,7 @@ GIT="git -c user.email=ci@example.com -c user.name=ci"
 # start.sh's real preflight for real, not a stand-in for it.
 make_transport_repo() {
   local bare="$1" work="$1.work"
-  "$ROOT/skills/heliograph/scripts/bootstrap.sh" "$work" >/dev/null 2>&1
+  "$ROOT/station/bootstrap.sh" "$work" >/dev/null 2>&1
   git init -q --bare "$bare"
   ( cd "$work" && git init -q && git remote add origin "$bare" \
       && $GIT add -A && $GIT commit -qm init && $GIT push -q -u origin HEAD ) >/dev/null 2>&1
@@ -874,7 +874,7 @@ assert_eq "and it does not leave the partial checkout behind" "" \
 # landing on this script's own command line - never a re-proof of what
 # tests/test-container.sh already established about entrypoint.sh itself
 # further up this file.
-WRAP="$ROOT/skills/heliograph/toolkit/docker/heliograph.sh"
+WRAP="$ROOT/station/bash/docker/heliograph.sh"
 
 # wrap <args...> - runs the real wrapper, combined output, bounded at 30s so a
 # defect that hangs cannot wedge the suite. Sets RC/OUT.
@@ -1332,7 +1332,7 @@ assert_eq "and it is genuinely still running the 20s stub, not finished and coin
 # before this test was written; see the fix report.
 make_pushfail_repo() {
   local bare="$1" work="$1.work"
-  "$ROOT/skills/heliograph/scripts/bootstrap.sh" "$work" >/dev/null 2>&1
+  "$ROOT/station/bootstrap.sh" "$work" >/dev/null 2>&1
   printf 'id: fail-push-1\nstep: env\nenv:\ncancel:\nstop:\nnote:\n' > "$work/station/request"
   git init -q --bare "$bare"
   ( cd "$work" && git init -q && git remote add origin "$bare" \

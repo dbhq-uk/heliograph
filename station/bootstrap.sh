@@ -19,7 +19,7 @@
 # =============================================================================
 set -uo pipefail
 
-SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../toolkit" && pwd)"
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/bash" && pwd)"
 TARGET="${1:-}"
 
 if [ -z "$TARGET" ]; then

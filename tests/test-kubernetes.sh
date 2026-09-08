@@ -88,7 +88,7 @@ mkdir -p "$W/tr"
 git -C "$W/tr" init -q .
 git -C "$W/tr" config user.email ci@example.invalid
 git -C "$W/tr" config user.name ci
-bash "$REPO/skills/heliograph/scripts/bootstrap.sh" "$W/tr" >/dev/null 2>&1
+bash "$REPO/station/bootstrap.sh" "$W/tr" >/dev/null 2>&1
 
 # A step that reports what ran it. `heliograph-mode: read-only` is the exact
 # spelling the station's gate requires; anything else is refused, which this
@@ -131,7 +131,7 @@ fi
 # --- images -------------------------------------------------------------------
 say "building images with $RUNTIME"
 if ! "$RUNTIME" build -q -t heliograph-toolkit:test \
-      "$REPO/skills/heliograph/toolkit/docker" >/dev/null 2>&1; then
+      "$REPO/station/bash/docker" >/dev/null 2>&1; then
   t_no "the toolkit image would not build"; t_summary; exit 1
 fi
 t_ok "the toolkit image builds"
@@ -195,7 +195,7 @@ fi
 say "applying toolkit/kubernetes/heliograph.yaml"
 sed -e 's|image: ghcr.io/dbhq-uk/heliograph-toolkit:.*|image: heliograph-toolkit:test\n          imagePullPolicy: Never|' \
     -e 's|value: "https://github.com/YOUR-ORG/YOUR-TRANSPORT-REPO.git"|value: "git://gitd/repo.git"|' \
-    "$REPO/skills/heliograph/toolkit/kubernetes/heliograph.yaml" > "$W/applied.yaml"
+    "$REPO/station/bash/kubernetes/heliograph.yaml" > "$W/applied.yaml"
 
 # The manifest references this secret. git:// needs no credential, so the value
 # is a placeholder - but the reference has to resolve or the pod will not start,

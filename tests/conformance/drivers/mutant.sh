@@ -28,7 +28,7 @@
 # =============================================================================
 
 _M_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_M_TOOLKIT="$(cd "$_M_HERE/../../../skills/heliograph/toolkit" && pwd)"
+_M_TOOLKIT="$(cd "$_M_HERE/../../../station/bash" && pwd)"
 export _M_TOOLKIT   # referenced only so the path is validated, never sourced
 
 drv_name() { printf 'MUTANT - deliberately broken, must fail'; }

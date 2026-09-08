@@ -101,7 +101,7 @@ jobs:
   # tag's own commit - never a locally built image, never an artifact staged
   # by any other job or workflow. That is what makes drift structurally
   # impossible through this path: the published image can only ever be what
-  # `skills/heliograph/toolkit/docker/Dockerfile` produces at the commit the
+  # `station/bash/docker/Dockerfile` produces at the commit the
   # tag points to, because building that Dockerfile at that commit is the
   # only thing this job does before it pushes.
   #
@@ -174,8 +174,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
-          context: skills/heliograph/toolkit/docker
-          file: skills/heliograph/toolkit/docker/Dockerfile
+          context: station/bash/docker
+          file: station/bash/docker/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

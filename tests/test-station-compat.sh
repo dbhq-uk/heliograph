@@ -17,7 +17,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=assert.sh disable=SC1091
 . "$HERE/assert.sh"
-BOOTSTRAP="$HERE/../skills/heliograph/scripts/bootstrap.sh"
+BOOTSTRAP="$HERE/../station/bootstrap.sh"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

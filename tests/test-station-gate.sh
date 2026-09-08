@@ -30,7 +30,7 @@ trap 'pkill -f "$TMP/tr/station.sh" 2>/dev/null; rm -rf "$TMP"' EXIT
 TR="$TMP/tr"
 GIT="git -c user.email=ci@example.invalid -c user.name=ci"
 
-"$ROOT/skills/heliograph/scripts/bootstrap.sh" "$TR" >/dev/null 2>&1
+"$ROOT/station/bootstrap.sh" "$TR" >/dev/null 2>&1
 git init -q --bare "$TMP/origin.git"
 ( cd "$TR" \
     && git init -q \

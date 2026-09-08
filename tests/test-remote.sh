@@ -27,7 +27,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=assert.sh disable=SC1091
 . "$HERE/assert.sh"
 REPO="$(cd "$HERE/.." && pwd)"
-TOOLKIT="$REPO/skills/heliograph/toolkit"
+TOOLKIT="$REPO/station/bash"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -40,7 +40,7 @@ mkdir -p "$TR"
 git -C "$TR" init -q .
 git -C "$TR" config user.email test@example.invalid
 git -C "$TR" config user.name test
-bash "$REPO/skills/heliograph/scripts/bootstrap.sh" "$TR" >/dev/null 2>&1
+bash "$REPO/station/bootstrap.sh" "$TR" >/dev/null 2>&1
 
 cat > "$TR/steps/crlf.sh" <<'EOF'
 #!/usr/bin/env bash

@@ -37,7 +37,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=assert.sh disable=SC1091
 . "$HERE/assert.sh"
 REPO="$(cd "$HERE/.." && pwd)"
-BOOTSTRAP="$REPO/skills/heliograph/scripts/bootstrap.sh"
+BOOTSTRAP="$REPO/station/bootstrap.sh"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

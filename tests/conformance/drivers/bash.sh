@@ -8,8 +8,8 @@
 # =============================================================================
 
 _D_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_D_TOOLKIT="$(cd "$_D_HERE/../../../skills/heliograph/toolkit" && pwd)"
-_D_BOOTSTRAP="$(cd "$_D_HERE/../../../skills/heliograph/scripts" && pwd)/bootstrap.sh"
+_D_TOOLKIT="$(cd "$_D_HERE/../../../station/bash" && pwd)"
+_D_BOOTSTRAP="$(cd "$_D_HERE/../../../station" && pwd)/bootstrap.sh"
 
 drv_name() { printf 'bash toolkit (caplib.sh, run.sh)'; }
 

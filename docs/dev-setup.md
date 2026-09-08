@@ -36,19 +36,19 @@ and every edit takes effect with no re-run. Codex does not substitute
 
 ## 3. Work on the toolkit
 
-`skills/heliograph/toolkit/` is never executed from this repo. It is a payload
+`station/bash/` is never executed from this repo. It is a payload
 that `bootstrap.sh` copies into a transport repo, so develop it from a
 bootstrapped copy:
 
 ```bash
-./skills/heliograph/scripts/bootstrap.sh /tmp/transport
+./station/bootstrap.sh /tmp/transport
 cd /tmp/transport && git init -q && git add -A && git commit -qm init
 PUSH=0 ./run.sh env
 ```
 
 `PUSH=0` captures to `ops-logs/` without committing or pushing, which is what you
 want on a throwaway. Copy anything you change back into
-`skills/heliograph/toolkit/` before committing, and re-run the bootstrap into a
+`station/bash/` before committing, and re-run the bootstrap into a
 clean directory to confirm what you have is what ships.
 
 A step script can also be run straight to the terminal while you write it:
@@ -93,9 +93,9 @@ evidence the loop works is the mistake this section exists to prevent.
 | `skills/heliograph/references/transport.md` | how the control node authenticates to the git host |
 | `skills/heliograph/references/remote-repo.md` | changing a repo that is also on the far side |
 | `skills/heliograph/references/container.md` | running the loop in a container, and the honest limits |
-| `skills/heliograph/scripts/bootstrap.sh` | installs the toolkit into a transport repo |
-| `skills/heliograph/toolkit/` | the payload: runners, `lib/`, `steps/`, `docker/`, `TASK.md` |
-| `skills/heliograph/toolkit/docker/` | the image, the entrypoint that clones, and the `docker run` wrapper |
+| `station/bootstrap.sh` | installs the toolkit into a transport repo |
+| `station/bash/` | the payload: runners, `lib/`, `steps/`, `docker/`, `TASK.md` |
+| `station/bash/docker/` | the image, the entrypoint that clones, and the `docker run` wrapper |
 
 A new hard-won lesson goes in `references/method.md` with the failure that taught
 it. A new trap in writing steps goes in `references/steps.md`. Keep the rules

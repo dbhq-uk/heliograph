@@ -648,7 +648,7 @@ main() {
     if [ ! -x "$WORKDIR/start.sh" ]; then
       echo "entrypoint: cloned $(printf '%s' "$url" | mask_secrets) but it has no executable" >&2
       echo "  ./start.sh - is this a heliograph transport repo? Bootstrap one with" >&2
-      echo "  skills/heliograph/scripts/bootstrap.sh." >&2
+      echo "  station/bootstrap.sh." >&2
       # Clean up what was just cloned, rather than leaving a foreign, non-
       # empty directory behind: without this, the NEXT run of this same
       # container lands in the "not a heliograph checkout" refusal above

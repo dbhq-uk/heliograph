@@ -11,7 +11,7 @@ document has nothing further to say - everything in `references/runner.md`,
 `transport.md` and `secrets.md` applies exactly as it does on bare metal.
 
 ```
-skills/heliograph/toolkit/docker/
+station/bash/docker/
   Dockerfile      the image
   entrypoint.sh   clones the transport repo, then execs start.sh
   heliograph.sh   the docker/podman run, turned into one command
@@ -304,7 +304,7 @@ unconditional `latest` did exactly that. The trigger is left wide and the
 everybody's default.
 
 **Build it yourself, from the same `Dockerfile`** this repo ships at
-`skills/heliograph/toolkit/docker/Dockerfile` - the alternative for an
+`station/bash/docker/Dockerfile` - the alternative for an
 estate that will not pull a third-party image regardless of where it is
 published. Nothing about the toolkit depends on which of the two produced
 the image in front of you.
