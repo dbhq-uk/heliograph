@@ -654,17 +654,14 @@ const NavJS = `<script>
   var opener=document.getElementById('docs-menu-open');
   if(!dialog||!opener){giveUp();return;}
   if(typeof dialog.showModal!=='function'){giveUp();return;}
+
   var closer=dialog.querySelector('[data-close-menu]');
   var panel=dialog.querySelector('.nav-dialog-panel');
-  var drawerCurrent=dialog.querySelector('[aria-current="page"]');
   var side=document.querySelector('.side');
-  var sideCurrent=side&&side.querySelector('[aria-current="page"]');
   var desktop=window.matchMedia('(min-width: 64rem)');
 
-  // Twenty-three links overflow a laptop viewport, so the entry for the page
-  // you are ON can load below the fold - in a second scroll container the
-  // reader has not noticed. Centring it is the only confirmation they get of
-  // where they are.
+  function current(root){return root?root.querySelector('[aria-current="page"]'):null;}
+
   // ONLY WHEN IT IS ACTUALLY OUT OF VIEW. Centring unconditionally scrolled
   // the brand off the top of the sidebar on every page whose entry was near
   // the start, which is a worse first impression than the problem it fixes.
@@ -674,11 +671,12 @@ const NavJS = `<script>
     if(i.top>=b.top&&i.bottom<=b.bottom)return;
     box.scrollTop=Math.max(0,i.top-b.top+box.scrollTop-box.clientHeight/2+i.height/2);
   }
+
   opener.addEventListener('click',function(){
     dialog.showModal();
     opener.setAttribute('aria-expanded','true');
     if(closer)closer.focus({preventScroll:true});
-    window.requestAnimationFrame(function(){reveal(panel,drawerCurrent);});
+    window.requestAnimationFrame(function(){reveal(panel,current(dialog));});
   });
   if(closer)closer.addEventListener('click',function(){dialog.close();});
   dialog.addEventListener('click',function(e){
@@ -690,21 +688,115 @@ const NavJS = `<script>
   dialog.addEventListener('close',function(){
     opener.setAttribute('aria-expanded','false');
     // Focus has to land somewhere a keyboard can see. Below the breakpoint
-    // that is the hamburger it came from; above it, the hamburger is
+    // that is the hamburger it came from; above it the hamburger is
     // display:none and cannot take focus, so the native restoration drops
     // focus to the body and the reader is back at the top of the document
-    // with no idea why. The sidebar entry for the current page is the nearest
-    // equivalent position.
+    // with no idea why.
     if(!desktop.matches){opener.focus();return;}
-    if(sideCurrent)sideCurrent.focus({preventScroll:true});
+    var c=current(side);
+    if(c)c.focus({preventScroll:true});
   });
   function atDesktop(e){
     // An open drawer that survives a resize is an invisible modal holding
     // focus over a layout that no longer has a hamburger to close it with.
     if(e.matches&&dialog.open)dialog.close();
-    if(e.matches)reveal(side,sideCurrent);
+    if(e.matches)reveal(side,current(side));
   }
   atDesktop(desktop);
   desktop.addEventListener('change',atDesktop);
+
+  // ---------------------------------------------------------------- routing
+  // THE SIDEBAR STAYS PUT. Every documentation link was an ordinary full page
+  // load, so the sidebar was destroyed and rebuilt on every click: it flashed,
+  // and worse, its own scroll position went back to the top. On a
+  // twenty-three item list that means the reader loses their place in the
+  // navigation every single time they use the navigation.
+  //
+  // So a same-origin docs link swaps only the article and the page rail. The
+  // sidebar element is never touched, which is what makes it stay still -
+  // nothing here has to remember or restore a scroll offset, because nothing
+  // scrolls it.
+  //
+  // Progressive enhancement throughout. No fetch, no DOMParser, no History
+  // API, a cross-origin link, a modified click or a download: the browser does
+  // what it always did.
+  var main=document.getElementById('main-content');
+  var railBox=document.querySelector('.rail');
+  if(!main||!window.fetch||!window.DOMParser||!window.history.pushState)return;
+
+  var loading=false;
+
+  function samePage(url){
+    return url.pathname===window.location.pathname;
+  }
+
+  function swap(html,url,push){
+    var doc=new DOMParser().parseFromString(html,'text/html');
+    var nextMain=doc.getElementById('main-content');
+    if(!nextMain)return false;                     // not a docs page: let the browser have it
+
+    main.innerHTML=nextMain.innerHTML;
+    var nextRail=doc.querySelector('.rail');
+    if(railBox)railBox.innerHTML=nextRail?nextRail.innerHTML:'';
+    document.title=doc.title;
+
+    // The sidebar is NOT replaced. Only the one attribute that says where we
+    // are moves, in both copies, so the drawer agrees with the sidebar.
+    // Both forms are normalised. Pages serves /azure and /azure/index.html for
+    // the same page and the sidebar links the extensionless form, so a reader
+    // who arrived on /azure.html would otherwise have no entry marked at all.
+    function norm(path){return path.replace(/\/index\.html$/,'').replace(/\.html$/,'').replace(/\/$/,'')||'/';}
+    var wanted=norm(url.pathname);
+    var links=document.querySelectorAll('.side-nav a');
+    for(var i=0;i<links.length;i++){
+      var href=norm(new URL(links[i].getAttribute('href'),window.location.origin).pathname);
+      if(href===wanted){links[i].setAttribute('aria-current','page');links[i].classList.add('here');}
+      else{links[i].removeAttribute('aria-current');links[i].classList.remove('here');}
+    }
+    if(push)window.history.pushState({hg:1},'',url.href);
+    window.scrollTo(0,0);
+    // Focus the article, or a keyboard user is left where the link was, in a
+    // sidebar whose content no longer relates to the page on screen.
+    main.focus({preventScroll:true});
+    reveal(side,current(side));
+    return true;
+  }
+
+  function go(url,push){
+    if(loading)return;
+    loading=true;
+    fetch(url.href,{credentials:'same-origin'}).then(function(r){
+      if(!r.ok)throw new Error('status '+r.status);
+      return r.text();
+    }).then(function(html){
+      var done=function(){ if(!swap(html,url,push))window.location.href=url.href; };
+      // A view transition where the browser has one, and a plain swap where it
+      // does not. Never required: this is the polish, not the mechanism.
+      if(document.startViewTransition)document.startViewTransition(done);
+      else done();
+      loading=false;
+    }).catch(function(){
+      loading=false;
+      window.location.href=url.href;             // never strand the reader
+    });
+  }
+
+  document.addEventListener('click',function(e){
+    if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
+    var a=e.target.closest&&e.target.closest('a');
+    if(!a||!a.href||a.target||a.hasAttribute('download'))return;
+    var url=new URL(a.href);
+    if(url.origin!==window.location.origin)return;
+    if(url.pathname.indexOf('.md')>-1)return;    // the markdown mirror is a file, not a page
+    if(url.hash&&samePage(url))return;           // an in-page anchor is the browser's job
+    if(samePage(url))return;
+    e.preventDefault();
+    if(dialog.open)dialog.close();
+    go(url,true);
+  });
+
+  window.addEventListener('popstate',function(){
+    go(new URL(window.location.href),false);
+  });
 })();
 </script>`
