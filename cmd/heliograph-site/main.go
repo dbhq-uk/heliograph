@@ -368,29 +368,43 @@ func href(slug string) string {
 	return "/" + slug
 }
 
-// sidebar is the docs navigation: every page, grouped, with the current one
-// marked. It replaces a top nav that had eight items in a row - which fitted
-// on a laptop and wrapped on anything smaller, and left the content with
-// nothing to align to.
-func sidebar(p site.Page, all []site.Page) string {
+// sidebarItems is the documentation navigation, emitted as labelled lists.
+//
+// It was a flat run of <p> and <a> siblings. A group heading that is only
+// visually above its links is a heading to a sighted reader and nothing at all
+// to anybody else, so the groups are real lists now, each pointed at its
+// heading by aria-labelledby.
+//
+// `prefix` exists because this is emitted TWICE on a docs page - once in the
+// desktop sidebar, once inside the mobile drawer - and two elements may not
+// share an id. The duplication is deliberate: a permanent sidebar and a modal
+// drawer are not the same component, and pretending they are is what produces
+// a drawer that cannot trap focus.
+func sidebarItems(p site.Page, all []site.Page, prefix string) string {
 	byslug := map[string]site.Page{}
 	for _, o := range all {
 		byslug[o.Slug] = o
 	}
 	var b strings.Builder
-	for _, g := range groups {
-		fmt.Fprintf(&b, `<p class="grp">%s</p>`, escAttr(g.name))
+	for i, g := range groups {
+		id := fmt.Sprintf("%s-group-%d", prefix, i)
+		fmt.Fprintf(&b, `<div class="side-group"><p class="grp" id="%s">%s</p><ul aria-labelledby="%s">`,
+			id, escAttr(g.name), id)
 		for _, slug := range g.slugs {
 			o, ok := byslug[slug]
 			if !ok {
 				continue
 			}
-			cls := ""
+			// aria-current is the machine-readable half. `here` styles it; on
+			// its own it told a screen reader nothing about which page it was
+			// already on.
+			attrs := ""
 			if o.Slug == p.Slug {
-				cls = ` class="here"`
+				attrs = ` class="here" aria-current="page"`
 			}
-			fmt.Fprintf(&b, `<a href="%s"%s>%s</a>`, href(slug), cls, escAttr(label(o)))
+			fmt.Fprintf(&b, `<li><a href="%s"%s>%s</a></li>`, href(slug), attrs, escAttr(label(o)))
 		}
+		b.WriteString(`</ul></div>`)
 	}
 	return b.String()
 }
@@ -403,7 +417,9 @@ func rail(p site.Page) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString(`<aside class="rail"><p class="grp">On this page</p><nav>`)
+	b.WriteString(`<aside class="rail" aria-labelledby="page-nav-title">` +
+		`<p class="grp" id="page-nav-title">On this page</p>` +
+		`<nav aria-labelledby="page-nav-title">`)
 	for _, h := range hs {
 		fmt.Fprintf(&b, `<a href="#%s">%s</a>`, escAttr(h[0]), escAttr(h[1]))
 	}
@@ -421,24 +437,50 @@ func page(p site.Page, all []site.Page) string {
 	// The index carries the hero and the log strip. Every other page is a
 	// reading surface and gets neither: a docs page competing with its own
 	// header is a docs page nobody finishes.
+	// The index carries the hero, the log strip and its own three-link header.
+	// A docs page carries none of them: it gets the mobile bar, the drawer and
+	// the three-column shell instead.
 	hero, wide := "", ""
-	shellOpen, shellClose, railHTML := "", "", ""
+	header, shellOpen, shellClose, railHTML, navJS := "", "", "", "", ""
 	if p.Slug == "index" {
 		hero, wide = heroHTML, " wide"
+		header = fmt.Sprintf(`<header class="site-header">
+  <a class="brand" href="/">%s heliograph</a>
+  %s
+</header>`, site.Mark, nav)
 	} else {
-		// Three columns, the way a docs site that fills its window works:
-		// navigation on the left, the reading column next to it, and the
-		// page's own headings on the right.
-		//
-		// The old layout put a full-bleed header above a centred 68ch column,
-		// so the logo sat at the far left while the first word of the body
-		// began a third of the way across, and neither shared an edge with
-		// anything. That reads as broken even to somebody who could not say
-		// why.
-		shellOpen = `<div class="shell"><aside class="side"><nav>` +
-			sidebar(p, all) + `</nav></aside><div class="col">`
+		// THE DOCS HEADER IS GONE. It was a full-width sticky bar carrying only
+		// the logo, which cost about 56px of every page and forced both sticky
+		// columns onto a magic `top:3.6rem` offset that only approximated its
+		// height. The brand moves into the sidebar, where it shares an edge
+		// with something, and the sticky offsets become zero.
+		header = fmt.Sprintf(`<header class="mobile-bar">
+  <a class="brand" href="/">%s heliograph</a>
+  <button class="menu-button" id="docs-menu-open" type="button"
+    aria-controls="docs-menu" aria-expanded="false" aria-haspopup="dialog">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    <span>Menu</span>
+  </button>
+</header>
+<dialog class="nav-dialog" id="docs-menu" aria-labelledby="docs-menu-title">
+  <div class="nav-dialog-panel">
+    <div class="nav-dialog-head">
+      <h2 id="docs-menu-title">Documentation</h2>
+      <button class="menu-close" type="button" data-close-menu aria-label="Close the documentation menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <nav class="side-nav" aria-label="Documentation pages">%s</nav>
+  </div>
+</dialog>`, site.Mark, sidebarItems(p, all, "drawer"))
+
+		shellOpen = `<div class="docs-shell"><aside class="side">` +
+			`<a class="brand side-brand" href="/">` + site.Mark + ` heliograph</a>` +
+			`<nav class="side-nav" aria-label="Documentation">` +
+			sidebarItems(p, all, "desktop") + `</nav></aside><div class="col">`
 		shellClose = `</div>`
 		railHTML = rail(p) + `</div>`
+		navJS = site.NavJS
 	}
 
 	title := titles[p.Slug]
@@ -447,7 +489,7 @@ func page(p site.Page, all []site.Page) string {
 	}
 
 	return fmt.Sprintf(`<!doctype html>
-<html lang="en-GB">
+<html lang="en-GB" class="no-js">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%[1]s</title>
@@ -466,13 +508,14 @@ func page(p site.Page, all []site.Page) string {
 <link rel="preload" href="/assets/fonts/InstrumentSerif-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/InstrumentSans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
-<header>
-  <a class="brand" href="/">%[5]s heliograph</a>
-  %[6]s
-</header>
+<!-- Flipped before first paint, so a no-JS reader never sees a control that
+     cannot work. The drawer needs a real dialog; the sidebar does not. -->
+<script>document.documentElement.classList.replace('no-js','js')</script>
+<a class="skip-link" href="#main-content">Skip to content</a>
+%[5]s
 %[7]s
 %[11]s
-<main class="doc%[8]s">
+<main id="main-content" tabindex="-1" class="doc%[8]s">
 %[9]s
 </main>
 %[12]s
@@ -482,9 +525,10 @@ func page(p site.Page, all []site.Page) string {
 <p><a href="https://github.com/dbhq-uk/heliograph">Source</a> &middot; <a href="/%[4]s.md">This page as markdown</a></p>
 </div></footer>
 <script>%[10]s</script>
+%[14]s
 `, escAttr(title), escAttr(site.Summary(p.Body)), canonical, p.Slug,
-		site.Mark, nav, hero, wide, site.RenderBody(p.Body), site.HeroJS,
-		shellOpen, shellClose, railHTML)
+		header, nav, hero, wide, site.RenderBody(p.Body), site.HeroJS,
+		shellOpen, shellClose, railHTML, navJS)
 }
 
 // titles are written per page rather than derived from the H1.

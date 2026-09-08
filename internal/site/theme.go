@@ -79,7 +79,7 @@ a{color:var(--gold);text-decoration-color:color-mix(in srgb,var(--gold) 42%,tran
 a:hover{color:var(--flash);text-decoration-color:var(--flash)}
 
 /* --------------------------------------------------------------- header */
-header{
+.site-header,.mobile-bar{
   position:sticky;top:0;z-index:50;
   display:flex;gap:2rem;align-items:center;flex-wrap:wrap;
   /* Full-bleed background and border, content aligned to the shell. Without
@@ -101,18 +101,18 @@ header{
    had to undo them one at a time. The header carries three links on the home
    page and none anywhere else - the sidebar is the navigation once you are in
    the docs. */
-header>nav{display:flex;gap:1.35rem;flex-wrap:nowrap;margin-left:auto}
-header>nav a{color:var(--ink-2);text-decoration:none;font-size:.93rem;
+.site-header>nav{display:flex;gap:1.35rem;flex-wrap:nowrap;margin-left:auto}
+.site-header>nav a{color:var(--ink-2);text-decoration:none;font-size:.93rem;
   position:relative;padding:.15rem 0;white-space:nowrap}
-header>nav a::after{content:'';position:absolute;left:0;right:100%;bottom:-2px;height:1px;
+.site-header>nav a::after{content:'';position:absolute;left:0;right:100%;bottom:-2px;height:1px;
   background:var(--gold);transition:right .3s var(--ease)}
-header>nav a:hover{color:var(--ink)}
-header>nav a:hover::after{right:0}
+.site-header>nav a:hover{color:var(--ink)}
+.site-header>nav a:hover::after{right:0}
 /* Below this the three links become a deliberate second row rather than
    wrapping mid-list. A link never breaks across lines. */
 @media(max-width:420px){
-  header{flex-wrap:wrap;gap:.55rem}
-  header>nav{width:100%;margin-left:0;justify-content:space-between}
+  .site-header{flex-wrap:wrap;gap:.55rem}
+  .site-header>nav{width:100%;margin-left:0;justify-content:space-between}
 }
 
 /* ----------------------------------------------------------------- hero */
@@ -178,57 +178,6 @@ header>nav a:hover::after{right:0}
    The gutters are deliberately small. Width here is not decoration: it is how
    much of a captured log fits on one line before it wraps, and a wrapped log
    line is harder to scan for the gap that matters. */
-.shell{
-  display:grid;
-  grid-template-columns:15.5rem minmax(0,1fr) 13.5rem;
-  gap:0 2.4rem;
-  max-width:90rem;margin:0 auto;
-  padding:0 var(--gutter,clamp(1rem,2.2vw,1.8rem));
-  align-items:start;
-}
-.side{
-  position:sticky;top:3.6rem;align-self:start;
-  max-height:calc(100vh - 3.6rem);overflow-y:auto;
-  padding:2.6rem 0 3rem;
-  border-right:1px solid var(--ridge);
-}
-.side nav{display:flex;flex-direction:column;gap:.08rem;margin:0}
-.side .grp{
-  font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--ink-3,var(--ink-2));font-weight:600;
-  margin:1.5rem 0 .5rem;padding-right:2rem;
-}
-.side .grp:first-child{margin-top:0}
-.side nav a{
-  color:var(--ink-2);text-decoration:none;font-size:.92rem;
-  padding:.34rem .7rem;margin-right:1.6rem;border-radius:6px;
-  line-height:1.35;transition:color .15s var(--ease),background .15s var(--ease);
-}
-.side nav a::after{display:none}          /* the top nav's underline, not wanted here */
-.side nav a:hover{color:var(--ink);background:var(--dusk)}
-.side nav a.here{color:var(--ink);background:var(--dusk);font-weight:500}
-
-.col{min-width:0}                          /* so a wide <pre> scrolls instead of stretching the grid */
-
-/* The rail. Quiet by construction: it is a way back to a heading, not a
-   second navigation competing with the first. */
-.rail{
-  position:sticky;top:3.6rem;align-self:start;
-  max-height:calc(100vh - 3.6rem);overflow-y:auto;
-  padding:3.9rem 0 3rem;
-}
-.rail .grp{
-  font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--ink-2);font-weight:600;margin:0 0 .6rem;
-}
-.rail nav{display:flex;flex-direction:column;gap:.05rem;margin:0}
-.rail nav a{
-  color:var(--ink-2);text-decoration:none;font-size:.85rem;line-height:1.4;
-  padding:.25rem 0 .25rem .7rem;border-left:1px solid var(--ridge);
-}
-.rail nav a::after{display:none}
-.rail nav a:hover{color:var(--ink);border-left-color:var(--gold)}
-
 /* ------------------------------------------------------------- diagrams */
 /* Coloured from the same variables as the prose, so there is no second
    palette to keep in step and they are right in whatever the theme becomes. */
@@ -257,7 +206,7 @@ header>nav a:hover::after{right:0}
 
 /* A diagram is scanned, so it may use the whole column rather than the
    reading measure. Below that it is smaller than its own labels. */
-.shell main .dgw{max-width:none;width:100%}
+.docs-shell main .dgw{max-width:none;width:100%}
 @media(max-width:560px){.dg text{font-size:14px}.dg-sub,.dg-foot{font-size:12px}}
 
 /* ----------------------------------------------------------------- main */
@@ -265,29 +214,181 @@ header>nav a:hover::after{right:0}
    measure it will not exceed. --measure is the line length prose is readable
    at; the column is wider than that so tables and code can use the room. */
 main{max-width:var(--measure);margin:0;padding:2.6rem 0 6rem}
-.shell main{max-width:min(80ch,100%)}
 main.wide{max-width:min(76rem,92vw);margin:0 auto;padding:3.4rem clamp(1.1rem,4vw,2.5rem) 6rem}
 
 /* A table or a code block may use the whole column: they are scanned, not
    read, and a 68ch table wraps cells that were meant to line up. */
-.shell main table,.shell main pre{max-width:none;width:100%}
+.docs-shell main table,.docs-shell main pre{max-width:none;width:100%}
 
-@media(max-width:1180px){
-  .shell{grid-template-columns:14rem minmax(0,1fr);gap:0 2rem}
-  .rail{display:none}                      /* the first column to go: it is the least load-bearing */
+/* And a table WIDER than the column scrolls rather than being cut off. The
+   host-by-transport matrix is five columns and cannot shrink to a phone; with
+   body overflow-x hidden, the columns on the right simply vanished, which is
+   the worst possible failure for a table whose whole content is the right-hand
+   columns. A wrapper rather than display:block on the table itself, so the
+   table keeps its own layout. */
+.tw{overflow-x:auto;max-width:100%}
+.tw table{min-width:32rem}
+@media(min-width:64rem){.tw table{min-width:0}}
+
+/* ------------------------------------------------- the documentation shell */
+/* Mobile first, and that is not a style preference. The old rules built three
+   columns and then took them apart twice; below 820px the sidebar became a
+   wrapped row of every page with the group headings hidden, which is not
+   navigation - it is a sitemap dumped above the article. Position in that row
+   changed with the viewport, so there was nothing to remember, and a keyboard
+   user tabbed through twenty-three links to reach the first word. */
+
+.skip-link{
+  position:fixed;top:.6rem;left:.6rem;z-index:200;
+  padding:.65rem .9rem;border-radius:6px;
+  background:var(--flash);color:var(--night);
+  font-weight:600;text-decoration:none;
+  transform:translateY(calc(-100% - 1.5rem))
 }
-@media(max-width:820px){
-  .shell{grid-template-columns:1fr;padding:0 1.1rem}
-  .side{
-    position:static;max-height:none;border-right:0;
-    border-bottom:1px solid var(--ridge);padding:1.2rem 0;
+.skip-link:focus{transform:none}
+main:focus{outline:none}
+
+.mobile-bar{position:sticky;top:0;z-index:50;justify-content:space-between}
+.menu-button,.menu-close{
+  display:inline-flex;align-items:center;justify-content:center;gap:.45rem;
+  min-width:2.75rem;min-height:2.75rem;padding:.45rem .65rem;
+  border:1px solid var(--slate,var(--ridge));border-radius:7px;
+  background:var(--dusk);color:var(--ink);
+  font:600 .9rem/1 'Archivo',ui-sans-serif,system-ui,sans-serif;cursor:pointer
+}
+.menu-button:hover,.menu-close:hover{border-color:var(--gold);color:var(--flash)}
+.menu-button svg,.menu-close svg{
+  width:1.25rem;height:1.25rem;fill:none;stroke:currentColor;
+  stroke-width:1.8;stroke-linecap:round
+}
+/* Never offer a control that cannot work. */
+.no-js .menu-button{display:none}
+
+.nav-dialog{
+  position:fixed;inset:0;
+  width:100vw;max-width:none;height:100dvh;max-height:none;
+  margin:0;padding:0;border:0;background:transparent;color:var(--ink);overflow:hidden
+}
+.nav-dialog::backdrop{background:rgba(4,7,11,.72)}
+.nav-dialog-panel{
+  width:min(20rem,calc(100vw - 2rem));height:100dvh;
+  overflow-y:auto;scrollbar-gutter:stable;
+  background:var(--night);border-right:1px solid var(--ridge);
+  box-shadow:1rem 0 3rem rgba(0,0,0,.45)
+}
+.nav-dialog-head{
+  position:sticky;top:0;z-index:1;
+  display:flex;align-items:center;justify-content:space-between;
+  min-height:3.5rem;padding:.6rem .8rem .6rem 1rem;
+  background:var(--night);border-bottom:1px solid var(--ridge)
+}
+.nav-dialog-head h2{
+  margin:0;padding:0;border:0;
+  font:600 1rem/1.2 'Archivo',ui-sans-serif,system-ui,sans-serif;letter-spacing:0
+}
+.nav-dialog .side-nav{padding:1rem .75rem 2rem}
+/* A browser with no native dialog has no UA rule hiding a closed one, so
+   without this the whole drawer paints over the page for ever - and the
+   no-JS sidebar appears underneath it, giving two copies of the navigation.
+   Belt and braces, because the failure is total. */
+.no-js .nav-dialog{display:none}
+.nav-dialog:not([open]){display:none}
+html:has(.nav-dialog[open]),body:has(.nav-dialog[open]){overflow:hidden}
+
+.docs-shell{display:block;width:100%;max-width:90rem;margin:0 auto}
+
+/* Below the desktop breakpoint the sidebar is the no-JS fallback: a grouped,
+   vertical list above the article. Plainer than the drawer and still readable,
+   which is the right way for a fallback to differ. */
+.side{position:static;padding:1rem;border-bottom:1px solid var(--ridge)}
+.js .side{display:none}
+.side-brand{display:none}
+
+.side-nav{margin:0}
+.side-group+.side-group{margin-top:1.35rem}
+.side-nav .grp{
+  margin:0 0 .4rem;padding:0 .7rem;color:var(--ink-3,var(--ink-2));
+  font-size:.72rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase
+}
+.side-nav ul{margin:0;padding:0;list-style:none}
+.side-nav li{margin:0}
+.side-nav a{
+  display:flex;align-items:center;min-height:2.75rem;padding:.45rem .7rem;
+  border-radius:6px;color:var(--ink-2);text-decoration:none;
+  font-size:.92rem;line-height:1.35;
+  transition:color .15s var(--ease),background .15s var(--ease)
+}
+.side-nav a::after{display:none}
+.side-nav a:hover{color:var(--ink);background:var(--dusk)}
+.side-nav a.here{color:var(--flash);background:var(--dusk);font-weight:600;
+  box-shadow:inset 2px 0 var(--gold)}
+
+.col{min-width:0;padding:0 1.1rem}
+.docs-shell main{max-width:80ch;margin:0;padding:2rem 0 5rem}
+.rail{display:none}
+
+/* Without this a heading jumped to from the rail lands under the sticky bar. */
+main :where(h1,h2,h3,h4){scroll-margin-top:4.75rem}
+
+/* 64rem: room for a permanent sidebar beside a readable column. */
+@media(min-width:64rem){
+  .mobile-bar{display:none}
+  .docs-shell{display:grid;grid-template-columns:15rem minmax(0,1fr);align-items:start}
+  .side,.js .side{
+    display:block;position:sticky;top:0;align-self:start;
+    height:100dvh;max-height:none;padding:0 0 2rem;
+    overflow-y:auto;scrollbar-gutter:stable;
+    border-right:1px solid var(--ridge);border-bottom:0
   }
-  .side nav{flex-direction:row;flex-wrap:wrap;gap:.2rem}
-  .side .grp{display:none}                 /* group headings in a wrapped row are noise */
-  .side nav a{margin-right:0}
-  main{padding:2rem 0 4rem}
+  .side-brand{display:flex;min-height:3.5rem;margin:0;padding:.6rem 1rem;
+    border-bottom:1px solid var(--ridge)}
+  .side .side-nav{padding:1.25rem .75rem 2rem}
+  .side-nav a{min-height:2.1rem;padding:.35rem .7rem}
+  .col{padding:0 3rem}
+  .docs-shell main{padding-top:2.75rem}
+  main :where(h1,h2,h3,h4){scroll-margin-top:2rem}
 }
+
+/* 80rem: and now the rail as well. Contiguous tracks, no grid gap - the old
+   layout spent two explicit gaps plus per-link margins, so a one-pixel resize
+   at the old 1180 breakpoint took about 300px off the article at once. */
+@media(min-width:80rem){
+  .docs-shell{grid-template-columns:15rem minmax(0,1fr) 15rem}
+  .rail{
+    display:block;position:sticky;top:0;align-self:start;
+    height:100dvh;padding:2.9rem 1rem 2rem;
+    overflow-y:auto;scrollbar-gutter:stable
+  }
+  .rail .grp{
+    margin:0 0 .6rem;color:var(--ink-2);
+    font-size:.72rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase
+  }
+  .rail nav{display:flex;flex-direction:column;gap:.05rem;margin:0}
+  .rail nav a{
+    padding:.3rem 0 .3rem .7rem;border-left:1px solid var(--ridge);
+    color:var(--ink-2);text-decoration:none;font-size:.85rem;line-height:1.4
+  }
+  .rail nav a::after{display:none}
+  .rail nav a:hover{color:var(--ink);border-left-color:var(--gold)}
+}
+
+main ol{margin:1.1rem 0;padding-left:1.35rem}
+main ol li{margin:.35rem 0;padding-left:.25rem}
+main ol li::marker{color:var(--ink-2)}
+
 h1,h2,h3,h4{text-wrap:balance}
+
+/* --------------------------------------------------------------- printing */
+/* A page box is narrower than the desktop breakpoint, so without this every
+   printed page carried the mobile bar and a Menu button that does nothing on
+   paper, while the sidebar stayed hidden. Print the article and nothing else. */
+@media print{
+  .mobile-bar,.nav-dialog,.side,.rail,.skip-link,.site-header,footer{display:none}
+  .docs-shell{display:block;max-width:none}
+  .col{padding:0}
+  .docs-shell main{max-width:none;padding:0}
+  a[href^="/"]::after{content:" (" attr(href) ")";font-size:.85em;color:#555}
+}
 main h1{font-family:'Archivo',sans-serif;font-weight:600;
   font-size:clamp(2.1rem,4.4vw,3rem);line-height:1.08;letter-spacing:-.032em;margin:.2em 0 .5em}
 main h2{font-family:'Archivo',sans-serif;font-weight:600;
@@ -527,3 +628,83 @@ const HeroJS = `
   requestAnimationFrame(frame);
 })();
 `
+
+// NavJS drives the mobile drawer, and nothing else on the page depends on it.
+//
+// A native modal dialog rather than a checkbox, details/summary or :has().
+// Those three can all be made to LOOK like a drawer and none of them supplies
+// what a drawer actually needs: an inert background, contained focus, and
+// Escape. showModal gives all three from the platform, and the alternatives end
+// up hand-building the same behaviour worse.
+//
+// It is progressive enhancement in both directions. Without JS, and on a
+// browser with no dialog support, the class is put back to no-js and the
+// sidebar stays visible above the article as an ordinary grouped list. That is
+// less polished and entirely usable, which is the right way round.
+const NavJS = `<script>
+(function(){
+  // Any bail-out puts the page back into no-JS mode, because the js class is
+  // what HIDES the ordinary sidebar. Returning while still in js leaves a
+  // mobile reader with a Menu button that does nothing and no navigation.
+  function giveUp(){
+    document.documentElement.classList.remove('js');
+    document.documentElement.classList.add('no-js');
+  }
+  var dialog=document.getElementById('docs-menu');
+  var opener=document.getElementById('docs-menu-open');
+  if(!dialog||!opener){giveUp();return;}
+  if(typeof dialog.showModal!=='function'){giveUp();return;}
+  var closer=dialog.querySelector('[data-close-menu]');
+  var panel=dialog.querySelector('.nav-dialog-panel');
+  var drawerCurrent=dialog.querySelector('[aria-current="page"]');
+  var side=document.querySelector('.side');
+  var sideCurrent=side&&side.querySelector('[aria-current="page"]');
+  var desktop=window.matchMedia('(min-width: 64rem)');
+
+  // Twenty-three links overflow a laptop viewport, so the entry for the page
+  // you are ON can load below the fold - in a second scroll container the
+  // reader has not noticed. Centring it is the only confirmation they get of
+  // where they are.
+  // ONLY WHEN IT IS ACTUALLY OUT OF VIEW. Centring unconditionally scrolled
+  // the brand off the top of the sidebar on every page whose entry was near
+  // the start, which is a worse first impression than the problem it fixes.
+  function reveal(box,item){
+    if(!box||!item||!box.clientHeight)return;
+    var b=box.getBoundingClientRect(),i=item.getBoundingClientRect();
+    if(i.top>=b.top&&i.bottom<=b.bottom)return;
+    box.scrollTop=Math.max(0,i.top-b.top+box.scrollTop-box.clientHeight/2+i.height/2);
+  }
+  opener.addEventListener('click',function(){
+    dialog.showModal();
+    opener.setAttribute('aria-expanded','true');
+    if(closer)closer.focus({preventScroll:true});
+    window.requestAnimationFrame(function(){reveal(panel,drawerCurrent);});
+  });
+  if(closer)closer.addEventListener('click',function(){dialog.close();});
+  dialog.addEventListener('click',function(e){
+    // The dialog fills the viewport and the panel is inside it, so a click
+    // landing on the dialog itself is a click on the backdrop.
+    if(e.target===dialog){dialog.close();return;}
+    if(e.target.closest&&e.target.closest('a'))dialog.close();
+  });
+  dialog.addEventListener('close',function(){
+    opener.setAttribute('aria-expanded','false');
+    // Focus has to land somewhere a keyboard can see. Below the breakpoint
+    // that is the hamburger it came from; above it, the hamburger is
+    // display:none and cannot take focus, so the native restoration drops
+    // focus to the body and the reader is back at the top of the document
+    // with no idea why. The sidebar entry for the current page is the nearest
+    // equivalent position.
+    if(!desktop.matches){opener.focus();return;}
+    if(sideCurrent)sideCurrent.focus({preventScroll:true});
+  });
+  function atDesktop(e){
+    // An open drawer that survives a resize is an invisible modal holding
+    // focus over a layout that no longer has a hamburger to close it with.
+    if(e.matches&&dialog.open)dialog.close();
+    if(e.matches)reveal(side,sideCurrent);
+  }
+  atDesktop(desktop);
+  desktop.addEventListener('change',atDesktop);
+})();
+</script>`
