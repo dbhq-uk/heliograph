@@ -56,6 +56,11 @@ func configDir() (string, error) {
 // The name becomes a filename, so `../../.ssh/authorized_keys` has to be
 // refused here rather than trusted to behave. This is a small surface and an
 // unpleasant one to get wrong.
+// ValidName is validName, exported so a caller can refuse a bad name BEFORE it
+// creates a branch and a checkout named after it. Save would catch it, by which
+// point there is a pushed branch and a worktree to clean up.
+func ValidName(n string) error { return validName(n) }
+
 func validName(n string) error {
 	if n == "" {
 		return fmt.Errorf("an estate needs a name")

@@ -46,6 +46,41 @@ a request, the station pushes back a status and a log.
 heliograph init payments --dir ~/transport/payments
 ```
 
+### One repository, several stations
+
+The branch is the channel. Both sides read it from whatever is checked out, so
+a repository already talks to as many machines as it has station branches.
+
+```bash
+heliograph station add db-a        # branch station/db-a, its own checkout, its own estate
+heliograph station add db-b
+heliograph send net-probe -e db-a  # reaches that machine and no other
+```
+
+`station add` creates the branch and pushes it **with an upstream**, checks it
+out into a git worktree beside the existing clone, records the estate, and
+prints what to send the operator. Those go together: a pushed branch with no
+checkout is invisible, and a checkout with no estate cannot be driven.
+
+The worktree is the point on this side. Talking to three stations means three
+checkouts, and switching one checkout between branches is how a request reaches
+the wrong machine. One clone, one fetch, one credential, a directory each.
+
+**Branches are routing isolation, not security isolation.** A repository
+credential usually spans every branch, so a station that is compromised can
+read every other station's logs and push a modified `station.sh` to their
+branch - and pinning does not cover `station.sh`, so the victim drops its own
+gates at its next self-update.
+
+> Put several stations in one repository only where they share a blast radius.
+> Across a trust boundary, separate repositories are the isolation mechanism
+> rather than untidiness.
+
+Two stations on one branch is a configuration error, not a supported mode: both
+answer every request and race on the push. Git refuses to check one branch out
+in two worktrees, which catches it locally; nothing catches it across machines,
+so the published status names the host that answered.
+
 ### The credential
 
 This is where a git station actually fails, so it is worth settling before the

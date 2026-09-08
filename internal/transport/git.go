@@ -328,3 +328,77 @@ func (g *Git) Describe() string {
 // compile-time proof that Git satisfies the interface the relay will also
 // have to satisfy.
 var _ Transport = (*Git)(nil)
+
+// --- fleet management: one repository, several stations ----------------------
+//
+// The branch is already the channel: both sides derive it from whatever is
+// checked out. What was missing is any way to MAKE one. Nothing in this package
+// ran checkout, switch or branch, so setting up a second station meant doing it
+// by hand and remembering to push it with an upstream.
+//
+// These are on *Git rather than on the Transport interface, like RemoteURL and
+// Dir, because they are about managing a repository rather than about moving a
+// document across a gap. No other transport has branches.
+
+// HasLocalBranch reports whether the branch exists in this clone.
+func (g *Git) HasLocalBranch(name string) bool {
+	_, err := g.git("rev-parse", "--verify", "--quiet", "refs/heads/"+name)
+	return err == nil
+}
+
+// HasRemoteBranch reports whether origin already has it.
+//
+// Checked separately from the local one because they fail differently: a branch
+// that exists on the remote and not here is somebody else's station, and
+// creating it locally from this HEAD would be about to overwrite their history.
+func (g *Git) HasRemoteBranch(name string) bool {
+	out, err := g.git("ls-remote", "--heads", "origin", "refs/heads/"+name)
+	return err == nil && strings.TrimSpace(out) != ""
+}
+
+// CreateBranch makes a branch at the current HEAD and pushes it with an
+// upstream, without moving this checkout onto it.
+//
+// `branch <name>` rather than `checkout -b`, deliberately: the caller is
+// attached to this working tree and may be mid-something. Creating a station
+// must not move them.
+//
+// The push sets an upstream because the station's own pushes rely on one, and a
+// branch created without it fails on the first log rather than at setup, on the
+// far side, where nobody can see it.
+func (g *Git) CreateBranch(name string) error {
+	if g.HasRemoteBranch(name) {
+		return fmt.Errorf("origin already has %s: another station may be using it, and creating it here would be about to rewrite that history", name)
+	}
+	if !g.HasLocalBranch(name) {
+		if _, err := g.git("branch", name); err != nil {
+			return err
+		}
+	}
+	if _, err := g.git("push", "--quiet", "-u", "origin", name+":"+name); err != nil {
+		return fmt.Errorf("created %s locally but could not push it: %w", name, err)
+	}
+	return nil
+}
+
+// AddWorktree checks a branch out into its own directory.
+//
+// THE CONTROL SIDE IS WHERE THIS IS NEEDED, which is the opposite of where it
+// first appears to belong. Talking to three stations means three checkouts,
+// because both sides read the branch from the checkout - and switching one
+// checkout between branches is precisely the accident that sends a request to
+// the wrong machine.
+//
+// A worktree gives one clone, one fetch and one credential, with a directory
+// per station. Git refuses to check one branch out in two worktrees at once,
+// which is a useful refusal here rather than a limitation: it is the same
+// mistake as two stations on one branch, caught locally.
+func (g *Git) AddWorktree(dir, branch string) error {
+	if _, err := os.Stat(dir); err == nil {
+		return fmt.Errorf("%s already exists: name the station something else, or pass --dir", dir)
+	}
+	if _, err := g.git("worktree", "add", dir, branch); err != nil {
+		return err
+	}
+	return nil
+}
