@@ -130,6 +130,25 @@ transport that fails on those estates fails on exactly the estates this is for.
 The long poll holds for 25 seconds server-side, so a client must wait longer
 than that or it times out its own successful poll.
 
+## Known limits, before you rely on it
+
+Two, both found by adversarial review and neither yet fixed. They are here
+rather than in an issue tracker because somebody evaluating this transport
+needs them before they choose it.
+
+**A cancelled run's partial log does not arrive.** The station passes it
+alongside the cancellation status, and only the git transport honours that.
+On the relay the cancellation arrives and the partial evidence stays on the
+station.
+
+**Sequence numbers can collide between the loop and the runner.** The loop
+loads its counter once at start; the runner delivers the finished log from its
+own process and advances the counter there. The loop does not reload before
+publishing `idle`, so it can emit a number the runner has already used - and
+the receiver drops anything at or below what it has already accepted, by
+design, because that is the replay defence. One of the two messages can be
+lost.
+
 ## What DBHQ can and cannot claim
 
 **Can:** the hosted relay cannot read your content, and cannot cause a station
