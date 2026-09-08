@@ -76,17 +76,8 @@ func build(src, out string) error {
 		return fmt.Errorf("no pages in %s", src)
 	}
 
-	// Every page must be reachable. A page that exists and is in no navigation
-	// is a page nobody finds, which is the same as not having written it.
-	for _, s := range order {
-		if !seen[s] {
-			return fmt.Errorf("the navigation names %q, which does not exist in %s", s, src)
-		}
-	}
-	for _, p := range pages {
-		if !inOrder(p.Slug) {
-			return fmt.Errorf("%s.md is in no navigation, so nobody would find it: add it to `order`", p.Slug)
-		}
+	if err := validateNavigation(src, pages, seen); err != nil {
+		return err
 	}
 
 	sort.Slice(pages, func(a, b int) bool { return rank(pages[a].Slug) < rank(pages[b].Slug) })
@@ -186,6 +177,77 @@ func sitemap(pages []site.Page) string {
 	return b.String()
 }
 
+// validateNavigation refuses to build a site somebody could get lost in.
+//
+// `order` used to be the navigation, so membership in it proved reachability.
+// It is now only the sort order and the llms.txt sequence: the SIDEBAR is what
+// a reader navigates by, and a page can sit in `order` while appearing in no
+// group at all. So all four structures are checked, because each can now be
+// wrong on its own.
+func validateNavigation(src string, pages []site.Page, seen map[string]bool) error {
+	ordered := map[string]bool{}
+	for _, slug := range order {
+		if ordered[slug] {
+			return fmt.Errorf("`order` names %q more than once", slug)
+		}
+		ordered[slug] = true
+		if !seen[slug] {
+			return fmt.Errorf("`order` names %q, which does not exist in %s", slug, src)
+		}
+	}
+
+	// One group per page, and every page in one. A page in two groups appears
+	// twice in the sidebar, which reads as two different pages.
+	grouped := map[string]string{}
+	for _, g := range groups {
+		for _, slug := range g.slugs {
+			if !seen[slug] {
+				return fmt.Errorf("sidebar group %q names %q, which does not exist in %s", g.name, slug, src)
+			}
+			if prev, ok := grouped[slug]; ok {
+				return fmt.Errorf("%q is in both sidebar groups %q and %q", slug, prev, g.name)
+			}
+			grouped[slug] = g.name
+		}
+	}
+
+	for _, p := range pages {
+		if !ordered[p.Slug] {
+			return fmt.Errorf("%s.md is missing from `order`", p.Slug)
+		}
+		if _, ok := grouped[p.Slug]; !ok {
+			return fmt.Errorf("%s.md is in no sidebar group, so nobody would find it: add it to `groups`", p.Slug)
+		}
+		if strings.TrimSpace(labels[p.Slug]) == "" {
+			return fmt.Errorf("%s.md has no short navigation label: add it to `labels`", p.Slug)
+		}
+	}
+	for slug := range labels {
+		if !seen[slug] {
+			return fmt.Errorf("`labels` names %q, which does not exist in %s", slug, src)
+		}
+	}
+
+	// The home page's only route into the documentation. Without one, the site
+	// has twenty-three pages and no way in.
+	docs := false
+	for _, item := range homeNav {
+		if strings.TrimSpace(item.label) == "" {
+			return fmt.Errorf("the home navigation has an empty label for %q", item.slug)
+		}
+		if !seen[item.slug] {
+			return fmt.Errorf("the home navigation names %q, which does not exist in %s", item.slug, src)
+		}
+		if item.slug != "index" {
+			docs = true
+		}
+	}
+	if !docs {
+		return fmt.Errorf("the home navigation has no entry into the documentation")
+	}
+	return nil
+}
+
 func inOrder(s string) bool {
 	for _, o := range order {
 		if o == s {
@@ -218,11 +280,85 @@ var groups = []struct {
 	{"Reference", []string{"transports", "relay", "intercom", "cli", "secrets", "security", "method"}},
 }
 
-func label(o site.Page) string {
-	if o.Slug == "index" {
-		return "Overview"
+// labels are the navigation's own words, and they are a THIRD set of words for
+// each page, deliberately. The three have different jobs and nothing is gained
+// by making one do all of them:
+//
+//	H1       explains the page to somebody already reading it
+//	<title>  has to work with no page around it, in a tab or a search result
+//	label    has to be scannable in a narrow column, at a glance
+//
+// The navigation used the H1, and at eight pages that was survivable. At
+// twenty-three it produced a header reading "Making the loop outlive the
+// session", "Intercom - when you can reach the station", "Where a station can
+// run" - a sitemap poured into a nav bar, three rows deep.
+var labels = map[string]string{
+	"index":       "Overview",
+	"install":     "Install",
+	"quickstart":  "Quick start",
+	"claude-code": "Claude Code",
+	"mcp":         "MCP server",
+	"station":     "Station",
+	"bootstrap":   "Plant a station",
+	"steps":       "Write a step",
+	"runner":      "Runner reference",
+	"conformance": "Capture contract",
+	"hosts":       "Host requirements",
+	"containers":  "Containers",
+	"service":     "Survive logout",
+	"azure":       "Azure",
+	"pipelines":   "Pipelines",
+	"windows":     "Windows",
+	"transports":  "Transports",
+	"relay":       "Relay",
+	"intercom":    "Intercom",
+	"cli":         "CLI reference",
+	"secrets":     "Secrets",
+	"security":    "Security",
+	"method":      "Debugging method",
+}
+
+func label(o site.Page) string { return labels[o.Slug] }
+
+// homeNav is the header on the marketing page, and it is SHORT on purpose.
+//
+// The header used to render every page. A visitor arriving at the home page was
+// met with the entire documentation tree before a single sentence about what
+// the thing does, which is the opposite of what a home page is for.
+//
+// Three links. `Docs` opens the quick start, because that is where somebody who
+// has decided to try this actually wants to be, and the docs shell brings its
+// grouped sidebar with it - so one link reaches all twenty-three pages. The
+// brand links home and the hero already offers Source, so neither is repeated
+// here.
+type homeNavItem struct {
+	label string
+	slug  string
+}
+
+var homeNav = []homeNavItem{
+	{label: "Docs", slug: "quickstart"},
+	{label: "Install", slug: "install"},
+	{label: "Security", slug: "security"},
+}
+
+// headerNav renders the header navigation, which exists only on the index.
+//
+// It used to be rendered on every page and hidden on docs pages with CSS. That
+// worked and was still wrong: every docs page shipped a second copy of the
+// whole navigation, which a screen reader still reaches and a stylesheet
+// failure would reveal.
+func headerNav(p site.Page) string {
+	if p.Slug != "index" {
+		return ""
 	}
-	return o.Title
+	var b strings.Builder
+	b.WriteString(`<nav aria-label="Primary">`)
+	for _, item := range homeNav {
+		fmt.Fprintf(&b, `<a href="%s">%s</a>`, href(item.slug), escAttr(item.label))
+	}
+	b.WriteString(`</nav>`)
+	return b.String()
 }
 
 func href(slug string) string {
@@ -276,12 +412,7 @@ func rail(p site.Page) string {
 }
 
 func page(p site.Page, all []site.Page) string {
-	var nav strings.Builder
-	for _, o := range all {
-		fmt.Fprintf(&nav, `<a href="%s"%s>%s</a>`, href(o.Slug),
-			map[bool]string{true: ` class="here"`, false: ""}[o.Slug == p.Slug],
-			escAttr(label(o)))
-	}
+	nav := headerNav(p)
 	canonical := baseURL + "/" + p.Slug
 	if p.Slug == "index" {
 		canonical = baseURL + "/"
@@ -337,7 +468,7 @@ func page(p site.Page, all []site.Page) string {
 <link rel="stylesheet" href="/style.css">
 <header>
   <a class="brand" href="/">%[5]s heliograph</a>
-  <nav>%[6]s</nav>
+  %[6]s
 </header>
 %[7]s
 %[11]s
@@ -352,7 +483,7 @@ func page(p site.Page, all []site.Page) string {
 </div></footer>
 <script>%[10]s</script>
 `, escAttr(title), escAttr(site.Summary(p.Body)), canonical, p.Slug,
-		site.Mark, nav.String(), hero, wide, site.RenderBody(p.Body), site.HeroJS,
+		site.Mark, nav, hero, wide, site.RenderBody(p.Body), site.HeroJS,
 		shellOpen, shellClose, railHTML)
 }
 
