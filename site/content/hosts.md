@@ -66,7 +66,8 @@ not a property of the station.
 
 **"yes"** means: export `TRANSPORT` and the transport's variables, then run
 `./start.sh` exactly as you would for git. The relay also needs
-`heliograph-seal` present, and `./start.sh --check` says so if it is not.
+`heliograph-seal` present and a key exchange completed, and `./start.sh --check`
+says so if either is missing.
 
 **"not plumbed"** means the station can do it and the host recipe cannot carry
 it there. `entrypoint.sh`, the Kubernetes manifest, the service units and the

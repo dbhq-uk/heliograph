@@ -150,6 +150,58 @@ secret in it would be a secret in all three.
 overwrite each other. `--region` defaults to `auto`, which is what R2 and MinIO
 want. See [transports](/transports).
 
+## Relay estates
+
+`--transport relay` is the only one whose enrolment is a two-way exchange, and
+it is a key exchange rather than a credential. `relay peer` is the command that
+records the half arriving last.
+
+```bash
+heliograph init payments --transport relay \
+  --dir https://heliograph-relay.dbhq.uk \
+  --relay-estate payments \
+  --scope db-a
+
+heliograph plant -e payments        # what to send the operator
+heliograph relay peer -e payments <the line they send back>
+
+export HELIOGRAPH_RELAY_TOKEN=...   # the CONTROL token for that estate
+heliograph send steps/probe.sh
+```
+
+`--relay-estate` is the id the **relay** routes on, chosen by whoever runs the
+relay. It is not this estate's local name, and conflating them would mean
+renaming an estate here silently re-pointed it at a route that does not exist.
+`--scope` is the station.
+
+`init` generates the control identity if you do not supply one, beside the
+estate at mode 600, and prints its fingerprint. The **token** comes from
+`HELIOGRAPH_RELAY_TOKEN` and is never written to the estate file, exactly as
+the object store's keys are not.
+
+### Nothing works until the fingerprints match
+
+`plant` prints the control's public identity for the station's `RELAY_PEER`, and
+the operator sends back theirs. **Compare the two fingerprints over a channel
+they already trust** - a phone call, not the relay. It is the only step here a
+machine cannot do, and it is what stops a relay substituting its own key.
+
+Skipping it does not fail loudly. The station starts, polls happily, and drops
+every request because it cannot verify a signature - which from the far side is
+indistinguishable from nobody sending anything. So `send` refuses until a peer
+is recorded, and names the command that records one.
+
+The station's **secret never reaches this side**, even if somebody sends their
+whole identity file rather than the one line: `relay peer` decodes to a public
+identity and re-encodes it.
+
+### A relay is a queue, not a store
+
+It deletes on collection, so a log arrives exactly once and is then gone. The
+control node keeps what it collects, which is why `heliograph logs` works here
+at all - and why `status` is repeatable rather than reporting a station that has
+gone away the second time you ask.
+
 ## logs --gaps
 
 The reason the binary is worth installing.

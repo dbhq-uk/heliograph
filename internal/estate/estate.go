@@ -33,13 +33,72 @@ type Estate struct {
 	Bucket string `json:"bucket,omitempty"`
 	Prefix string `json:"prefix,omitempty"`
 	Region string `json:"region,omitempty"`
+
+	// relay only. Dir carries the relay's base URL and Scope the station name,
+	// the same way Dir carries an endpoint for objstore.
+	//
+	// RelayEstate is the estate id the RELAY routes on, which is not this
+	// estate's local name. One is chosen by whoever runs the relay and appears
+	// in its token configuration; the other is what you type. Conflating them
+	// would mean renaming a local estate silently re-pointed it at a route that
+	// does not exist, and 401 is what that looks like from here.
+	RelayEstate string `json:"relay_estate,omitempty"`
+
+	// Paths, not keys. Identity is this side's secret key file and Peer is the
+	// station's public identity.
+	//
+	// The SECRET stays in its own file at mode 600 rather than being inlined
+	// here, for the reason the objstore keys are absent entirely: this file is
+	// copied between machines and ends up in backups. A path in a backup is a
+	// path; a secret in a backup is a secret.
+	//
+	// The TOKEN has no field at all. It comes from HELIOGRAPH_RELAY_TOKEN at
+	// the moment of use. It is a routing and rate-limiting credential rather
+	// than the security boundary - the relay cannot read a message whatever
+	// token it is shown - but it is still a bearer credential, and this file is
+	// not where those live.
+	Identity string `json:"identity,omitempty"`
+	Peer     string `json:"peer,omitempty"`
 }
 
 // known transports. A name that is not here is refused at save time rather
 // than at send time, when somebody is already waiting on a far side.
-var known = map[string]bool{"git": true, "share": true, "bundle": true, "objstore": true}
+var known = map[string]bool{
+	"git": true, "share": true, "bundle": true, "objstore": true, "relay": true,
+}
 
-func configDir() (string, error) {
+// KeyDir is where per-estate secrets and peer identities live, and it is
+// deliberately NOT the estates directory.
+//
+// The first version put the relay's identity at `estates/<name>.identity.json`,
+// which List picks up as an estate: `heliograph send` then reported "several
+// estates configured (relayed, relayed.identity)" and refused to guess. The
+// same would have happened to the relay's sequence-number file. A directory
+// whose every `*.json` is an estate may hold only estates.
+//
+// Mode 0700, because what goes in here is a secret key.
+func KeyDir() (string, error) {
+	base, err := heliographDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(base, "keys")
+	return dir, os.MkdirAll(dir, 0o700)
+}
+
+// StateDir is where a transport keeps what it must not lose. The relay's
+// sequence numbers are the case, and they are the replay defence: losing them
+// would let a relay replay everything it has ever seen.
+func StateDir() (string, error) {
+	base, err := heliographDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(base, "state")
+	return dir, os.MkdirAll(dir, 0o700)
+}
+
+func heliographDir() (string, error) {
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
 		home, err := os.UserHomeDir()
@@ -48,7 +107,15 @@ func configDir() (string, error) {
 		}
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "heliograph", "estates"), nil
+	return filepath.Join(base, "heliograph"), nil
+}
+
+func configDir() (string, error) {
+	base, err := heliographDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "estates"), nil
 }
 
 // validName refuses anything that is not a single path element.
@@ -75,6 +142,34 @@ func (e Estate) Routing() string {
 // point there is a pushed branch and a worktree to clean up.
 func ValidName(n string) error { return validName(n) }
 
+// isLoopback is deliberately narrow: a hostname somebody controls could resolve
+// to loopback today and elsewhere tomorrow, so only the literals are accepted.
+func isLoopback(u string) bool {
+	for _, p := range []string{"http://127.0.0.1", "http://localhost", "http://[::1]"} {
+		if strings.HasPrefix(u, p+"/") || strings.HasPrefix(u, p+":") || u == p {
+			return true
+		}
+	}
+	return false
+}
+
+// validRoutingKey is the rule for anything that becomes one segment of a relay
+// URL path. transports/relay.sh spells the same set.
+func validRoutingKey(v string) bool {
+	if v == "" || strings.HasPrefix(v, "-") {
+		return false
+	}
+	for _, r := range v {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func validName(n string) error {
 	if n == "" {
 		return fmt.Errorf("an estate needs a name")
@@ -91,13 +186,54 @@ func (e Estate) Save() error {
 		return err
 	}
 	if !known[e.Transport] {
-		return fmt.Errorf("unknown transport %q: this build knows git, share, bundle and objstore", e.Transport)
+		return fmt.Errorf("unknown transport %q: this build knows git, share, bundle, objstore and relay", e.Transport)
 	}
 	if e.Dir == "" {
 		return fmt.Errorf("estate %q has no directory: it would have nothing to write to", e.Name)
 	}
 	if e.Transport == "objstore" && e.Bucket == "" {
 		return fmt.Errorf("estate %q is an object store with no bucket", e.Name)
+	}
+	// Checked at SAVE, not at send. Every one of these is something the
+	// operator can supply now, in front of a prompt, and none of them can be
+	// guessed later - so an estate missing one is an estate that fails at the
+	// moment somebody is already waiting on a far side.
+	//
+	// The peer is the exception and is deliberately NOT required: the station's
+	// public identity does not exist until the operator has run keygen there,
+	// which is after this estate has to be recorded in order to print them
+	// their instructions. `relay peer` fills it in, and `send` refuses without
+	// it, naming that command.
+	if e.Transport == "relay" {
+		// HTTPS, because the token is a bearer credential in a header. It is
+		// not the security boundary - the relay cannot read a message whatever
+		// token it is shown - but a credential in cleartext on the wire is a
+		// credential anybody on the path can use for denial of service and
+		// metadata, and there is no reason to allow it.
+		//
+		// Loopback is the exception, and only loopback: a test double and a
+		// relay running on the same machine have no network to protect.
+		if !strings.HasPrefix(e.Dir, "https://") && !isLoopback(e.Dir) {
+			return fmt.Errorf("estate %q points at %q. A relay needs https://, because the token travels as a bearer header on every request", e.Name, e.Dir)
+		}
+		// INTERPOLATED INTO A URL PATH, both of them. A `/` reaches a different
+		// route, a `?` starts a query string and a `#` truncates the path - all
+		// silently, and all ending as a 404 or as somebody else's queue.
+		// transports/relay.sh applies the same rule on the far side.
+		for what, v := range map[string]string{"relay estate id": e.RelayEstate, "station name": e.Scope} {
+			if v != "" && !validRoutingKey(v) {
+				return fmt.Errorf("estate %q has %s %q, which is not a usable routing key: it becomes part of a URL path, so it may hold only letters, digits, dot, hyphen and underscore, and may not begin with a hyphen", e.Name, what, v)
+			}
+		}
+		if e.RelayEstate == "" {
+			return fmt.Errorf("estate %q is a relay with no relay estate id: that is what the relay routes on, and it is not this estate's name", e.Name)
+		}
+		if e.Scope == "" {
+			return fmt.Errorf("estate %q is a relay with no station name: that is what a run is bound to", e.Name)
+		}
+		if e.Identity == "" {
+			return fmt.Errorf("estate %q is a relay with no identity file: without one nothing it sends can be verified by the station", e.Name)
+		}
 	}
 	dir, err := configDir()
 	if err != nil {

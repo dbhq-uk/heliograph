@@ -22,14 +22,14 @@ its own moves nothing, so the status column below names both.
 | transport | reach for it when | control side | station side |
 |---|---|---|---|
 | **git** | the far side can reach a git host | works | works |
-| **relay** | there is no git host, no storage, no share | written, not selectable | written |
+| **relay** | there is no git host, no storage, no share | works | works |
 | **file share** | both machines mount the same directory | works | works |
 | **object store** | S3-compatible storage is permitted where git is not | works | none yet |
 | **bundle** | nothing crosses the gap but a person | works | none yet |
 | **Azure Blob** | a VNet-local private endpoint is the only reachable thing | `drop.sh`, in the station payload, not the CLI | works |
 
-**Git and the file share are the two the CLI drives end to end today**, both
-proved by a round trip in CI against a real station. Azure Blob also works end
+**Git, the file share and the relay are the three the CLI drives end to end
+today**, each proved by its own round trip in CI against a real station. Azure Blob also works end
 to end, through `drop.sh` in the station payload rather than through the
 `heliograph` binary - it is the transport the Azure Function host uses, and it
 is deployed. The rest are at the stage the table says and no further; what each

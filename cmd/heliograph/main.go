@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/dbhq-uk/heliograph/internal/bootstrap"
 	"github.com/dbhq-uk/heliograph/internal/logfile"
 	"github.com/dbhq-uk/heliograph/internal/plant"
+	"github.com/dbhq-uk/heliograph/internal/seal"
 	"github.com/dbhq-uk/heliograph/station"
 
 	"github.com/dbhq-uk/heliograph/internal/estate"
@@ -39,15 +41,18 @@ var version = "dev"
 //
 // A list a test can read is what makes that checkable, which is the whole
 // reason this is a variable rather than three string literals.
-var initTransports = []string{"git", "share", "bundle", "objstore"}
+var initTransports = []string{"git", "share", "bundle", "objstore", "relay"}
 
 const usage = `heliograph - run things on a machine you cannot log into
 
   heliograph bootstrap <dir>                plant the station payload into a transport repo
   heliograph init <estate> --dir <path>     remember a transport repo by name
-      [--transport git|share|bundle|objstore]
+      [--transport git|share|bundle|objstore|relay]
       objstore: --dir <https endpoint> --bucket <name> --scope <lane> [--prefix p] [--region r]
                 keys come from HELIOGRAPH_S3_ACCESS_KEY and HELIOGRAPH_S3_SECRET_KEY
+      relay:    --dir <https base url> --relay-estate <id> --scope <station> [--identity file]
+                the token comes from HELIOGRAPH_RELAY_TOKEN
+  heliograph relay peer <file|->            record the station's public identity
   heliograph estates                        what is configured here
   heliograph station add <name>             a second station on this repo, on its own branch
       [-e <estate>] [--dir <path>]
@@ -83,6 +88,8 @@ func main() {
 		err = cmdEstates()
 	case "station":
 		err = cmdStation(os.Args[2:])
+	case "relay":
+		err = cmdRelay(os.Args[2:])
 	case "plant":
 		err = cmdPlant(os.Args[2:])
 	case "send":
@@ -320,6 +327,57 @@ func open(name string) (opened, error) {
 			return opened{}, err
 		}
 		return opened{Estate: e, Transport: o, Dir: o.Dir(), Scope: o.Branch()}, nil
+	case "relay":
+		// EVERY MISSING PIECE IS NAMED SEPARATELY, with the command that
+		// supplies it. All three fail as HTTP 401 or as a verification that
+		// does not happen, and 401 from a relay reads exactly like a fault at
+		// the far end - which sends the reader to the wrong side of the gap,
+		// to a machine they cannot log into, for a problem that is here.
+		if e.Peer == "" {
+			return opened{}, fmt.Errorf(
+				"estate %q has no station identity yet, so nothing it sent could be verified.\n"+
+					"  On the station:  heliograph-seal keygen --out ~/.heliograph-identity\n"+
+					"  Then here:       heliograph relay peer -e %s <the public line they send back>",
+				e.Name, e.Name)
+		}
+		token := os.Getenv("HELIOGRAPH_RELAY_TOKEN")
+		if token == "" {
+			return opened{}, fmt.Errorf(
+				"estate %q is a relay and HELIOGRAPH_RELAY_TOKEN is not set.\n"+
+					"  It is the CONTROL token for relay estate %q, from whoever runs the relay.\n"+
+					"  Without it every call is refused with 401, which reads like a fault at the far end",
+				e.Name, e.RelayEstate)
+		}
+		me, err := seal.LoadIdentityFile(e.Identity)
+		if err != nil {
+			return opened{}, fmt.Errorf("estate %q cannot read its identity at %s: %w", e.Name, e.Identity, err)
+		}
+		peer, err := seal.LoadPeerFile(e.Peer)
+		if err != nil {
+			return opened{}, fmt.Errorf("estate %q cannot read the station identity at %s: %w", e.Name, e.Peer, err)
+		}
+		// The sequence numbers, beside the estate. They ARE the replay defence,
+		// so losing them is not merely inconvenient: a reset would let the relay
+		// replay everything it has ever seen.
+		st, err := estate.StateDir()
+		if err != nil {
+			return opened{}, err
+		}
+		// A SPOOL, because a relay deletes on collection. Every other transport
+		// keeps the logs where it put them; here a log arrives exactly once and
+		// is then gone from the relay for ever, so if this side does not keep
+		// it, nothing does.
+		spool, err := estate.StateDir()
+		if err != nil {
+			return opened{}, err
+		}
+		r, err := transport.NewRelayWithSpool(e.Dir, e.RelayEstate, e.Scope, token, me, peer,
+			filepath.Join(st, e.Name+".relay-state.json"),
+			filepath.Join(spool, e.Name+".relay"))
+		if err != nil {
+			return opened{}, err
+		}
+		return opened{Estate: e, Transport: r, Dir: r.Dir(), Scope: r.Branch()}, nil
 	default:
 		return opened{}, fmt.Errorf("estate %q names transport %q, which this build does not know", e.Name, e.Transport)
 	}
@@ -399,6 +457,8 @@ func cmdInit(args []string) error {
 	bucket := fs.String("bucket", "", "with --transport objstore: the bucket")
 	prefix := fs.String("prefix", "", "with --transport objstore: a key prefix, for a bucket shared with something else")
 	region := fs.String("region", "", "with --transport objstore: the region (default auto, which suits R2 and MinIO)")
+	relayEstate := fs.String("relay-estate", "", "with --transport relay: the estate id the RELAY routes on")
+	identity := fs.String("identity", "", "with --transport relay: this side's identity file (default: generated beside the estate)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -407,6 +467,16 @@ func cmdInit(args []string) error {
 		return fmt.Errorf("usage: heliograph init <estate> --dir <path>")
 	}
 	name := pos[0]
+	// VALIDATED FIRST, before anything is written anywhere.
+	//
+	// Save checks it too, and by then it is too late for the relay: the identity
+	// file is created before Save is reached, so `heliograph init ../estates/x
+	// --transport relay` wrote a SECRET KEY into the estates directory - where
+	// `heliograph estates` then listed it as an estate. The name becomes a path
+	// in more than one place now, so it is settled once, here.
+	if err := estate.ValidName(name); err != nil {
+		return err
+	}
 	if *dir == "" {
 		return fmt.Errorf("--dir is required: it is the clone this estate writes to")
 	}
@@ -416,7 +486,7 @@ func cmdInit(args []string) error {
 	// estate saves, and every later command reports that it cannot reach a
 	// host with a name nobody typed.
 	abs := *dir
-	if *kind != "objstore" {
+	if *kind != "objstore" && *kind != "relay" {
 		abs, err = filepath.Abs(*dir)
 		if err != nil {
 			return err
@@ -470,6 +540,73 @@ func cmdInit(args []string) error {
 			return err
 		}
 		tp, scope = o, o.Branch()
+	case "relay":
+		if *relayEstate == "" {
+			return fmt.Errorf("--relay-estate is required: it is the id the RELAY routes on, which is chosen by whoever runs the relay and is not this estate's name")
+		}
+		if *scopeFlag == "" {
+			return fmt.Errorf("--scope is required for a relay: it is the station name, and it is what a run is bound to")
+		}
+		// GENERATED HERE IF NOT SUPPLIED, and generated BEFORE anything is
+		// saved. A relay estate with no identity cannot send or read anything,
+		// and telling somebody to go and run a second binary to make one is a
+		// step nobody needs: this side already has the same code the station's
+		// heliograph-seal runs.
+		//
+		// It goes beside the estate file, in the same 0700 directory, at mode
+		// 600. Not in the estate file: that file is copied between machines and
+		// ends up in backups.
+		idPath := *identity
+		if idPath == "" {
+			keys, err := estate.KeyDir()
+			if err != nil {
+				return err
+			}
+			idPath = filepath.Join(keys, name+".identity.json")
+		}
+		if _, statErr := os.Stat(idPath); statErr != nil {
+			id, genErr := seal.Generate()
+			if genErr != nil {
+				return genErr
+			}
+			if err := seal.WriteIdentityFile(idPath, id); err != nil {
+				return err
+			}
+		}
+		me, err := seal.LoadIdentityFile(idPath)
+		if err != nil {
+			return err
+		}
+		// NO TRANSPORT IS OPENED HERE, and that is the one place this command
+		// departs from its own rule of attaching before saving.
+		//
+		// NewRelay needs the station's public identity, and that does not exist
+		// yet: the operator has to run keygen on the far side, which is what
+		// the instructions printed below are for. Refusing to record the estate
+		// until they have would mean nowhere to record their answer when they
+		// send it back.
+		//
+		// So `send` is what refuses, naming `relay peer`, and the estate is
+		// visibly half-finished until then rather than silently broken.
+		e := estate.Estate{
+			Name: name, Transport: "relay",
+			Dir: strings.TrimRight(abs, "/"), Scope: *scopeFlag,
+			RelayEstate: *relayEstate, Identity: idPath,
+		}
+		if err := e.Save(); err != nil {
+			return err
+		}
+		fmt.Printf("estate %s -> relay %s, estate %s, station %s\n",
+			name, e.Dir, e.RelayEstate, e.Scope)
+		fmt.Printf("  identity: %s\n", idPath)
+		fmt.Printf("  fingerprint: %s\n", me.Public().Fingerprint())
+		fmt.Println()
+		fmt.Println("  Two halves are missing and both come from the far side:")
+		fmt.Println("    1. HELIOGRAPH_RELAY_TOKEN in this shell, the CONTROL token for that estate")
+		fmt.Println("    2. the station's public identity, recorded with `heliograph relay peer`")
+		fmt.Println()
+		fmt.Println("  Run `heliograph plant -e " + name + "` for what to send the operator.")
+		return nil
 	default:
 		return fmt.Errorf("unknown transport %q: this build knows %s",
 			*kind, strings.Join(initTransports, ", "))
@@ -844,6 +981,16 @@ func cmdPlant(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	// THE RELAY IS ANSWERED BEFORE open(), and that is not a shortcut.
+	//
+	// open() refuses a relay estate that has no station identity yet, correctly:
+	// nothing it sent could be verified. But this command is what the operator
+	// is given IN ORDER TO create that identity, so routing it through open()
+	// would make the instructions unobtainable until after the step they
+	// describe. It only needs the estate, not a live channel.
+	if e, rerr := resolve(*name); rerr == nil && e.Transport == "relay" {
+		return plantRelay(e, *script)
+	}
 	op, err := open(*name)
 	if err != nil {
 		return err
@@ -867,3 +1014,206 @@ func cmdPlant(args []string) error {
 }
 
 // The env quoting lives in wire.QuoteEnv, with the document it belongs to.
+
+// --- the relay's key exchange ------------------------------------------------
+//
+// WHY THIS IS A COMMAND AND NOT A PARAGRAPH OF INSTRUCTIONS.
+//
+// Every other transport's enrolment is "here is a URL and a credential". The
+// relay's is a key exchange, and a key exchange written as prose is one people
+// get wrong quietly: the failure is a station that starts, polls happily, and
+// silently drops every request because it cannot verify the signature. From the
+// station's side that is indistinguishable from nobody sending anything.
+//
+// So the two halves that have to be recorded are recorded by a command that
+// validates them, and the fingerprint that closes the enrolment risk is printed
+// at both ends so the operator has something to read back.
+func cmdRelay(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: heliograph relay peer [-e <estate>] <file|public-identity|->")
+	}
+	switch args[0] {
+	case "peer":
+		return cmdRelayPeer(args[1:])
+	default:
+		return fmt.Errorf("unknown relay command %q: this build knows `peer`", args[0])
+	}
+}
+
+// cmdRelayPeer records the station's public identity, which is the second half
+// of the exchange and the one that arrives last.
+//
+// IT ACCEPTS THE VALUE OR A PATH, because both are what actually happens. The
+// operator on the far side runs `heliograph-seal keygen` and sends back one
+// line, usually pasted into a ticket or a chat message. Requiring it to be
+// saved to a file first is a step that exists only to suit the parser.
+func cmdRelayPeer(args []string) error {
+	// PARSED BY HAND, and this is the reason rather than a preference.
+	//
+	// A public identity is base64url, whose alphabet includes `-` and `_`. So
+	// roughly one key in sixty-four BEGINS with a hyphen, and Go's flag package
+	// reads that as a flag:
+	//
+	//   flag provided but not defined: -oi9E2tvJjMt3_3xPA20jxsnf...
+	//
+	// which is a usage error naming the operator's key back at them. An
+	// intermittent failure that depends on the first byte of a generated key is
+	// exactly the kind that gets diagnosed as "the relay is broken".
+	//
+	// `--` would work and nobody types it. So the estate flag is consumed
+	// explicitly and everything else is the value.
+	var name, value string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-e", "--estate", "-estate":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--estate needs a name")
+			}
+			name = args[i+1]
+			i++
+		default:
+			if v, ok := strings.CutPrefix(args[i], "--estate="); ok {
+				name = v
+				continue
+			}
+			if v, ok := strings.CutPrefix(args[i], "-e="); ok {
+				name = v
+				continue
+			}
+			if value != "" {
+				return fmt.Errorf("usage: heliograph relay peer [-e <estate>] <file|public-identity|->")
+			}
+			value = args[i]
+		}
+	}
+	if value == "" {
+		return fmt.Errorf("usage: heliograph relay peer [-e <estate>] <file|public-identity|->\n" +
+			"  The value is the line `heliograph-seal public --identity <file>` printed on the station.")
+	}
+	e, err := resolve(name)
+	if err != nil {
+		return err
+	}
+	if e.Transport != "relay" {
+		return fmt.Errorf("estate %q uses the %s transport, which has no peer identity", e.Name, e.Transport)
+	}
+
+	// Resolve to a public identity, from a file, from stdin, or from the value
+	// itself - and VERIFY IT PARSES before anything is recorded. A malformed
+	// peer recorded now fails at `send`, which is the moment somebody is
+	// already waiting on a far side.
+	var raw string
+	switch {
+	case value == "-":
+		b, rerr := io.ReadAll(os.Stdin)
+		if rerr != nil {
+			return rerr
+		}
+		raw = strings.TrimSpace(string(b))
+	default:
+		if _, serr := os.Stat(value); serr == nil {
+			p, perr := seal.LoadPeerFile(value)
+			if perr != nil {
+				return fmt.Errorf("%s is not a usable public identity: %w", value, perr)
+			}
+			return saveRelayPeer(e, p)
+		}
+		raw = strings.TrimSpace(value)
+	}
+	pub, err := seal.DecodePublic(raw)
+	if err != nil {
+		return fmt.Errorf("that is not a public identity, and it is not a file that exists: %w", err)
+	}
+	return saveRelayPeer(e, pub)
+}
+
+func saveRelayPeer(e estate.Estate, pub seal.PublicIdentity) error {
+	keys, err := estate.KeyDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(keys, e.Name+".peer")
+	// The VALUE is written, never the file that was handed over. A peer file
+	// may arrive as the station's whole identity JSON - somebody sends the file
+	// rather than the line - and copying that would put the STATION'S SECRET
+	// KEY into the control node's config directory. Decoding to a public
+	// identity and re-encoding it makes that impossible rather than unlikely.
+	if err := os.WriteFile(path, []byte(pub.Encode()+"\n"), 0o600); err != nil {
+		return err
+	}
+	e.Peer = path
+	if err := e.Save(); err != nil {
+		return err
+	}
+	fmt.Printf("estate %s: station identity recorded\n", e.Name)
+	fmt.Printf("  fingerprint: %s\n", pub.Fingerprint())
+	fmt.Println()
+	fmt.Println("  Check that against what the station printed, over a channel the")
+	fmt.Println("  operator already trusts. It is what stops a relay substituting")
+	fmt.Println("  its own key, and it is the only step here a machine cannot do.")
+	return nil
+}
+
+// plantRelay prints what to send the operator of a relay station.
+//
+// IT IS A DIFFERENT SHAPE FROM EVERY OTHER TRANSPORT'S, because the relay is
+// the only one whose enrolment is a two-way exchange. Every other plant is a
+// clone URL and a credential and the operator is done. Here they have to make a
+// key, send its public half back, and read a fingerprint aloud - and if any of
+// that is skipped the station starts, polls happily, and silently drops every
+// request because it cannot verify a signature. From their side that is
+// indistinguishable from nobody sending anything, which is why the fingerprint
+// step is stated as a step rather than as advice.
+//
+// THE CONTROL SECRET NEVER APPEARS HERE. Only the public half, which is what
+// RELAY_PEER is for and all the station needs.
+func plantRelay(e estate.Estate, script bool) error {
+	me, err := seal.LoadIdentityFile(e.Identity)
+	if err != nil {
+		return fmt.Errorf("estate %q cannot read its identity at %s: %w", e.Name, e.Identity, err)
+	}
+	pub := me.Public()
+
+	var b strings.Builder
+	if !script {
+		fmt.Fprintf(&b, "Send this to whoever can log into the station.\n\n")
+		fmt.Fprintf(&b, "  relay    %s\n", e.Dir)
+		fmt.Fprintf(&b, "  estate   %s\n", e.RelayEstate)
+		fmt.Fprintf(&b, "  station  %s\n", e.Scope)
+		fmt.Fprintf(&b, "  control fingerprint  %s\n\n", pub.Fingerprint())
+		fmt.Fprintf(&b, "1. Put the station payload on the machine, and heliograph-seal beside it.\n")
+		fmt.Fprintf(&b, "   The relay is the one transport that needs that binary; the page at\n")
+		fmt.Fprintf(&b, "   /relay says why, and its checksum is published with the release.\n\n")
+		fmt.Fprintf(&b, "2. Make the station's own key, and save the peer:\n\n")
+	}
+	fmt.Fprintf(&b, "cd <the station payload>\n")
+	fmt.Fprintf(&b, "./heliograph-seal keygen --out ~/.heliograph-identity\n")
+	fmt.Fprintf(&b, "printf '%%s\\n' '%s' > ~/.heliograph-peer\n\n", pub.Encode())
+	if !script {
+		fmt.Fprintf(&b, "3. Start it:\n\n")
+	}
+	fmt.Fprintf(&b, "export TRANSPORT=relay\n")
+	fmt.Fprintf(&b, "export RELAY_URL=%s\n", e.Dir)
+	fmt.Fprintf(&b, "export RELAY_ESTATE=%s\n", e.RelayEstate)
+	fmt.Fprintf(&b, "export RELAY_STATION=%s\n", e.Scope)
+	fmt.Fprintf(&b, "export RELAY_IDENTITY=~/.heliograph-identity\n")
+	fmt.Fprintf(&b, "export RELAY_PEER=~/.heliograph-peer\n")
+	fmt.Fprintf(&b, "export RELAY_TOKEN=<the STATION token for estate %s>\n", e.RelayEstate)
+	fmt.Fprintf(&b, "export RELAY_SEAL_SHA256=<the checksum published with the release>\n")
+	fmt.Fprintf(&b, "./start.sh --check   # will this work here? changes nothing\n")
+	fmt.Fprintf(&b, "./start.sh           # run it, and walk away\n")
+	if !script {
+		fmt.Fprintf(&b, "\n4. Send back the fingerprint keygen printed, and the line from\n")
+		fmt.Fprintf(&b, "   `./heliograph-seal public --identity ~/.heliograph-identity`.\n\n")
+		fmt.Fprintf(&b, "   Then here:  heliograph relay peer -e %s <that line>\n\n", e.Name)
+		fmt.Fprintf(&b, "   COMPARE THE TWO FINGERPRINTS over a channel they already trust -\n")
+		fmt.Fprintf(&b, "   a phone call, not the relay. It is the only step here a machine\n")
+		fmt.Fprintf(&b, "   cannot do for you, and it is what stops a relay substituting its\n")
+		fmt.Fprintf(&b, "   own key for either side's.\n\n")
+		fmt.Fprintf(&b, "   The STATION token is not the control token. A station token may\n")
+		fmt.Fprintf(&b, "   read requests and write logs, and may not queue a request even for\n")
+		fmt.Fprintf(&b, "   itself - because it sits on a machine nobody can reach.\n")
+	}
+	fmt.Print(b.String())
+	return nil
+}
