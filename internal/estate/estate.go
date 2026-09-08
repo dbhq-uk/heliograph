@@ -56,6 +56,20 @@ func configDir() (string, error) {
 // The name becomes a filename, so `../../.ssh/authorized_keys` has to be
 // refused here rather than trusted to behave. This is a small surface and an
 // unpleasant one to get wrong.
+// Routing is what this estate is bound to: the git branch, the share
+// directory, the object-store lane.
+//
+// Scope is canonical and Branch is the fallback, in that order, because
+// estates written before Scope existed recorded a git branch in Branch alone.
+// Reading Scope only would silently un-pin every estate in the field, which is
+// the opposite of what pinning is for.
+func (e Estate) Routing() string {
+	if e.Scope != "" {
+		return e.Scope
+	}
+	return e.Branch
+}
+
 // ValidName is validName, exported so a caller can refuse a bad name BEFORE it
 // creates a branch and a checkout named after it. Save would catch it, by which
 // point there is a pushed branch and a worktree to clean up.

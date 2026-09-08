@@ -184,3 +184,83 @@ func TestAStationEstateRecordsItsOwnBranch(t *testing.T) {
 		t.Errorf("the estate records scope %q, so routing would fall back to whatever is checked out", got.Scope)
 	}
 }
+
+// A pinned estate must not be driveable from the wrong branch, and an unpinned
+// one must not be pinned by accident. The two halves matter equally: the second
+// is the documented task-branch workflow, and breaking it would be a far worse
+// defect than the one being fixed.
+func TestAPinnedEstateRefusesTheWrongBranch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	clone := repoPair(t)
+	g, err := transport.NewGit(clone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.CreateBranch("station/db-a"); err != nil {
+		t.Fatal(err)
+	}
+	wt := filepath.Join(filepath.Dir(clone), "work-db-a")
+	if err := g.AddWorktree(wt, "station/db-a"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pinned, the way `station add` writes it.
+	pinned := estate.Estate{Name: "db-a", Transport: "git", Dir: wt,
+		Branch: "station/db-a", Scope: "station/db-a"}
+	if err := pinned.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := open("db-a"); err != nil {
+		t.Fatalf("a pinned estate on its own branch should open: %v", err)
+	}
+
+	// Move that checkout off the station's branch, the way a stray checkout
+	// would, and the estate must refuse rather than route somewhere else.
+	gitAt(t, wt, "checkout", "-q", "-b", "somewhere-else")
+	_, err = open("db-a")
+	if err == nil {
+		t.Fatal("a pinned estate opened on the wrong branch: a request would reach another machine")
+	}
+	for _, want := range []string{"station/db-a", "somewhere-else"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q, so the reader cannot tell what happened: %v", want, err)
+		}
+	}
+}
+
+// `init` records the branch it found in Branch and leaves Scope empty. That
+// estate must FOLLOW the checkout, because SKILL.md tells you to work on
+// `task/<slug>` and then send.
+func TestAnUnpinnedEstateStillFollowsTheCheckout(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	clone := repoPair(t)
+
+	unpinned := estate.Estate{Name: "payments", Transport: "git", Dir: clone,
+		Branch: strings.TrimSpace(gitAt(t, clone, "rev-parse", "--abbrev-ref", "HEAD"))}
+	if err := unpinned.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	gitAt(t, clone, "checkout", "-q", "-b", "task/dns-timeouts")
+	op, err := open("payments")
+	if err != nil {
+		t.Fatalf("an unpinned estate must follow a task branch, which is the documented workflow: %v", err)
+	}
+	if op.Scope != "task/dns-timeouts" {
+		t.Errorf("scope is %q, so the request would not go to the task branch", op.Scope)
+	}
+}
+
+// Scope is canonical, Branch is the fallback. Reading Scope alone would
+// silently un-pin every estate written before Scope existed.
+func TestRoutingPrefersScopeAndFallsBackToBranch(t *testing.T) {
+	if got := (estate.Estate{Scope: "station/a", Branch: "old"}).Routing(); got != "station/a" {
+		t.Errorf("Scope should win, got %q", got)
+	}
+	if got := (estate.Estate{Branch: "old"}).Routing(); got != "old" {
+		t.Errorf("an estate with no Scope should fall back to Branch, got %q", got)
+	}
+	if got := (estate.Estate{}).Routing(); got != "" {
+		t.Errorf("an estate with neither should report nothing, got %q", got)
+	}
+}

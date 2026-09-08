@@ -74,6 +74,25 @@ cd "$REPO_ROOT" || exit 1
 ORIG_ARGS=("$@")
 SELF_HASH="$(sha256sum "$REPO_ROOT/station.sh" 2>/dev/null | cut -d' ' -f1)"
 
+# WHICH PAYLOAD IS RUNNING, published so it can be compared without asking.
+#
+# `HEAD` cannot answer this: every status commit and every log advances it, so
+# two stations on the same payload report different revisions within a minute
+# of each other. Branches carry independent copies of the station and
+# self-update pulls only its own, so drift between stations is real - and with
+# nothing published it is discovered by a step behaving differently on one
+# machine, which is the most expensive way to find out.
+#
+# The runner and the capture, because those are what a step's behaviour
+# actually rests on. Not the steps themselves: those are SUPPOSED to differ per
+# branch, and including them would make the digest change for the ordinary
+# reason and stop meaning anything.
+payload_digest() {
+  cat "$REPO_ROOT/station.sh" "$REPO_ROOT/run.sh" "$REPO_ROOT/caplib.sh" 2>/dev/null |
+    sha256sum 2>/dev/null | cut -c1-12
+}
+PAYLOAD="$(payload_digest)"
+
 INTERVAL="${INTERVAL:-5}"
 ONCE=0
 PIN_ONLY=0
@@ -328,6 +347,7 @@ publish_status() {
     echo "host:     $(hostname -f 2>/dev/null || hostname)"
     echo "branch:   $BRANCH"
     echo "utc:      $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    [ -n "$PAYLOAD" ] && echo "payload:  $PAYLOAD"
     [ -n "$extra" ] && echo "$extra"
   } > "$STATUS"
   tp_put_status "$(cat "$STATUS")" "station: $state ($id) ***NO_CI***" "$alsofile" || \

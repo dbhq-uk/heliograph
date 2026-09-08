@@ -148,7 +148,11 @@ tp_put_status() {
       -c user.email="${GIT_AUTHOR_EMAIL:-station@$(hostname)}" \
       commit -q -m "$msg" -- "$STATUS" ${alsofile:+"$alsofile"} 2>/dev/null
   cap_git pull --rebase --quiet >/dev/null 2>&1
-  cap_git push --quiet >/dev/null 2>&1 || cap_git push --quiet -u origin HEAD >/dev/null 2>&1 || return 1
+  # EXPLICIT, naming origin and this branch. A bare `git push` resolves through
+  # upstream configuration, and once the branch is which MACHINE this station
+  # is, resolving it anywhere but here is too implicit. The control side has
+  # always pushed `origin HEAD:<branch>`; this side had not.
+  cap_git push --quiet origin "HEAD:$BRANCH" >/dev/null 2>&1 || return 1
   return 0
 }
 
@@ -168,7 +172,7 @@ tp_put_progress() {
   git -c user.name="${GIT_AUTHOR_NAME:-station}" \
       -c user.email="${GIT_AUTHOR_EMAIL:-station@$(hostname)}" \
       commit -q -m "$msg" -- "$STATUS" "$logfile" 2>/dev/null
-  cap_git push --quiet >/dev/null 2>&1 || return 1
+  cap_git push --quiet origin "HEAD:$BRANCH" >/dev/null 2>&1 || return 1
   return 0
 }
 
