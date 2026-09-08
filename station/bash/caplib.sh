@@ -634,6 +634,17 @@ cap_push() {
     echo "  'ssh-add -l' can list; an https remote needs GIT_TOKEN, or"
     echo "  GIT_TOKEN_FILE naming a file whose first line is the token."
     echo "  './start.sh --check' reports which credential is in force here."
+    # REPORTS the failure, still without exiting. The rule this function is
+    # built on is "a failed push must never lose the log", and that is about not
+    # dying and not discarding - it was never about lying to the caller.
+    #
+    # It returned 0 here, because an `echo` was the last command in the branch.
+    # Nothing noticed while the only callers ignored the result. cap_deliver
+    # does not: it is what tells the loop to publish `undelivered` rather than
+    # `idle`, so with a 0 here a git station would have gone on reporting every
+    # stranded log as delivered - the same defect this whole change exists to
+    # remove, surviving on the one transport that was supposed to work.
+    return 1
   fi
 }
 
@@ -668,6 +679,27 @@ _CAP_TP_STATE=""   # "" = not tried, "ready", "unusable", "none"
 cap_transport_load() {
   [ -n "$_CAP_TP_STATE" ] && return 0
   CAP_TRANSPORT="${TRANSPORT:-git}"
+
+  # THE NAME IS A FILENAME, so it is validated before it becomes one.
+  #
+  # It is interpolated straight into a path that is then SOURCED, and it arrives
+  # from the environment. `TRANSPORT=../station` resolves to
+  # $REPO_ROOT/station.sh and would source the loop into the middle of the
+  # runner. Lowercase, digits and hyphens only - which is every transport that
+  # exists and every one anybody would write - so a name that is not one is a
+  # mistake or an attempt, and both get refused rather than resolved.
+  #
+  # This is the same posture station.sh takes towards the request's env line:
+  # the request is a trusted control channel because it names the step to run,
+  # and "trusted" is still not a reason to hand it a path.
+  case "$CAP_TRANSPORT" in
+    ''|*[!a-z0-9-]*)
+      _CAP_TP_STATE="unusable"
+      echo "refusing transport name '$CAP_TRANSPORT': it becomes a filename that gets sourced," >&2
+      echo "  so only lowercase letters, digits and hyphens are accepted." >&2
+      return 0 ;;
+  esac
+
   local f="${REPO_ROOT:-.}/transports/${CAP_TRANSPORT}.sh"
   if [ ! -f "$f" ]; then
     # No transports directory at all: an older payload, or a checkout somebody

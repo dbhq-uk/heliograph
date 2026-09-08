@@ -508,6 +508,16 @@ while :; do
   publish_status "running" "$ID" "$STEP"
   RUNNING=1
   START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  # CLEARED BEFORE THE RUN, so its ABSENCE means something.
+  #
+  # run.sh writes this at the end to say whether the log got out. Left over from
+  # the previous run it is worse than useless: a runner that exits before
+  # delivery - refused as root, an unknown step, killed - would leave the last
+  # run's verdict in place and this loop would publish it as if it described
+  # this one. Publishing `undelivered` for a run that produced no log at all,
+  # or `idle` for one that produced a log nobody received, are both lies told to
+  # somebody who cannot check.
+  rm -f "$REPO_ROOT/.station-delivery"
   # run.sh owns the log, the timestamps and the log push. The station only decides
   # WHEN it runs - that separation is the same one steps and runners already have.
   #
@@ -539,6 +549,27 @@ while :; do
         say "  env: $ENVLINE"
         say "  Use plain NAME=value pairs; quote a value that contains spaces."
         publish_status "refused" "$ID" "$STEP" "reason:   env line contains a shell metacharacter"
+        LAST_ID="$ID"; echo "$ID" > "$STATE_FILE"
+        [ "$ONCE" = "1" ] && cleanup
+        continue ;;
+    esac
+    # THE REQUEST MAY NOT CHOOSE THE CHANNEL ITS OWN LOG COMES BACK ON.
+    #
+    # The env line is passed to run.sh through `env`, and run.sh reads TRANSPORT
+    # to decide where to deliver. So `env: TRANSPORT=git` on a relay station
+    # would send the log somewhere nobody is reading, and the request would
+    # still be published as a clean run. That is the defect this whole change
+    # exists to remove, handed to whoever can write a request.
+    #
+    # The operator chose the transport when they started the station, and it is
+    # not the far side's to revise. Refused rather than ignored: a request that
+    # asked for something and silently did not get it is worse than one told no.
+    case " $ENVLINE" in
+      *' TRANSPORT='*)
+        say "REFUSED: the env line sets TRANSPORT, which would redirect the log"
+        say "  env: $ENVLINE"
+        say "  The transport is chosen when the station is started, not per request."
+        publish_status "refused" "$ID" "$STEP" "reason:   the env line sets TRANSPORT, which would redirect where the log is delivered. The transport is chosen at station start"
         LAST_ID="$ID"; echo "$ID" > "$STATE_FILE"
         [ "$ONCE" = "1" ] && cleanup
         continue ;;

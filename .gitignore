@@ -47,8 +47,19 @@ __pycache__/
 # ignore these - there, committing a log is the entire point. Here, a log is
 # a real investigation that has escaped into a public repo.
 **/ops-logs/*.txt
+# Station state, dropped into station/bash/ by running the suite locally. The
+# station's own ignore file covers these in a TRANSPORT repo; this one has to
+# cover them here, or a local test run leaves them staged. Both spellings: a
+# checkout predating the rename still writes the .agent-* names.
 .agent.lock
 .agent-state
+.agent-approved
+.station.lock
+.station-state
+.station-approved
+.station-delivery
+.station-relay-state
+.station-service.log
 
 # Terraform local state and provider cache. State for the templates under
 # station/bash/azure/*/ is never meant to be shared through this repo - each
