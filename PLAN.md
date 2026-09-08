@@ -12,13 +12,13 @@ for the 19-PR breakdown. This file says where we are and what is next.
 
 ## Where we are
 
-Git and the file share work end to end. The site documents the far side. There
-is no PowerShell station.
+Git, the file share and the relay work end to end, each with its own round trip
+in CI. The site documents the far side. There is no PowerShell station.
 
 | | |
 |---|---|
 | control CLI over git | works, driven end to end in CI against a real station |
-| relay | station side complete and **startable by `./start.sh`**; no CLI command can select it |
+| relay | **works end to end**, against the deployed relay at `heliograph-relay.dbhq.uk` |
 | Azure Blob | works end to end via `drop.sh` and `pigeonhole.sh`, not via the CLI |
 | file share | **works end to end**, proved by a CLI round trip in CI |
 | bundle, object store | control side only; **no station side at all** |
@@ -46,20 +46,18 @@ is no PowerShell station.
 | #35 | this file |
 | #36 | **the preflight stops assuming git** - `tp_preflight`, `tp_sync`, and a token that was being printed |
 | #37 | **`transports/share.sh`** - the file share gets its far side |
+| #38 | **the relay, reachable and usable** - and four defects only a round trip could find |
 
 ## Next, in order
 
-1. **Relay reachable from the CLI** (PR 5). `relay.go` is complete and
-   unselectable. Needs estate fields and a key-exchange procedure; the keys are
-   the hard part, not the plumbing
-2. **Hosts can select a transport** (PR 6). `TRANSPORT` and the `RELAY_*` set
+1. **Hosts can select a transport** (PR 6). `TRANSPORT` and the `RELAY_*` set
    through the Docker entrypoint, the Kubernetes manifest and the five Azure
    templates. Plant `heliograph-seal` with its checksum populated. The station
    side is now ready for this: `./start.sh` starts a relay station, and what is
    left is carrying the variables there
-3. **Conformance across every transport in CI** (PR 7). Property 9 only
+2. **Conformance across every transport in CI** (PR 7). Property 9 only
    exercises git today, so a no-op `tp_put_log` on another transport would pass
-4. **Track B: the PowerShell station**, seven PRs, gated on 1-2. Windows
+3. **Track B: the PowerShell station**, seven PRs, gated on 1. Windows
    PowerShell 5.1, carrying git, share and relay. The conformance driver is the
    deliverable, not the code
 
@@ -70,13 +68,13 @@ Stated on the site rather than hidden, so nobody plans around a promise.
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour
-- **Relay sequence numbers can collide** between the parent loop and the child
-  runner: the parent loads `RELAY_OUT` once and does not reload before
-  publishing `idle`, so it can emit a number the runner already used, and the
-  receiver drops anything at or below what it has accepted - by design, because
-  that is the replay defence
 - **`test-launchd.sh` is flaky.** Failed once on a branch, passed on re-run,
   clean on main. Watch it; do not act yet
+
+**Fixed on 2026-09-08, and recorded because they were on this list:** the relay
+sequence collision between the loop and the runner is closed by a `mkdir` lock
+and a max-taking state write. It was reproducible the moment a round trip
+existed to run.
 
 ## Lessons this repository has already paid for
 
@@ -99,6 +97,34 @@ station could never run a step at all. Nothing else had noticed.
 2026-09-08 found ten defects, five missed entirely - a quoting bypass of the
 env guard, `cap_push` returning 0 on failure, a committed test artefact that
 `bootstrap` would have planted into every station.
+
+**A test written for one defect finds another.** Writing the "a state write
+that failed must be reported" case made `_relay_lock` spin for ever, because it
+waited on any `mkdir` failure and an unwritable directory is one. Moving that
+check inside the retry loop then broke a working lock, because a holder
+releasing between the failed `mkdir` and the test looks exactly like an
+unwritable filesystem - 58 numbers out of 60, two takers refused for nothing.
+Ask "can I ever create this" once, up front; ask "does it exist" only in the
+loop.
+
+**A stale-lock heuristic that can fire on a live holder is not a lock.** The
+relay's sequence lock broke any lock directory untouched for a minute - and a
+holder's mtime does not change while it works, so the breaker deleted live
+locks and two processes went in at once. Four takers wanting fifteen numbers
+each got 33 distinct numbers out of 60. It fails exactly like having no lock:
+intermittently, silently, under load. Ask `kill -0` whether the recorded pid is
+alive, which is what station.sh has always done.
+
+**A round trip finds what reading cannot.** The relay had four defects that
+every review had walked past, and all four surfaced within an hour of the first
+end-to-end run: the preflight proved its token by reading the station's own
+request queue, and a relay deletes on collection, so every `./start.sh` silently
+ate the waiting request; the loop and the runner collided on sequence numbers so
+`idle` was dropped as a replay; `ListLogs` returned an error, leaving the
+transport whose whole purpose is retrieving a log with no way to read one; and
+`log: <none>` appeared in every status for a step sent by path, on every
+transport, because the glob used the path rather than the label. None of them
+errored anywhere.
 
 **A reachability check is not a delivery check.** `tp_check` on the blob
 transport counted an HTTP 404 as success, on the argument that an absent request

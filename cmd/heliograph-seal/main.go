@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 
 	"github.com/dbhq-uk/heliograph/internal/seal"
 )
@@ -73,11 +72,11 @@ func main() {
 // The secret half never leaves this file, and the file is written 0600. That is
 // the whole of the key management story here, deliberately: anything more
 // elaborate would be something else to audit.
-type storedIdentity struct {
-	Version int    `json:"version"`
-	Secret  string `json:"secret"`
-	Public  string `json:"public"`
-}
+//
+// THE STRUCT AND THE READERS MOVED to internal/seal, because `heliograph` on
+// the control node reads and writes the same file. Two copies of an on-disk
+// format in two binaries is a format that drifts, and the symptom would be a
+// station that cannot verify a request on a machine nobody can log into.
 
 func cmdKeygen(args []string) error {
 	fs := flag.NewFlagSet("keygen", flag.ExitOnError)
@@ -88,23 +87,13 @@ func cmdKeygen(args []string) error {
 	if *out == "" {
 		return fmt.Errorf("--out is required")
 	}
-	// Refuse to overwrite. An identity file replaced by accident is a station
-	// that can no longer be talked to and a control that can no longer read
-	// its logs, on a machine nobody can reach.
-	if _, err := os.Stat(*out); err == nil {
-		return fmt.Errorf("%s already exists: refusing to replace an identity, because everything sealed to it becomes unreadable", *out)
-	}
 	id, err := seal.Generate()
 	if err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(storedIdentity{
-		Version: 1, Secret: id.Encode(), Public: id.Public().Encode(),
-	}, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(*out, append(b, '\n'), 0o600); err != nil {
+	// Refuses to overwrite. See seal.WriteIdentityFile for why that is not a
+	// convenience.
+	if err := seal.WriteIdentityFile(*out, id); err != nil {
 		return err
 	}
 	fmt.Printf("identity written to %s (mode 600)\n", *out)
@@ -115,34 +104,8 @@ func cmdKeygen(args []string) error {
 	return nil
 }
 
-func loadIdentity(path string) (*seal.Identity, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var s storedIdentity
-	if err := json.Unmarshal(b, &s); err != nil {
-		return nil, fmt.Errorf("%s is not an identity file: %w", path, err)
-	}
-	return seal.DecodeIdentity(s.Secret)
-}
-
-func loadPeer(path string) (seal.PublicIdentity, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return seal.PublicIdentity{}, err
-	}
-	txt := strings.TrimSpace(string(b))
-	// A peer file may be a bare public identity, or the JSON an identity file
-	// happens to be. Accepting both means nobody has to remember which.
-	if strings.HasPrefix(txt, "{") {
-		var s storedIdentity
-		if err := json.Unmarshal([]byte(txt), &s); err == nil && s.Public != "" {
-			return seal.DecodePublic(s.Public)
-		}
-	}
-	return seal.DecodePublic(txt)
-}
+var loadIdentity = seal.LoadIdentityFile
+var loadPeer = seal.LoadPeerFile
 
 func cmdPublic(args []string) error {
 	fs := flag.NewFlagSet("public", flag.ExitOnError)

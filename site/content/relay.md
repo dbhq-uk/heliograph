@@ -9,13 +9,31 @@ HTTPS and meet at a server neither of them trusts.
 | | |
 |---|---|
 | station side | complete. Fetches requests, publishes status and progress, delivers the finished log |
-| relay server | [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay), deployed |
-| control side | implemented in `internal/transport`, and **no CLI command can select it** |
+| relay server | [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay), **deployed at `heliograph-relay.dbhq.uk`** |
+| control side | `heliograph init --transport relay`, and a round trip in CI drives all three halves |
 
-So it is not usable end to end yet, and this page describes it as designed so
-the design can be reviewed. Teaching `heliograph init` to select it is on
-[the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md);
-until then, every example on this page is station-side configuration.
+**It works end to end.** A request goes out sealed, a station nobody can log
+into runs it, and the log comes back - proved by a test that builds the real
+binary, runs a real station through `start.sh`, and reads the log back through
+`heliograph logs`.
+
+## Setting one up
+
+```bash
+heliograph init payments --transport relay \
+  --dir https://heliograph-relay.dbhq.uk \
+  --relay-estate payments --scope db-a
+
+heliograph plant -e payments        # what to send the operator
+heliograph relay peer -e payments <the line they send back>
+
+export HELIOGRAPH_RELAY_TOKEN=...   # the CONTROL token
+heliograph send steps/probe.sh
+```
+
+Full flags on [the CLI page](/cli#relay-estates). The one step that matters
+most is the last one there: **compare the two fingerprints over a channel the
+operator already trusts.** It is the only step a machine cannot do for you.
 
 ## The threat model, which is the whole point
 
@@ -61,6 +79,26 @@ reflect one back, or forward one from a different estate.
 They are persisted on both sides. Losing that state is not merely inconvenient:
 a reset would let the relay replay everything it has ever seen. The station
 keeps them in a local, gitignored file.
+
+**Two processes take them, so a lock is not optional.** The loop publishes the
+status; the runner is a separate child process and publishes the finished log.
+Both took a number from a value loaded when they started, so they collided - and
+the receiver dropped the second as a replay, correctly, because that is what a
+replay looks like. The log arrived and the run reported `running` for ever, with
+nothing erroring anywhere. Numbers are now taken under a `mkdir` lock, and the
+state file is written by taking the higher of each field so a stale writer can
+never wind the counter back.
+
+### A relay is a queue, not a store
+
+It deletes on collection and expires after seven days. So the control node
+**keeps what it collects**, and one consequence is worth knowing: whatever asks
+the relay a question collects everything waiting, including messages it was not
+asking about. That is why `heliograph doctor` proves its credential by
+collecting properly rather than by a throwaway request, and why the station's
+preflight probes a routing key nothing uses - an earlier version proved the
+token by reading this station's own request queue, which silently ate whatever
+request was waiting every time somebody started a station.
 
 ## Two tokens, two scopes
 

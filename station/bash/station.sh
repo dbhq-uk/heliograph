@@ -720,10 +720,37 @@ while :; do
   LAST_ID="$ID"
   echo "$ID" > "$STATE_FILE"
 
-  # Newest log for this step. Step names are [a-z-] by convention, so the glob is
-  # safe; `ls -t` is the simplest thing that sorts by mtime.
-  # shellcheck disable=SC2012
-  LOGFILE="$(ls -t ops-logs/"${STEP}"-*.txt 2>/dev/null | head -1)"
+  # WHICH LOG THIS RUN PRODUCED. Asked of the runner rather than guessed.
+  #
+  # This was `ls -t ops-logs/"${STEP}"-*.txt`, and a step given as a PATH - which
+  # is the documented way to send one, `heliograph send steps/probe.sh` - made
+  # that glob `ops-logs/steps/probe.sh-*.txt`, which matches nothing. So the
+  # published status said `log: <none>` for every step sent by path, on every
+  # transport, while the log sat in ops-logs under the name run.sh gave it.
+  #
+  # On git that was survivable because the control side lists the directory. On
+  # a relay it is not survivable at all: a relay is a queue, so the name in the
+  # status is the only name the log will ever have.
+  #
+  # cap_record_delivery writes the path it actually delivered, so that is the
+  # authority. The glob stays as the fallback for a run that never reached
+  # delivery - a cancelled step, most often - and is corrected to use the same
+  # label run.sh derives, which is the basename without its extension.
+  LOGFILE="$(sed -n 's/^log:[[:space:]]*//p' "$REPO_ROOT/.station-delivery" 2>/dev/null | head -1)"
+  # RELATIVE TO THE PAYLOAD, because that is what the published status has
+  # always carried and what the control side reads. run.sh records the path it
+  # wrote, which may be absolute; publishing that would leak the station's
+  # directory layout into a document the control side matches names against.
+  case "$LOGFILE" in
+    "$REPO_ROOT"/*) LOGFILE="${LOGFILE#"$REPO_ROOT"/}" ;;
+  esac
+  if [ -z "$LOGFILE" ] || [ ! -f "$LOGFILE" ]; then
+    _step_label="$(basename "$STEP")"
+    _step_label="${_step_label%.sh}"
+    _step_label="${_step_label%.ps1}"
+    # shellcheck disable=SC2012
+    LOGFILE="$(ls -t ops-logs/"${_step_label}"-*.txt 2>/dev/null | head -1)"
+  fi
   if [ "$CANCELLED" = "1" ]; then
     say "step '$STEP' CANCELLED${LOGFILE:+  (partial log: $LOGFILE)}"
     # The log goes in this commit too: the step was killed, so run.sh's cap_push
