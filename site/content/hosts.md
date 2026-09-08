@@ -54,15 +54,15 @@ What is still git-only is how a host **passes those variables in**. That is the
 next thing on [the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md),
 not a property of the station.
 
-| host | git | Azure Blob | relay | share, bundle, object store |
-|---|---|---|---|---|
-| operator's terminal | yes | **yes** | **yes** | no station side |
-| Docker, Kubernetes | yes | not plumbed | not plumbed | no station side |
-| systemd, launchd, setsid | yes | not plumbed | not plumbed | no station side |
-| Windows scheduled task | yes | not plumbed | not plumbed | no station side |
-| pipelines | yes | not plumbed | not plumbed | no station side |
-| Azure ACI, Web App, Apps Job, VM | yes | not plumbed | not plumbed | no station side |
-| Azure Function App | no `git` in the image | **yes** | not plumbed | no station side |
+| host | git | Azure Blob | relay | file share | bundle, object store |
+|---|---|---|---|---|---|
+| operator's terminal | yes | **yes** | **yes** | **yes** | no station side |
+| Docker, Kubernetes | yes | not plumbed | not plumbed | not plumbed | no station side |
+| systemd, launchd, setsid | yes | not plumbed | not plumbed | not plumbed | no station side |
+| Windows scheduled task | yes | not plumbed | not plumbed | not plumbed | no station side |
+| pipelines | yes | not plumbed | not plumbed | not plumbed | no station side |
+| Azure ACI, Web App, Apps Job, VM | yes | not plumbed | not plumbed | not plumbed | no station side |
+| Azure Function App | no `git` in the image | **yes** | not plumbed | not plumbed | no station side |
 
 **"yes"** means: export `TRANSPORT` and the transport's variables, then run
 `./start.sh` exactly as you would for git. The relay also needs

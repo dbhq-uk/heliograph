@@ -195,3 +195,93 @@ func TestGapsFindsARealStall(t *testing.T) {
 		t.Errorf("a line that did not stall was reported as a gap:\n%s", out)
 	}
 }
+
+// The same test, over the share transport.
+//
+// WHY A SECOND ONE RATHER THAN A TABLE. This is the only assertion in the
+// repository that both halves of the share transport agree about where the
+// documents live, and it is worth being able to fail on its own. The control
+// side has existed since A3; the station side did not, so `heliograph init
+// --transport share` wrote requests into a directory nothing could read and
+// nothing said so. Two implementations of a layout, on opposite sides of a gap
+// nobody can reach, is exactly the shape that needs measuring rather than
+// reviewing.
+//
+// THE STEP IS PLANTED, NOT SENT, and that is a real difference rather than a
+// convenience here. On git the step file travels in the repository, so `send`
+// makes it available. A share carries the request, the status and the logs and
+// nothing else, so the steps have to be on the station already - which is what
+// `heliograph plant` means by having nothing to clone.
+func TestCLIDrivesAShareStation(t *testing.T) {
+	station := stationDir(t)
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("no bash")
+	}
+
+	base := t.TempDir()
+	mount := filepath.Join(base, "mnt") // the share, as both sides see it
+	work := filepath.Join(base, "work") // the station's payload
+	cfg := filepath.Join(base, "config")
+	if err := os.MkdirAll(mount, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// The station's own bootstrap, not a fixture: if it stops shipping
+	// transports/share.sh this notices.
+	sh(t, base, filepath.Join(station, "station", "bootstrap.sh"), work)
+
+	step := "#!/usr/bin/env bash\n# heliograph-mode: read-only\necho THE-SHARE-CARRIED-IT\n"
+	if err := os.WriteFile(filepath.Join(work, "steps", "probe.sh"), []byte(step), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	bin := filepath.Join(base, "heliograph")
+	sh(t, ".", "go", "build", "-o", bin, "github.com/dbhq-uk/heliograph/cmd/heliograph")
+	hg := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(bin, args...)
+		cmd.Dir = base
+		cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+cfg)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("heliograph %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+
+	hg("init", "shared", "--transport", "share", "--dir", mount, "--scope", "dns-timeouts")
+	if out := hg("send", "steps/probe.sh"); !strings.Contains(out, "sent ") {
+		t.Fatalf("send did not report an id:\n%s", out)
+	}
+
+	// The station, run once, exactly as an operator would - through start.sh,
+	// which is the command they are actually told to type, rather than
+	// station.sh directly. PUSH is left at its default: a log captured and
+	// never delivered is the failure this loop exists to prevent, so the test
+	// must not quietly arrange for it.
+	cmd := exec.Command("bash", "./start.sh", "--", "--once", "--interval", "1")
+	cmd.Dir = work
+	cmd.Env = append(os.Environ(),
+		"TRANSPORT=share", "SHARE_DIR="+mount, "SHARE_SCOPE=dns-timeouts")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("the share station did not run: %v\n%s", err, out)
+	}
+
+	if s := hg("status"); !strings.Contains(s, "idle") {
+		t.Errorf("status after a completed run:\n%s", s)
+	}
+	logs := hg("logs")
+	if !strings.Contains(logs, "probe-") {
+		t.Fatalf("no log came back over the share:\n%s", logs)
+	}
+	body := hg("logs", "--last")
+	if !strings.Contains(body, "THE-SHARE-CARRIED-IT") {
+		t.Errorf("the log does not contain the step's output:\n%s", body)
+	}
+	if !strings.Contains(body, " | THE-SHARE-CARRIED-IT") {
+		t.Errorf("the captured line lost its timestamp column:\n%s", body)
+	}
+	if !strings.Contains(body, "RESULT       : OK") {
+		t.Errorf("the log has no footer, so the far side cannot tell a finished run from a hung one:\n%s", body)
+	}
+}

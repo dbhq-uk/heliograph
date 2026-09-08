@@ -39,8 +39,18 @@ func NewShare(dir, scope string) (*Share, error) {
 	if scope == "" {
 		return nil, errors.New("a share needs a scope: one directory per investigation, so two do not overwrite each other")
 	}
-	if strings.ContainsAny(scope, `/\`) || scope == "." || scope == ".." {
-		return nil, fmt.Errorf("%q is not a usable scope: it becomes a directory name", scope)
+	// A WHITELIST, and the reason is not path traversal alone.
+	//
+	// Refusing separators covers the obvious case. It does not cover the one
+	// that bites: the scope is published as the status document's `branch:`
+	// value, and that document is line-oriented `key: value`. A scope holding a
+	// NEWLINE injects a second key, and the parser keeps the last - so a scope
+	// of "x\nstate: running" makes an idle station report itself busy for ever.
+	//
+	// transports/share.sh refuses exactly this set on the far side. Two copies
+	// of one rule, because neither side may assume the other configured it.
+	if !validScope(scope) {
+		return nil, fmt.Errorf("%q is not a usable scope: it becomes a directory name AND the status document's branch field, so it may hold only letters, digits, dot, hyphen and underscore, and may not begin with a hyphen", scope)
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -58,6 +68,26 @@ func NewShare(dir, scope string) (*Share, error) {
 		return nil, fmt.Errorf("cannot write to %s: %w", abs, err)
 	}
 	return s, nil
+}
+
+// validScope is the rule both sides apply to a scope.
+//
+// Letters, digits, dot, hyphen and underscore, not empty, not `.` or `..`, and
+// not beginning with a hyphen - which would become an option to whichever
+// command the far side hands it to. transports/share.sh spells the same set.
+func validScope(s string) bool {
+	if s == "" || s == "." || s == ".." || strings.HasPrefix(s, "-") {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Share) path(parts ...string) string {
