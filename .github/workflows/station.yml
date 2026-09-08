@@ -1,0 +1,580 @@
+name: station
+
+# The station's own CI, carried over from dbhq-uk/heliograph-skill in the
+# 2026-09-08 merge with paths repointed at station/. The Go side is
+# validate.yml; this file is everything that proves the far side.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate plugin manifest is valid JSON
+        run: jq empty .claude-plugin/plugin.json
+
+      - name: Check shell scripts parse
+        # Root installers included: a syntax error there breaks every install.
+        # tests/ included too. The tests job runs those scripts, so a syntax
+        # error there does get caught - but as a failing test run in a different
+        # job, which reads as "the station is broken" rather than "this file
+        # does not parse". Same corpus as AGENTS.md's local command.
+        run: |
+          fail=0
+          while IFS= read -r s; do
+            bash -n "$s" || { echo "Syntax error: $s"; fail=1; }
+          done < <({ find . -maxdepth 1 -name '*.sh'; find skills station tests -name '*.sh'; })
+          exit $fail
+
+      - name: Shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -S warning $(find . -name '*.sh' -not -path './.git/*' -not -path './site/*')
+
+      - name: Check SKILL.md frontmatter
+        run: |
+          python3 - <<'PY'
+          import sys, pathlib, re
+          ok = True
+          for skill in sorted(pathlib.Path("skills").glob("*/SKILL.md")):
+              text = skill.read_text(encoding="utf-8")
+              m = re.match(r"^---\n(.*?)\n---", text, re.S)
+              if not m:
+                  print(f"{skill}: missing YAML frontmatter"); ok = False; continue
+              fm = m.group(1)
+              name = re.search(r"^name:\s*(.+)$", fm, re.M)
+              desc = re.search(r"^description:\s*(.+)$", fm, re.M)
+              if not name:
+                  print(f"{skill}: missing 'name'"); ok = False
+              else:
+                  name = name.group(1).strip()
+                  if name != skill.parent.name:
+                      print(f"{skill}: name '{name}' != directory '{skill.parent.name}'"); ok = False
+                  if not re.fullmatch(r"[a-z0-9-]{1,64}", name):
+                      print(f"{skill}: name must be lowercase alphanumeric/hyphen, <=64 chars"); ok = False
+              if not desc:
+                  print(f"{skill}: missing 'description'"); ok = False
+              elif len(desc.group(1).strip()) > 1024:
+                  print(f"{skill}: description exceeds 1024 chars"); ok = False
+          sys.exit(0 if ok else 1)
+          PY
+
+      # The whole install story rests on ${CLAUDE_SKILL_DIR} being substituted
+      # where it is used at all. A hardcoded ~/.claude/skills path works on the
+      # author's machine and is wrong under both a Codex and a plugin install.
+      - name: No hardcoded install paths
+        run: |
+          if grep -rn '~/\.claude/skills\|\$HOME/\.claude/skills' skills/; then
+            echo "::error::Hardcoded install path found. Use \${CLAUDE_SKILL_DIR} instead."
+            exit 1
+          fi
+          echo "No hardcoded install paths."
+
+      # Every rule this skill teaches about not truncating a diagnostic applies
+      # to the station itself, and `probe` lines are where that rule bites: what
+      # a probe prints IS the evidence, so a `head` there cuts the line someone
+      # needed and the loss is invisible in the log.
+      - name: Probes do not truncate their own evidence
+        run: |
+          hits=$(grep -nE '^[[:space:]]*probe(_opt)? .*\|[[:space:]]*(head|tail)\b' \
+                 station/bash/steps/*.sh || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "::error::A probe truncates its own output. See references/method.md rule 4."
+            exit 1
+          fi
+          echo "No truncated probes."
+
+  installers:
+    name: Installers actually install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Claude install
+        run: |
+          ./install.sh
+          test -L "$HOME/.claude/skills/heliograph" || { echo "not a symlink"; exit 1; }
+          test -f "$HOME/.claude/skills/heliograph/SKILL.md" || { echo "SKILL.md missing"; exit 1; }
+
+      - name: Codex install, and the rewritten paths resolve
+        run: |
+          ./install-codex.sh
+          target="$HOME/.codex/skills/heliograph"
+          test -f "$target/SKILL.md" || { echo "SKILL.md missing"; exit 1; }
+          grep -q 'CLAUDE_SKILL_DIR' "$target/SKILL.md" && { echo "variable not substituted"; exit 1; }
+          test -d "$target/references" || { echo "references/ not linked"; exit 1; }
+          # Every path the rewritten SKILL.md names must exist on disk.
+          fail=0
+          while IFS= read -r p; do
+            [ -e "$p" ] || { echo "rewritten path does not exist: $p"; fail=1; }
+          done < <(grep -o "$target[^ \`\"']*" "$target/SKILL.md" | sort -u)
+          exit $fail
+
+      - name: No dangling symlinks after either install
+        run: |
+          found=$(find "$HOME/.claude/skills/heliograph/" "$HOME/.codex/skills/heliograph/" -xtype l 2>/dev/null || true)
+          if [ -n "$found" ]; then echo "::error::dangling symlinks:"; echo "$found"; exit 1; fi
+          echo "No dangling symlinks."
+
+  station:
+    name: The station captures a run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The one thing worth exercising end to end. A capture that loses the
+      # timestamps, swallows an exit code, or writes nothing on failure is the
+      # failure mode this whole repo exists to avoid, and it is invisible until
+      # someone is waiting on the far side of a gap for a log that never comes.
+      - name: Bootstrap into a fresh repo
+        run: |
+          ./station/bootstrap.sh /tmp/transport
+          cd /tmp/transport
+          test -f .gitignore || { echo "gitignore not installed as .gitignore"; exit 1; }
+          test ! -e gitignore || { echo "undotted gitignore left behind"; exit 1; }
+          git init -q && git add -A && git -c user.email=ci@example.com -c user.name=ci commit -qm init
+
+      - name: A passing step is captured, timestamped and complete
+        run: |
+          cd /tmp/transport
+          PUSH=0 ./run.sh env
+          log=$(ls -t ops-logs/env-*.txt | head -1)
+          grep -q 'git commit  :' "$log" || { echo "header missing provenance"; exit 1; }
+          grep -q 'RESULT       : ' "$log" || { echo "footer missing"; exit 1; }
+          # Every captured line carries a UTC clock. Header and footer are
+          # written outside cap_run and are exempt; the body is not.
+          bad=$(sed -n '/^---------- /,$p' "$log" \
+                | grep -vE '^[0-9]{2}:[0-9]{2}:[0-9]{2} \| |^$|^-{5}|^={5}| finished UTC | exit code | RESULT ' \
+                | head -5)
+          if [ -n "$bad" ]; then echo "untimestamped lines:"; echo "$bad"; exit 1; fi
+
+      - name: A failing step still produces a log and the real exit code
+        run: |
+          cd /tmp/transport
+          printf '#!/usr/bin/env bash\n# heliograph-mode: read-only\nset -uo pipefail\necho "this step fails"\nexit 7\n' > steps/boom.sh
+          chmod +x steps/boom.sh
+          sed -i 's|^  net)|  boom) CMD=(./steps/boom.sh) ;;\n  net)|' run.sh
+          set +e; PUSH=0 ./run.sh boom; rc=$?; set -e
+          [ "$rc" = "7" ] || { echo "expected exit 7, got $rc"; exit 1; }
+          log=$(ls -t ops-logs/boom-*.txt | head -1)
+          grep -q 'exit code    : 7' "$log" || { echo "footer lost the exit code"; exit 1; }
+          grep -q 'RESULT       : FAILED' "$log" || { echo "footer did not mark failure"; exit 1; }
+
+      - name: An unknown step exits 2 having done nothing
+        run: |
+          cd /tmp/transport
+          before=$(ls ops-logs | wc -l)
+          set +e; PUSH=0 ./run.sh nosuchstep >/dev/null 2>&1; rc=$?; set -e
+          [ "$rc" = "2" ] || { echo "expected exit 2, got $rc"; exit 1; }
+          [ "$(ls ops-logs | wc -l)" = "$before" ] || { echo "an unknown step wrote a log"; exit 1; }
+
+      # A step says what it is in its own file, and the runner gates on that
+      # rather than on the step's name. Both halves are exercised here because
+      # both are refusals, and a refusal that silently stopped happening would
+      # look exactly like a clean run.
+      - name: A step declaring itself an action refuses without CONFIRM
+        run: |
+          cd /tmp/transport
+          printf '#!/usr/bin/env bash\n# heliograph-mode: action\necho "changes something"\n' > steps/act.sh
+          chmod +x steps/act.sh
+          sed -i 's|^  boom)|  apply) CMD=(./steps/act.sh) ;;\n  boom)|' run.sh
+          set +e; PUSH=0 ./run.sh apply >/dev/null 2>&1; rc=$?; set -e
+          [ "$rc" = "3" ] || { echo "a state-changing step ran without CONFIRM=yes (exit $rc)"; exit 1; }
+          set +e; CONFIRM=yes PUSH=0 ./run.sh apply >/dev/null 2>&1; rc=$?; set -e
+          [ "$rc" = "0" ] || { echo "CONFIRM=yes did not let the action through (exit $rc)"; exit 1; }
+
+      - name: A step that declares nothing does not run at all
+        run: |
+          cd /tmp/transport
+          printf '#!/usr/bin/env bash\necho "no declaration here"\n' > steps/undeclared.sh
+          chmod +x steps/undeclared.sh
+          sed -i 's|^  boom)|  undeclared) CMD=(./steps/undeclared.sh) ;;\n  boom)|' run.sh
+          before=$(ls ops-logs | wc -l)
+          set +e; out=$(PUSH=0 ./run.sh undeclared 2>&1); rc=$?; set -e
+          [ "$rc" = "3" ] || { echo "an undeclared step was not refused (exit $rc)"; exit 1; }
+          [ "$(ls ops-logs | wc -l)" = "$before" ] || { echo "an undeclared step wrote a log"; exit 1; }
+          case "$out" in *heliograph-mode:*) ;; *) echo "the refusal did not say what to add"; exit 1 ;; esac
+
+      - name: The runner refuses to run as root
+        run: |
+          cd /tmp/transport
+          mkdir -p /tmp/fakebin
+          printf '#!/bin/sh\n[ "$1" = "-u" ] && { echo 0; exit 0; }\nexec /usr/bin/id "$@"\n' > /tmp/fakebin/id
+          chmod +x /tmp/fakebin/id
+          set +e; PATH=/tmp/fakebin:$PATH PUSH=0 ./run.sh env >/dev/null 2>&1; rc=$?; set -e
+          [ "$rc" = "5" ] || { echo "expected the root refusal (exit 5), got $rc"; exit 1; }
+          set +e; PATH=/tmp/fakebin:$PATH ALLOW_ROOT=1 PUSH=0 ./run.sh env >/dev/null 2>&1; rc=$?; set -e
+          [ "$rc" = "0" ] || { echo "ALLOW_ROOT=1 did not permit the run (exit $rc)"; exit 1; }
+
+  tests:
+    name: Station unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Assertions under tests/
+        run: ./tests/run-tests.sh
+
+  # tests/test-container.sh builds the image from station/bash/docker/Dockerfile
+  # as its own first step, and it is already part of the sweep the `tests` job
+  # runs. That alone is not enough: test-container.sh SKIPS LOUDLY, not fails,
+  # when no container runtime is reachable - the right behaviour on a developer
+  # laptop, and exactly the wrong one to let pass unnoticed in CI. A green
+  # `tests` job in which it quietly skipped would read identically to one where
+  # every property was verified. This job refuses the skip, as its own named
+  # check. GitHub-hosted ubuntu-latest runners ship Docker with the daemon
+  # running, so the skip path firing here is itself the finding.
+  container:
+    name: Container image builds, and its tests run unskipped
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run tests/test-container.sh and refuse a silent skip
+        run: |
+          set +e
+          ./tests/test-container.sh 2>&1 | tee /tmp/test-container.out
+          rc="${PIPESTATUS[0]}"
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::tests/test-container.sh failed (exit $rc)"
+            exit 1
+          fi
+          if grep -q '^SKIP' /tmp/test-container.out; then
+            echo "::error::tests/test-container.sh skipped something instead of running it."
+            exit 1
+          fi
+          if ! grep -qE '^test-container\.sh: [0-9]+ passed, [0-9]+ failed, 0 skipped$' /tmp/test-container.out; then
+            echo "::error::tests/test-container.sh did not report '0 skipped'."
+            exit 1
+          fi
+
+  # The same argument as the container job. tests/test-powershell.sh skips its
+  # ps_step half when no PowerShell is on PATH, which is right on a Linux
+  # developer box and wrong to let pass here. It matters more than usual
+  # because NOTHING ELSE in this job's corpus reads a .ps1 at all: bash -n and
+  # shellcheck sweep *.sh and step straight over station.ps1. A syntax error
+  # in one would go green here and only surface on a Windows control node,
+  # which is the one machine nobody can log in to.
+  powershell:
+    name: PowerShell parses, and its tests run unskipped
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Every .ps1 in the station parses
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path station,tests,skills -Filter *.ps1 -Recurse -File
+          if ($files.Count -eq 0) {
+            Write-Output "::error::no .ps1 files found, so this job checked nothing"
+            exit 1
+          }
+          $bad = 0
+          foreach ($f in $files) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $f.FullName, [ref]$null, [ref]$errors)
+            if ($errors -and $errors.Count -gt 0) {
+              $bad++
+              foreach ($e in $errors) {
+                Write-Output "::error file=$($f.FullName),line=$($e.Extent.StartLineNumber)::$($e.Message)"
+              }
+            } else {
+              Write-Output "ok   $($f.FullName)"
+            }
+          }
+          Write-Output "$($files.Count) file(s) parsed, $bad bad"
+          exit $bad
+
+      - name: Run tests/test-powershell.sh and refuse a silent skip
+        run: |
+          set +e
+          ./tests/test-powershell.sh 2>&1 | tee /tmp/test-powershell.out
+          rc="${PIPESTATUS[0]}"
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::tests/test-powershell.sh failed (exit $rc)"
+            exit 1
+          fi
+          if grep -q '^SKIP' /tmp/test-powershell.out; then
+            echo "::error::tests/test-powershell.sh skipped something instead of running it."
+            exit 1
+          fi
+          if ! grep -qE '^test-powershell\.sh: [0-9]+ passed, [0-9]+ failed, 0 skipped$' /tmp/test-powershell.out; then
+            echo "::error::tests/test-powershell.sh did not report '0 skipped'."
+            exit 1
+          fi
+          if grep -q 'SKIPPING every PowerShell assertion' /tmp/test-powershell.out; then
+            echo "::error::tests/test-powershell.sh found no PowerShell interpreter and skipped its ps_step half."
+            exit 1
+          fi
+
+  # The parts that ONLY exist on Windows: station.ps1's registry lookup for
+  # bash, ps_step against Windows PowerShell 5.1 rather than pwsh 7, the
+  # line-ending probe's CR-tolerant branch, and .gitattributes against a real
+  # core.autocrlf=true. This repo is public, so windows-latest costs nothing.
+  windows:
+    name: The station runs on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: What this runner actually has
+        shell: pwsh
+        run: |
+          "git      : $((Get-Command git -EA SilentlyContinue).Source)"
+          "bash     : $((Get-Command bash -EA SilentlyContinue).Source)"
+          "autocrlf : $(git config --get core.autocrlf)"
+          foreach ($k in 'HKLM:\SOFTWARE\GitForWindows','HKLM:\SOFTWARE\WOW6432Node\GitForWindows') {
+            try { "$k -> $((Get-ItemProperty $k -Name InstallPath -EA Stop).InstallPath)" }
+            catch { "$k -> absent" }
+          }
+
+      # SIZE ON DISK vs SIZE IN THE BLOB, and not a grep, because on Git bash
+      # the obvious grep lies: MSYS grep and MSYS shell redirection disagree
+      # about text translation. A file rewritten to CRLF is longer than its
+      # blob by exactly its line count, and neither `stat` nor a pipe does any
+      # translation.
+      - name: .gitattributes survived the checkout, so a Linux clone would work
+        shell: bash
+        run: |
+          set -uo pipefail
+          bad=0
+          checked=0
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            checked=$((checked + 1))
+            disk=$(stat -c %s "$f")
+            blob=$(git cat-file blob "HEAD:$f" | wc -c | tr -d ' ')
+            if [ "$disk" != "$blob" ]; then
+              bad=$((bad + 1))
+              lines=$(git cat-file blob "HEAD:$f" | wc -l | tr -d ' ')
+              echo "  $f: $disk bytes on disk, $blob in the blob, difference $((disk - blob)) over $lines lines"
+              echo "     attrs: $(git check-attr text eol -- "$f" | tr '\n' ' ')"
+            fi
+          done < <(git ls-files '*.sh' '*.ps1')
+          echo "compared $checked files against their blobs"
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::no files were compared, so this check verified nothing"
+            exit 1
+          fi
+          if [ "$bad" -ne 0 ]; then
+            echo "  core.autocrlf: $(git config --get core.autocrlf)"
+            echo "::error::$bad file(s) differ in size from their blob, so eol=lf was not honoured"
+            exit 1
+          fi
+          echo "every file is byte-identical to its blob, so eol=lf held against core.autocrlf=$(git config --get core.autocrlf)"
+
+      - name: station.ps1 finds bash and hands over
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path tw | Out-Null
+          bash ./station/bootstrap.sh tw 2>&1 | Out-Null
+          Push-Location tw
+          git init -q .
+          git config user.email ci@example.invalid
+          git config user.name ci
+          $out = & powershell.exe -NoProfile -File .\station.ps1 --check 2>&1 | Out-String
+          Pop-Location
+          Write-Output $out
+          if ($out -notmatch 'station\.ps1: using .*bash\.exe') {
+            Write-Output "::error::station.ps1 did not report the bash it selected"; exit 1
+          }
+          foreach ($needle in 'sed -u', 'base64', 'line endings') {
+            if ($out -notmatch [regex]::Escape($needle)) {
+              Write-Output "::error::preflight did not report '$needle', so handover did not happen"; exit 1
+            }
+          }
+          Write-Output "station.ps1 found bash and start.sh ran its preflight"
+          # start.sh --check exits non-zero here ON PURPOSE: this throwaway
+          # repo has no origin, so the credential and push checks cannot pass.
+          Write-Output "start.sh --check exited $LASTEXITCODE, expected non-zero with no origin"
+          exit 0
+
+      - name: The CR-tolerant branch of the line-ending probe, which Linux cannot reach
+        shell: bash
+        run: |
+          set +e
+          set -uo pipefail
+          cd tw
+          out=$(./start.sh --check 2>&1 | grep -i 'line endings')
+          echo "$out"
+          case "$out" in
+            *"tolerates CR"*) echo "took the tolerant branch, as Git for Windows should" ;;
+            FAIL*) echo "::error::the preflight blocked on a Windows control node that works"; exit 1 ;;
+            *) echo "::error::unexpected line-endings verdict: $out"; exit 1 ;;
+          esac
+
+      - name: A PowerShell step through the real capture, on Windows PowerShell
+        shell: bash
+        run: |
+          set +e
+          set -uo pipefail
+          cd tw
+          PUSH=0 ./run.sh win >/dev/null 2>&1; rc=$?
+          log=$(ls -t ops-logs/win-*.txt 2>/dev/null | head -1)
+          [ -n "$log" ] || { echo "::error::no log produced by the win step"; exit 1; }
+          [ "$rc" = "0" ] || { echo "::error::win-snapshot reported failure ($rc)"; exit 1; }
+          cr=$(tr -cd '\r' < "$log" | wc -c | tr -d ' ')
+          esc=$(tr -cd '\033' < "$log" | wc -c | tr -d ' ')
+          stamped=$(grep -cE '^[0-9]{2}:[0-9]{2}:[0-9]{2} \| ' "$log")
+          echo "log=$log rc=$rc cr=$cr esc=$esc stamped=$stamped"
+          [ "$cr"  = "0" ] || { echo "::error::$cr CR bytes reached the log"; exit 1; }
+          [ "$esc" = "0" ] || { echo "::error::$esc ANSI bytes reached the log"; exit 1; }
+          [ "$stamped" -gt 0 ] || { echo "::error::no timestamped lines in the log"; exit 1; }
+          grep -q 'identity' "$log" || { echo "::error::the step's own output is missing"; exit 1; }
+
+      - name: service.ps1 registers, reports and removes a scheduled task
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $env:HELIOGRAPH_SERVICE_NAME = 'heliograph-ci'
+          Push-Location tw
+
+          # No remote yet, so it must refuse: a loop that cannot push is the
+          # expensive failure this check exists to prevent.
+          $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 install 2>&1 | Out-String
+          if ($out -notmatch 'no origin remote') {
+            Write-Output $out
+            Write-Output "::error::service.ps1 did not refuse to install without a remote"
+            Pop-Location; exit 1
+          }
+          Write-Output "refused without a remote, correctly"
+
+          git init -q --bare ..\origin.git
+          git remote add origin ..\origin.git
+          git add -A 2>&1 | Out-Null
+          git commit -qm init 2>&1 | Out-Null
+          $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 install 2>&1 | Out-String
+          Write-Output $out
+          $task = Get-ScheduledTask -TaskName 'heliograph-ci' -ErrorAction SilentlyContinue
+          if (-not $task) {
+            Write-Output "::error::service.ps1 install did not register a scheduled task"
+            Pop-Location; exit 1
+          }
+          Write-Output "registered, state=$($task.State)"
+
+          # The setting that matters most: the default execution time limit is
+          # three days, after which Windows stops the task and the loop
+          # quietly ends. Zero means no limit.
+          $limit = (Get-ScheduledTask -TaskName 'heliograph-ci').Settings.ExecutionTimeLimit
+          Write-Output "ExecutionTimeLimit: [$limit]"
+          if ($limit -and $limit -ne 'PT0S') {
+            Write-Output "::error::the task has a time limit of $limit, so the loop would stop on its own"
+            Pop-Location; exit 1
+          }
+
+          $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 status 2>&1 | Out-String
+          if ($out -notmatch 'heliograph-ci') {
+            Write-Output $out
+            Write-Output "::error::status did not report the task"; Pop-Location; exit 1
+          }
+
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 uninstall 2>&1 | Out-String | Write-Output
+          if (Get-ScheduledTask -TaskName 'heliograph-ci' -ErrorAction SilentlyContinue) {
+            Write-Output "::error::uninstall left the task registered"; Pop-Location; exit 1
+          }
+          Write-Output "registered, reported and removed"
+          Pop-Location
+
+      - name: The suite's Windows-relevant files, unskipped
+        shell: bash
+        run: |
+          set +e
+          set -uo pipefail
+          rc=0
+          for f in tests/test-powershell.sh tests/test-remote.sh; do
+            echo "--- $f"
+            ./$f 2>&1 | tee "/tmp/$(basename "$f").out"
+            [ "${PIPESTATUS[0]}" -eq 0 ] || rc=1
+            if grep -q '^SKIP' "/tmp/$(basename "$f").out"; then
+              echo "::error::$f skipped an assertion on Windows, where it should not"; rc=1
+            fi
+          done
+          exit $rc
+
+  kubernetes:
+    name: The manifest runs on a real cluster
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # station/bash/kubernetes/heliograph.yaml shipped for months with no
+      # test, and no cluster had ever run it. This is what moves it from
+      # "validated" to "proven" in references/hosts.md: a kind cluster, the
+      # real manifest, and a station that clones a repo, runs a step and
+      # pushes the log back.
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: heliograph-ci
+          wait: 180s
+
+      - name: Apply it and drive a run through it
+        run: ./tests/test-kubernetes.sh 2>&1 | tee /tmp/k8s.out
+
+      - name: It must not have skipped
+        # A skipped host test is worse than a missing one: the table says
+        # "proven" on the strength of a run that never happened.
+        run: |
+          if grep -q '^SKIP' /tmp/k8s.out; then
+            echo "::error::the Kubernetes test skipped. Nothing was applied to any cluster."
+            exit 1
+          fi
+          grep -qE '^test-kubernetes\.sh: [0-9]+ passed, 0 failed, 0 skipped$' /tmp/k8s.out || {
+            echo "::error::test-kubernetes.sh did not report a clean run"; exit 1; }
+
+  macos:
+    name: launchd keeps a Mac control node alive
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # There is no systemd on a Mac and the setsid fallback does not survive
+      # a reboot. The assertion that earns this runner is that `stop: yes`
+      # STICKS: KeepAlive/SuccessfulExit=false is a belief about somebody
+      # else's software until a real launchd has proved it.
+      - name: Load a real LaunchAgent and stop it
+        run: ./tests/test-launchd.sh 2>&1 | tee /tmp/launchd.out
+
+      - name: It must not have skipped
+        run: |
+          if grep -q '^SKIP' /tmp/launchd.out; then
+            echo "::error::the launchd test skipped on a macOS runner, which should be impossible."
+            exit 1
+          fi
+          grep -qE '^test-launchd\.sh: [0-9]+ passed, 0 failed, 0 skipped$' /tmp/launchd.out || {
+            echo "::error::test-launchd.sh did not report a clean run"; exit 1; }
+
+  ci-ok:
+    name: Station OK
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - validate
+      - installers
+      - station
+      - tests
+      - container
+      - windows
+      - powershell
+      - kubernetes
+      - macos
+    steps:
+      - name: Fail if any job did not succeed
+        run: |
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "job results: $results"
+          for r in $results; do
+            [ "$r" = "success" ] || { echo "::error::a job did not succeed"; exit 1; }
+          done

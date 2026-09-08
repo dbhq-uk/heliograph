@@ -4,6 +4,7 @@ Every command the control side has, and the reasoning behind the ones that are
 not obvious.
 
 ```
+heliograph bootstrap <dir>
 heliograph init <estate> --dir <path> [--transport git|share|bundle|objstore]
                           [--scope <name>] [--bucket <b>] [--prefix <p>] [--region <r>]
 heliograph estates
@@ -20,6 +21,18 @@ heliograph version
 Every command takes `-e` / `--estate`. With exactly one configured, it is
 optional. With several it is required: sending a request to the wrong estate
 runs a command on the wrong machine, and that is not recoverable by apologising.
+
+## bootstrap
+
+Plants the station payload into a transport repo. The payload is embedded in
+the binary at build time, so a release plants exactly the station it was
+tested against, and "which station is this estate running" has the same
+answer as "which binary planted it".
+
+Nothing is overwritten, ever: an existing file is left alone and reported,
+because the second run is usually an upgrade over a repo with a task in
+flight. `station/bootstrap.sh` in the repository lays down the same files for
+a machine with no CLI, and CI asserts the two produce identical trees.
 
 ## init
 

@@ -13,24 +13,30 @@ import (
 // Everything in internal/ can pass while the CLI and the station quietly
 // disagree about the document they share, because both halves are checked
 // against our own idea of the format. This one drives a real, unmodified
-// heliograph-skill station with the real binary and asserts that a log came
-// back with the step's output in it.
+// station with the real binary and asserts that a log came back with the
+// step's output in it.
 //
-// It needs a checkout of the skill repository, named by HELIOGRAPH_SKILL_DIR.
-// It SKIPS when the variable is unset and FAILS when it is set but wrong: a
-// silently skipped end-to-end test is the same shape of problem as a green
-// suite that checked nothing, and this is the only test here that can catch
-// the two repositories drifting apart.
+// The station lives in this repository now, so the default is the checkout
+// this test is running in and nothing skips. HELIOGRAPH_STATION_DIR overrides
+// it, for running against an external station checkout, and the resolved
+// directory FAILS rather than skips when it is wrong: a silently skipped
+// end-to-end test is the same shape of problem as a green suite that checked
+// nothing.
 
-func skillDir(t *testing.T) string {
+func stationDir(t *testing.T) string {
 	t.Helper()
-	dir := os.Getenv("HELIOGRAPH_SKILL_DIR")
+	dir := os.Getenv("HELIOGRAPH_STATION_DIR")
 	if dir == "" {
-		t.Skip("HELIOGRAPH_SKILL_DIR is not set: needs a heliograph-skill checkout")
+		// This file lives in cmd/heliograph, two levels below the repo root.
+		abs, err := filepath.Abs(filepath.Join("..", ".."))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir = abs
 	}
-	bootstrap := filepath.Join(dir, "skills", "heliograph", "scripts", "bootstrap.sh")
+	bootstrap := filepath.Join(dir, "station", "bootstrap.sh")
 	if _, err := os.Stat(bootstrap); err != nil {
-		t.Fatalf("HELIOGRAPH_SKILL_DIR=%s does not look like a heliograph-skill checkout: %v", dir, err)
+		t.Fatalf("%s does not carry a station (no station/bootstrap.sh): %v", dir, err)
 	}
 	return dir
 }
@@ -51,7 +57,7 @@ func sh(t *testing.T, dir string, args ...string) string {
 }
 
 func TestCLIDrivesAStockStation(t *testing.T) {
-	skill := skillDir(t)
+	station := stationDir(t)
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("no bash")
 	}
@@ -61,9 +67,9 @@ func TestCLIDrivesAStockStation(t *testing.T) {
 	work := filepath.Join(base, "work")
 	cfg := filepath.Join(base, "config")
 
-	// A transport repo built by the SKILL's own bootstrap.sh. Not a fixture we
-	// wrote: if the skill changes what it lays down, this notices.
-	sh(t, base, filepath.Join(skill, "skills", "heliograph", "scripts", "bootstrap.sh"), work)
+	// A transport repo built by the station's own bootstrap.sh. Not a fixture we
+	// wrote: if the station changes what it lays down, this notices.
+	sh(t, base, filepath.Join(station, "station", "bootstrap.sh"), work)
 	sh(t, base, "git", "init", "-q", "-b", "main", "--bare", origin)
 	sh(t, work, "git", "init", "-q", "-b", "main")
 	sh(t, work, "git", "remote", "add", "origin", origin)
@@ -138,7 +144,7 @@ func TestCLIDrivesAStockStation(t *testing.T) {
 // a real captured log rather than a fixture we wrote. The step sleeps, and the
 // gap has to appear attributed to the line before it.
 func TestGapsFindsARealStall(t *testing.T) {
-	skill := skillDir(t)
+	station := stationDir(t)
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("no bash")
 	}
@@ -148,7 +154,7 @@ func TestGapsFindsARealStall(t *testing.T) {
 	work := filepath.Join(base, "work")
 	cfg := filepath.Join(base, "config")
 
-	sh(t, base, filepath.Join(skill, "skills", "heliograph", "scripts", "bootstrap.sh"), work)
+	sh(t, base, filepath.Join(station, "station", "bootstrap.sh"), work)
 	sh(t, base, "git", "init", "-q", "-b", "main", "--bare", origin)
 	sh(t, work, "git", "init", "-q", "-b", "main")
 	sh(t, work, "git", "remote", "add", "origin", origin)

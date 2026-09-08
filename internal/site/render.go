@@ -273,11 +273,15 @@ func Summary(md string) string {
 // Inline rather than an <img> because it is in the sticky header on every page
 // and inherits currentColor, so it cannot fall out of step with the palette and
 // costs no request.
+// The glyph is the product in one line: a solid disc (the mirror, the side
+// you are on), a dash and a dot (the flash crossing the gap), and an open
+// ring (the far side - open because you cannot get into it). Keep it in step
+// with site/assets/mark.svg.
 const Mark = `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">` +
-	`<path d="M51.7 24.8 A21 21 0 1 1 39.2 12.3" fill="none" stroke="currentColor" ` +
-	`stroke-width="5" stroke-linecap="round" opacity=".72"/>` +
-	`<path d="M35.4 30.8 L67.7 -3.2 L77.3 6.0 L36.6 33.2 Z" fill="currentColor"/>` +
-	`<circle cx="32" cy="32" r="8.2" fill="currentColor"/></svg>`
+	`<circle cx="16" cy="47" r="9.5" fill="currentColor"/>` +
+	`<path d="M28 35 L34 29" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/>` +
+	`<circle cx="40.5" cy="22.5" r="2.9" fill="currentColor"/>` +
+	`<circle cx="51" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="4.6" opacity=".8"/></svg>`
 
 // Headings returns the H2s of a body, in order, as (id, text) pairs.
 //

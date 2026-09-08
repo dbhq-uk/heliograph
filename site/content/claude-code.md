@@ -18,8 +18,13 @@ on the wrong side of a change-control policy, it cannot run anything at all.
 Or for any other agent - Cursor, Copilot, Windsurf, Gemini, Cline:
 
 ```bash
-npx skills add dbhq-uk/heliograph-skill
+npx skills add dbhq-uk/heliograph
 ```
+
+**The skill drives the `heliograph` binary**, so [install that too](/install).
+If it is missing, the skill stops and prints the install command rather than
+improvising around it: the read-only gates live in the CLI and the station,
+and one driver is what keeps them in one place.
 
 For typed tools rather than a taught CLI, add the [MCP server](/mcp) instead:
 
@@ -68,14 +73,15 @@ action in its own file, and one that declares neither does not run. A
 state-changing step needs `CONFIRM=yes` and a station started with
 `--allow-actions`. The agent can ask; the station decides.
 
-## The skills
+## The pieces
 
-The skill is one component. The full set:
+The skill is one component. The full set, all in
+[one repository](https://github.com/dbhq-uk/heliograph):
 
 | | |
 |---|---|
-| the skill | the method, the gates, and how to write a step |
-| the CLI | `heliograph send`, `watch`, `logs --gaps`, `plant` |
+| the skill | the method, the workflow, and how to write a step. Drives the CLI |
+| the CLI | `heliograph bootstrap`, `send`, `watch`, `logs --gaps`, `plant` - and the gates |
 | the MCP server | `heliograph mcp`, the same CLI as typed tools |
-| the station | plain bash on the far side, nothing to install |
+| the station | plain bash on the far side, nothing to install, planted by the CLI |
 | the relay | when there is no git host, no storage and no share |

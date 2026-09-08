@@ -38,9 +38,13 @@ any agent through the [MCP server](/mcp).
 
 | | |
 |---|---|
-| **control** | your machine: the `heliograph` CLI, and you |
-| **transport** | the channel: git, relay, file share, bundle |
-| **station** | the far side: the box, and the loop running on it |
+| **control** | your machine: the `heliograph` CLI, the [skill](/claude-code) that drives it, and you |
+| **transport** | the channel: git, relay, file share, bundle, object store |
+| **station** | the far side: plain bash, planted by `heliograph bootstrap`, and the loop running on it |
+
+One repository carries all three, and the boundary is the gap: everything
+under `station/` runs on the far side and depends on nothing - bash 4+, git,
+GNU coreutils. No Go will ever cross it, and CI enforces that.
 
 ## Two properties that make a log-only loop workable
 

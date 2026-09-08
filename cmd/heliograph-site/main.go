@@ -417,7 +417,7 @@ func llms(pages []site.Page) string {
 	}
 	b.WriteString("\n## Source\n\n")
 	b.WriteString("- [heliograph](https://github.com/dbhq-uk/heliograph): the control CLI and transports\n")
-	b.WriteString("- [heliograph-skill](https://github.com/dbhq-uk/heliograph-skill): the far-side station, plain bash\n")
+	b.WriteString("- [station/bash](https://github.com/dbhq-uk/heliograph/tree/main/station/bash): the far-side station, plain bash, in this repository\n")
 	return b.String()
 }
 

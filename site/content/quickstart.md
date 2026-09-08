@@ -11,10 +11,14 @@ Private, its own repo, nothing else in it.
 it, so everything the far side prints lands in that history permanently.
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph-skill
-./heliograph-skill/skills/heliograph/scripts/bootstrap.sh ~/transport/payments
-cd ~/transport/payments && git init && git remote add origin <private-url> && git push -u origin HEAD
+heliograph bootstrap ~/transport/payments
+cd ~/transport/payments && git init && git add -A && git commit -m 'heliograph: transport repo'
+git remote add origin <private-url> && git push -u origin HEAD
 ```
+
+The binary plants the station payload it was built with. No CLI on this
+machine? `station/bootstrap.sh` in a clone of
+[the repo](https://github.com/dbhq-uk/heliograph) lays down the same files.
 
 ## 2. Tell the CLI about it
 

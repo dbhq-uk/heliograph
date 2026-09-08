@@ -1,7 +1,7 @@
 // Command heliograph drives a station across a gap you cannot cross yourself.
 //
 // This is the control side. It publishes a request, and reads the log that
-// comes back. The far side is a stock heliograph-skill station and nothing
+// comes back. The far side is a stock heliograph station and nothing
 // here requires a change to it.
 package main
 
@@ -14,8 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dbhq-uk/heliograph/internal/bootstrap"
 	"github.com/dbhq-uk/heliograph/internal/logfile"
 	"github.com/dbhq-uk/heliograph/internal/plant"
+	"github.com/dbhq-uk/heliograph/station"
 
 	"github.com/dbhq-uk/heliograph/internal/estate"
 	"github.com/dbhq-uk/heliograph/internal/transport"
@@ -29,6 +31,7 @@ var version = "dev"
 
 const usage = `heliograph - run things on a machine you cannot log into
 
+  heliograph bootstrap <dir>                plant the station payload into a transport repo
   heliograph init <estate> --dir <path>     remember a transport repo by name
       [--transport git|share|bundle|objstore]
       objstore: --dir <https endpoint> --bucket <name> --scope <lane> [--prefix p] [--region r]
@@ -58,6 +61,8 @@ func main() {
 	}
 	var err error
 	switch os.Args[1] {
+	case "bootstrap":
+		err = cmdBootstrap(os.Args[2:])
 	case "init":
 		err = cmdInit(os.Args[2:])
 	case "estates":
@@ -201,6 +206,43 @@ func estateFlag(fs *flag.FlagSet) *string {
 	s := fs.String("estate", "", "which estate")
 	fs.StringVar(s, "e", "", "which estate")
 	return s
+}
+
+// cmdBootstrap plants the embedded station payload into a transport repo. The
+// output mirrors station/bootstrap.sh line for line, because the two are the
+// same operation with a different delivery: whichever one somebody ran, the
+// next instruction reads the same.
+func cmdBootstrap(args []string) error {
+	fs := flag.NewFlagSet("bootstrap", flag.ExitOnError)
+	pos, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return fmt.Errorf("usage: heliograph bootstrap <target-dir>\n  the target should be a fresh, PRIVATE repo - captured logs are committed to it")
+	}
+	target, err := filepath.Abs(pos[0])
+	if err != nil {
+		return err
+	}
+	r, err := bootstrap.Install(station.Bash, "bash", target)
+	if err != nil {
+		return err
+	}
+	for _, f := range r.Installed {
+		fmt.Printf("  installed          : %s\n", f)
+	}
+	for _, f := range r.LeftAlone {
+		fmt.Printf("  exists, left alone : %s\n", f)
+	}
+	fmt.Printf("\nheliograph: %d file(s) installed, %d left alone, in %s\n", len(r.Installed), len(r.LeftAlone), target)
+	if _, err := os.Stat(filepath.Join(target, ".git")); err != nil {
+		fmt.Printf("\n%s is not a git repository yet, and git is the transport. Next:\n", target)
+		fmt.Printf("  cd %s && git init && git add -A && git commit -m 'heliograph: transport repo'\n", target)
+		fmt.Println("  then add a PRIVATE remote and push.")
+	}
+	fmt.Println("\nThen: heliograph init <estate> --dir " + target)
+	return nil
 }
 
 func cmdInit(args []string) error {
