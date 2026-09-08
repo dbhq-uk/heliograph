@@ -1,0 +1,126 @@
+# =============================================================================
+#  heliograph on an Azure DevOps self-hosted agent
+# =============================================================================
+#  Copy this into the TRANSPORT REPO as azure-pipelines.yml.
+#
+#  PROVEN END TO END on 2026-08-24, against a real organisation: a request was
+#  pushed, an agent picked it up, ran the step, and pushed the log back. The
+#  trigger fired on the request, and the log push did NOT re-fire it. Before
+#  that run this file had never executed anywhere, and three separate faults in
+#  it each cost a round trip - all three are fixed below and each carries the
+#  failure that found it.
+#
+#  BEFORE THE FIRST RUN, AUTHORISE THE PIPELINE FOR THE POOL AND THE REPO.
+#  A newly created pipeline holds neither, and until it does the run sits at
+#  `notStarted` with `Checkpoint.Authorization` in progress. It never reaches
+#  the pool, so no agent is ever asked for - which reads exactly like every
+#  agent being offline, and sends you to investigate the wrong thing. Queue it
+#  once from the web UI and click Authorize on the banner, or see
+#  references/azure.md for the API calls.
+#
+#  No infrastructure. The agent already sits inside the estate with network
+#  reach and git credentials, because that is what a build agent is for.
+#  "Add a pipeline" is an approved activity; "deploy a container into
+#  production" is a change board conversation.
+#
+#  IT TRIGGERS ON THE REQUEST, NOT ON A SCHEDULE. A cron means waiting for the
+#  next tick for every step, so a hundred steps means a hundred waits. Pushing
+#  a request IS the trigger.
+#
+#  THE PATH FILTER IS LOAD-BEARING. This pipeline pushes a log back, and that
+#  push is a commit. Without the filter it would trigger itself, repeatedly.
+#  Logs land in ops-logs/ and the agent writes station/status, so triggering only
+#  on station/request means neither can re-fire it.
+#
+#  UNLIKE GITHUB ACTIONS, AZURE DEVOPS HAS NO BUILT-IN LOOP GUARD. GitHub
+#  refuses to trigger a workflow from a GITHUB_TOKEN push; Azure DevOps has no
+#  equivalent, so the path filter is the only structural guard and
+#  `***NO_CI***` in the commit message is the second. Do not remove either.
+# =============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+      - 'task/*'
+  paths:
+    include:
+      - station/request
+
+pr: none
+
+# One run at a time. Two requests pushed close together would otherwise race on
+# the same working directory.
+lockBehavior: sequential
+
+pool:
+  # The agent pool inside the estate. A Microsoft-hosted pool can reach nothing
+  # on your network and is only useful for proving the wiring.
+  name: Default
+
+jobs:
+  - job: run_request
+    displayName: Run the requested step
+    workspace:
+      clean: all
+    steps:
+      - checkout: self
+        # cap_push commits onto this branch, so the agent's own credential has
+        # to be left in the local git config for it to push back. This also
+        # needs the project's build service account to hold Contribute on the
+        # transport repo. The default is usually deny, and the symptom is a run
+        # that looks clean and a log that never arrives - start.sh's preflight
+        # catches it first with `git write`, which is why that check exists.
+        persistCredentials: true
+        fetchDepth: 0
+
+      - script: |
+          set -uo pipefail
+
+          # RE-ATTACH TO THE BRANCH FIRST. Azure DevOps checks out a COMMIT, not
+          # a branch, so the workspace arrives on a detached HEAD. station.sh
+          # refuses to start on one and is right to: cap_push commits the
+          # captured log and pushes it, and a commit on a detached HEAD goes
+          # nowhere - the log would be written, committed, and then destroyed
+          # with the workspace. Found by running this file for the first time,
+          # where it failed preflight before doing any work at all.
+          BRANCH="${BUILD_SOURCEBRANCH#refs/heads/}"
+          git checkout -B "$BRANCH" >/dev/null
+          git branch --set-upstream-to="origin/$BRANCH" "$BRANCH" >/dev/null 2>&1 || true
+          echo "re-attached to branch: $BRANCH"
+
+          git config user.name  "heliograph agent"
+          # NOT $(hostname). Azure DevOps expands $(...) as its own macro syntax
+          # before bash ever sees the line, so a command substitution written
+          # that way is a collision waiting for someone to define a variable
+          # called `hostname`. AGENT_NAME is set by the agent and names the
+          # machine more usefully anyway.
+          git config user.email "heliograph@${AGENT_NAME:-agent}"
+
+          # --once, not the polling loop. A pipeline job holds the agent for its
+          # whole duration, and polling git every five seconds for an hour would
+          # block everyone else's builds. The push already told us there is
+          # exactly one request to serve.
+          ./start.sh -- --once
+        displayName: heliograph
+
+      # ---------------------------------------------------------------------
+      #  IF YOUR STEPS CALL `az`, THIS PLAIN `script:` STEP IS NOT ENOUGH.
+      #  It has no Azure login, so every az call fails with "please run az
+      #  login" - and a step reports that as a finding about the estate rather
+      #  than a gap in its own tooling, which is the worst kind of wrong answer.
+      #  Replace the step above with:
+      #
+      #    - task: AzureCLI@2
+      #      displayName: heliograph
+      #      inputs:
+      #        azureSubscription: '<your service connection>'
+      #        scriptType: bash
+      #        scriptLocation: inlineScript
+      #        inlineScript: |
+      #          ... exactly the body above ...
+      #
+      #  Mind what that identity can do. A service connection is often far more
+      #  privileged than the person driving it - ours was Owner on the whole
+      #  subscription - and every step inherits it. Read-only until earned.
+      # ---------------------------------------------------------------------
