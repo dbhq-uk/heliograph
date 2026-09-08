@@ -4,8 +4,11 @@
 # =============================================================================
 #     ./start.sh                     # check this machine, then run the station
 #     ./start.sh --check             # check only, change nothing, exit
-#     ./start.sh --branch task/foo   # check that branch out first
+#     ./start.sh --branch task/foo   # check that branch out first (git only)
 #     ./start.sh -- --once           # everything after -- goes to station.sh
+#
+#  TRANSPORT selects the channel, exactly as it does for station.sh, and git is
+#  still the default.
 #
 #  Three jobs, and nothing else:
 #
@@ -15,10 +18,18 @@
 #       from BSD/macOS base64. A busybox sed does not fail loudly: it produces
 #       a log where every line carries the same timestamp, which is worse than
 #       no timestamp because it looks like one.
-#    2. Prove git can PUSH from here, before an hour-long step discovers that it
-#       cannot. Read access is not write access, and a token that works against
-#       a host's REST API says nothing about the git path.
+#    2. ASK THE TRANSPORT whether it can carry a log from here, before an
+#       hour-long step discovers that it cannot.
 #    3. Hand over to station.sh.
+#
+#  JOB 2 USED TO BE "prove git can push". Read access is not write access and a
+#  token that works against a host's REST API says nothing about the git path,
+#  so that check was worth having - and it is unchanged, in transports/git.sh
+#  where it belongs. What was wrong was running it unconditionally: one FAIL
+#  here stops before station.sh runs, so a relay or blob station could not be
+#  started by the one command every host and every page tells the operator to
+#  type. The transport is asked through tp_check, and through tp_preflight
+#  where it has more to say.
 #
 #  IT DOES NOT CLONE. This file ships inside the transport repo, so by the time
 #  it runs the clone has already happened. Whoever cloned owns that step.
@@ -54,7 +65,7 @@ while [ $# -gt 0 ]; do
       shift
       AGENT_ARGS=("$@")
       break ;;
-    -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -71,81 +82,6 @@ report() {
   printf '%-4s  %-12s  %s\n' "$status" "$label" "$*"
 }
 
-# git_detail <combined-output> - the line(s) of a git failure that name the cause
-#
-# `tail -1` was wrong here, and wrong in the two places most likely to fire on a
-# new machine. git's transport failures end on a wrapped continuation, so the
-# operator got the fragment and a double full stop:
-#
-#   FAIL  git read  ls-remote failed: and the repository exists.. Check the ...
-#
-# while "Permission denied (publickey)" or "Could not resolve hostname ..." - the
-# line that actually said what was wrong - was thrown away. `head -1` on its own
-# is not right either: the generic "fatal: Could not read from remote repository"
-# is emitted after the specific line, so it has to be dropped rather than ordered
-# around. Keep the lines that name a cause, in git's own order, drop that trailer
-# whenever something more specific was printed, and say so when there are more
-# than three rather than truncating silently.
-#
-# CRs are stripped because ssh writes its diagnostics with a trailing CR, which
-# inside a printf'd table redraws the line over itself.
-#
-# The match is CASE-INSENSITIVE, and that is not tidiness. GitHub writes its cause
-# in uppercase and without a `remote: ` prefix:
-#
-#   ERROR: The key you are authenticating with has been marked as read only.
-#   fatal: Could not read from remote repository.
-#
-# A case-sensitive pattern misses the first line, matches the trailer, and hands
-# the operator the trailer - which is the whole defect this function exists to fix,
-# in the single highest-value case for the write check. A read-only deploy key on
-# GitHub is precisely what that check is for. `ERROR: Repository not found.` and
-# the SAML SSO line are the same shape. The `grep -v` stays case-sensitive: that
-# trailer is git's own text and git always spells it exactly that way.
-GIT_CAUSE_RE='^(fatal|error|warning|remote|ssh|hint: Updates):|^ ! \[|Permission denied|Could not resolve|Connection refused|Connection timed out'
-git_detail() {
-  local clean specific trimmed joined="" line total=0 shown=0
-  clean="$(printf '%s\n' "$1" | tr -d '\r')"
-  specific="$(printf '%s\n' "$clean" | grep -iE "$GIT_CAUSE_RE" \
-                | grep -v 'Could not read from remote repository')"
-  [ -n "$specific" ] || specific="$(printf '%s\n' "$clean" | grep -iE "$GIT_CAUSE_RE")"
-  [ -n "$specific" ] || specific="$(printf '%s\n' "$clean" | grep -v '^[[:space:]]*$')"
-  # A GitLab-style refusal is mostly furniture: a bare `remote:` above and below
-  # the message, and `remote: =========` rules around it. Those lines match the
-  # cause pattern (they start `remote:`) but carry nothing, and they ate the
-  # three-line budget, so the operator got
-  #
-  #   remote:; remote: ====================================; remote: (+4 more...)
-  #
-  # and not one word of why the push was refused. Discard them BEFORE the budget
-  # is applied, so the budget is spent on sentences.
-  #
-  # The "(+N more)" count below is taken after this, and therefore means: lines
-  # that carried a cause and were withheld for LENGTH. Furniture is not in it,
-  # deliberately - "there are also six blank banner lines" is not a reason to go
-  # back to a machine nobody can log into.
-  #
-  # Guarded, because a remote whose whole output is furniture would otherwise be
-  # reported as "git printed no diagnostic", which would be a lie about a remote
-  # that printed plenty. In that case the furniture is all there is, so show it.
-  trimmed="$(printf '%s\n' "$specific" | grep -vE '^[[:space:]]*remote:[-=*[:space:]]*$')"
-  [ -n "$trimmed" ] && specific="$trimmed"
-  total="$(printf '%s\n' "$specific" | grep -c .)"
-  while IFS= read -r line; do
-    [ "$shown" -ge 3 ] && break
-    line="${line%"${line##*[![:space:]]}"}"   # right-trim
-    line="${line%.}"                          # the caller supplies the full stop
-    [ -n "$line" ] || continue
-    joined="${joined:+$joined; }$line"
-    shown=$((shown + 1))
-  done <<< "$specific"
-  [ "$total" -gt "$shown" ] && joined="$joined (+$((total - shown)) more line(s): run the command by hand to see them)"
-  # Never hand back an empty string: the caller interpolates this mid-sentence and
-  # "ls-remote failed: . Check ..." tells the reader nothing at all.
-  [ -n "$joined" ] || joined="git printed no diagnostic"
-  printf '%s' "$joined"
-}
-
 preflight() {
   if [ "${BASH_VERSINFO[0]:-0}" -ge 4 ]; then
     report ok bash "$BASH_VERSION"
@@ -153,11 +89,11 @@ preflight() {
     report FAIL bash "need 4 or newer, found ${BASH_VERSION:-unknown}. Install bash 4 or newer and put it first on PATH"
   fi
 
-  if command -v git >/dev/null 2>&1; then
-    report ok git "$(git --version)"
-  else
-    report FAIL git "git is the transport, so nothing here works without it. Install git and put it first on PATH"
-  fi
+  # git is NOT checked here any more. It is the default transport and not a
+  # requirement of the machine: a relay or blob station needs curl, and telling
+  # its operator to install git would be a lie in the one table they read. The
+  # git transport asks for it in its own tp_init, which is where a requirement
+  # belonging to one channel belongs.
 
   # Line endings. A transport repo cloned on Windows arrives with CRLF, because
   # Git for Windows sets core.autocrlf=true at install time.
@@ -247,40 +183,10 @@ preflight() {
     report FAIL user "root, and the runners refuse that: this toolkit has no credentials of its own, so the account it runs as is the whole blast radius. Run as an unprivileged user, or set ALLOW_ROOT=1 if this image has no other"
   fi
 
-  local br
-  br="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
-  if [ -n "$br" ] && [ "$br" != "HEAD" ]; then
-    report ok branch "$br"
-  else
-    report FAIL branch "detached HEAD, and station.sh refuses to start on one. Check out the task branch first"
-  fi
-
-  # --check --branch x asks a question the checkout cannot answer, because
-  # --check exits before anything is checked out. So the REMOTE is asked
-  # instead. Without this, `--check --branch station/db-a` reported on whatever
-  # happened to be checked out and said nothing at all about db-a - which is
-  # the one thing the operator was asking about.
-  if [ -n "$WANT_BRANCH" ]; then
-    if [ "$br" = "$WANT_BRANCH" ]; then
-      report ok "branch wanted" "$WANT_BRANCH, already checked out"
-    elif cap_git ls-remote --exit-code --heads origin "refs/heads/$WANT_BRANCH" >/dev/null 2>&1; then
-      report ok "branch wanted" "$WANT_BRANCH exists on origin and would be checked out"
-    elif git rev-parse --verify --quiet "refs/heads/$WANT_BRANCH" >/dev/null 2>&1; then
-      report warn "branch wanted" "$WANT_BRANCH is here but NOT on origin, so this station would publish where nobody is reading. Push it with 'git push -u origin $WANT_BRANCH'"
-    elif [ "$CHECK_ONLY" = "1" ]; then
-      # --check is being asked "will this work here", and it will not. Nothing
-      # further will run to say so, because --check exits before the checkout.
-      report FAIL "branch wanted" "$WANT_BRANCH is neither here nor on origin. Create it on the control side with 'heliograph station add <name>', or check the name"
-    else
-      # A real run WILL reach the checkout, and that stage is the authority on
-      # its own failure. Failing here instead would pre-empt a better message
-      # with a worse one - it cannot tell a missing branch from a dirty tree,
-      # and the container asserts that the checkout's own text reaches the
-      # operator through the entrypoint. Say what the remote looks like and
-      # leave the verdict to the stage that can give a full one.
-      report warn "branch wanted" "$WANT_BRANCH is neither here nor on origin, so the checkout below will fail. Create it on the control side with 'heliograph station add <name>', or check the name"
-    fi
-  fi
+  # The branch checks used to be here. They are git's, they are unchanged, and
+  # they now run from transports/git.sh's tp_preflight - which is also the only
+  # place that can honour --branch against the remote, because on any other
+  # transport there is no such thing as a branch.
 
   if [ -d ops-logs ] && [ -w ops-logs ]; then
     report ok ops-logs "writable"
@@ -289,207 +195,116 @@ preflight() {
   fi
 }
 
-# --- the credential ----------------------------------------------------------
-# WHICH credential is even relevant is decided by the remote's scheme: an SSH
-# key is useless against an https:// remote and a token useless against git@.
-# So branch on the scheme, then report the mechanism without its value.
-credential() {
-  local url pw_masked masked scheme fps rc desc st
-  url="$(git remote get-url origin 2>/dev/null)"
-  if [ -z "$url" ]; then
-    report FAIL remote "no remote named 'origin'. Git is the transport, so there is nowhere to push a log. Add one: git remote add origin <url>"
+# =============================================================================
+#  The transport - ASKED, not assumed
+# =============================================================================
+# This file used to hold three git commands: `git remote get-url`, an
+# `ls-remote` and a `push --dry-run`. They were good checks and they are still
+# run, unchanged, from transports/git.sh. What was wrong was running them for
+# every station, because one FAIL here stops before station.sh ever starts - so
+# `./start.sh` could not start a relay or blob station at all, and the answer
+# on /hosts was "by hand", meaning set eight variables and skip the only
+# preflight there is on a machine nobody can log into.
+#
+# THE CONTRACT THIS USES, in order:
+#
+#   cap_transport_file   the name is a filename, so caplib validates it. One
+#                        copy of that check, shared with the delivery path
+#   tp_init              what this transport needs locally, with a remedy
+#   tp_describe          the channel and the credential, by mechanism
+#   tp_preflight         OPTIONAL. Checks only this transport knows to make
+#   tp_check             the fallback: can it be reached at all
+#
+# tp_init IS CAPTURED RATHER THAN LET LOOSE. It reports to stderr, and its text
+# is the remedy - "detached HEAD", "RELAY_URL is not set". Printed raw it lands
+# above the table out of order; folded into a FAIL line it reads as one of the
+# checks, which is what it is.
+#
+# CAPTURED THROUGH A FILE, NOT `$(tp_init 2>&1)`. A command substitution is a
+# SUBSHELL, so git's `BRANCH=$b` - and every other variable a tp_init resolves
+# for the rest of the run - is set there and lost on return. Measured, not
+# reasoned about: the first version did exactly that and every git check below
+# died on "BRANCH: unbound variable" while still reporting the transport as ok.
+transport() {
+  local f rc why errf
+  CAP_TRANSPORT="${TRANSPORT:-git}"
+
+  f="$(cap_transport_file "$CAP_TRANSPORT" 2>/dev/null)"; rc=$?
+  if [ "$rc" = "2" ]; then
+    report FAIL transport "'$CAP_TRANSPORT' is not a usable transport name. It becomes a filename that gets sourced, so only lowercase letters, digits and hyphens are accepted. Set TRANSPORT to one of: $(transport_names)"
     return 0
   fi
-  case "$url" in
-    git@*|ssh://*)      scheme=ssh ;;
-    https://*|http://*) scheme=https ;;
-    *)                  scheme=other ;;
-  esac
-  # People really do arrive with the token-in-URL form (transport.md says so), and
-  # git redacts userinfo in its own messages while this did not: the whole
-  # https://ci-user:glpat-...@host/... went to stdout, which in PR 3 and PR 4 is
-  # container stdout. cap_redact cannot help here - it filters what passes through
-  # cap_run, and this table is printed directly - so mask it on the way out.
-  #
-  # Two rules, in this order, mirroring cap_redact and for the same reasons:
-  #   1. `user:password@` between `://` and the first `/`.
-  #   2. the BARE `https://TOKEN@host/...` form, which rule 1 misses because rule
-  #      1 requires a colon, and which is the commonest GitHub PAT clone URL
-  #      there is. Rule 2 cannot re-mask rule 1's output: rule 1 leaves a colon
-  #      between `://` and the `@`, and rule 2's class excludes `:`. (Each rule
-  #      does still match its OWN output, but `***` is a fixed point of the
-  #      substitution, so that pass is a no-op. Two mechanisms, one result;
-  #      caplib.sh spells them out.)
-  # Rule 2 masks a legitimate `https://username@host/...` username as well. That
-  # is deliberate: nothing can tell a username from a token in that position, and
-  # a leaked PAT costs incomparably more than a hidden username. It is confined to
-  # http/https because a bare userinfo on ssh:// is a login name carrying no
-  # secret. `?`, `#` and `,` are excluded from its class so that it stops at the
-  # end of the authority rather than masking the HOST out of a line like
-  # `https://host?email=foo@bar.com`; `%` is its delimiter so the `#` in that class
-  # needs no escaping, which inside a bracket expression would wrongly exclude
-  # backslash too. git@host:path, ssh://git@host:2222/... and a local filesystem
-  # path all still pass through unaltered.
-  #
-  # The INTERMEDIATE result is kept, not just the final one. "Did masking change
-  # anything" is how the token line below knows the URL carries a credential, and
-  # WHICH rule changed it is the difference between "there is a password in here"
-  # and "there is a bare userinfo and it may be a username with nothing behind it".
-  # Asserting the first for the second is a false diagnosis, and the operator
-  # cannot check it against the remote line because that is masked too. Same two
-  # expressions, so this can never disagree with what was printed.
-  pw_masked="$(printf '%s' "$url" | sed -E 's#(://[^/@:]*):[^/@]*@#\1:***@#')"
-  masked="$(printf '%s' "$pw_masked" | sed -E 's%(https?://)[^/@:?#,]*@%\1***@%I')"
-  report ok remote "$masked  ($scheme)"
-
-  case "$scheme" in
-    ssh)
-      # ssh-add's EXIT STATUS is the answer here, not its stdout. With a live
-      # agent holding no keys it prints "The station has no identities." and exits
-      # 1, and piping that through `awk '{print $2}'` produced
-      # `ok  ssh key  agent offers: agent` - an ok line for the transport this
-      # skill recommends, in the state where the key is missing.
-      #
-      # 0 keys present, 1 agent reachable but empty, 2 no agent at all. The
-      # operator's next move differs between the last two, so all three are told
-      # apart rather than collapsed into "no key".
-      fps="$(ssh-add -l 2>/dev/null)"; rc=$?
-      # The ${x% } trims the separator tr leaves on the end: this line gets pasted
-      # back into tickets, and trailing whitespace there is noise nobody can see.
-      fps="$(printf '%s\n' "$fps" | awk '{print $2}' | tr '\n' ' ')"
-      case "$rc" in
-        0) report ok "ssh key" "agent offers: ${fps% }" ;;
-        1) report warn "ssh key" "an ssh agent is reachable but holds no keys, so nothing can authenticate through it. Run 'ssh-add <path-to-key>'. A key in ~/.ssh may still work: the read and write checks below settle it" ;;
-        2) report warn "ssh key" "no ssh agent is reachable (SSH_AUTH_SOCK is ${SSH_AUTH_SOCK:-unset}). Forward one with 'ssh -A', or start one here with 'eval \$(ssh-agent)' then 'ssh-add'. A key in ~/.ssh may still work: the read and write checks below settle it" ;;
-        *) report warn "ssh key" "ssh-add exited $rc, so which key is offered is unknown - it may not be installed. Install openssh-client to see the fingerprint; the read and write checks below are what settle it" ;;
-      esac
-      ;;
-    https)
-      # cap_auth_describe cannot see the remote, so it names what it looked for
-      # and opines on nothing. start.sh DOES know the scheme, so the advice
-      # belongs here - and the status is derived from the description rather than
-      # asserted over it. "none" on an https remote is not an ok: it is the
-      # commonest single reason the read check below fails.
-      desc="$(cap_auth_describe)"
-      st=ok
-      case "$desc" in
-        none*)
-          st=warn
-          # THREE states, not two, and the difference is which masking rule fired.
-          #
-          # A `user:password@` URL really does carry a credential and git really
-          # will use it: a bare "none" there reads as "you have nothing
-          # configured" while git is about to authenticate perfectly well.
-          #
-          # A BARE userinfo is genuinely ambiguous, and saying "carries its own
-          # credential" for it is a false diagnosis. `https://ci-user@host/x` has
-          # a username and nothing to authenticate with; `https://ghp_...@host/x`
-          # is the commonest GitHub PAT clone URL there is. Nothing here can tell
-          # them apart - that is the same limit the masking trade-off is built on -
-          # so this names both rather than picking one, and the operator, who can
-          # see their own remote, settles it in a second. They cannot settle it
-          # from the line above, because that userinfo is masked too.
-          #
-          # The remedial advice is the same in all three states, so it is the
-          # diagnosis that has to be honest, not the instruction.
-          if [ "$pw_masked" != "$url" ]; then
-            desc="$desc. The remote URL carries its own credential, so git will use that instead of a header. Several hosts reject the token-in-URL form outright, so if the read check below fails, set GIT_TOKEN or re-point origin at ssh:// rather than suspecting the token"
-          elif [ "$masked" != "$url" ]; then
-            desc="$desc. The remote URL carries a bare userinfo and no password. If that is a token, git will authenticate with it; if it is a plain username, there is nothing there to authenticate with and this remote has no credential at all. Set GIT_TOKEN, or re-point origin at ssh:// and use an agent key, which references/transport.md recommends"
-          else
-            desc="$desc. An https remote needs one of those. Set GIT_TOKEN, or re-point origin at ssh:// and use an agent key, which references/transport.md recommends"
-          fi ;;
-        *"no header is sent"*)
-          st=warn ;;
-      esac
-      report "$st" token "$desc"
-      ;;
-    other) report warn remote "unrecognised scheme, so the checks below are what settle it" ;;
-  esac
-}
-
-# --- measure it, rather than assume it ---------------------------------------
-# transport.md records the trap this answers: a token that authenticates against
-# a host's REST API tells you nothing about whether GIT can authenticate.
-# Different credential, different path. So test the path we depend on.
-#
-# The write check dry-runs against a ref that DOES NOT EXIST on the remote, and
-# the choice is load-bearing rather than arbitrary.
-#
-# `push --dry-run origin HEAD:refs/heads/<current-branch>` is refused LOCALLY as
-# a non-fast-forward the moment origin holds a commit this checkout lacks, which
-# is the ordinary state every time this script runs: after a reboot, after the
-# SSH session died, or any time a step or a request was pushed since the clone.
-# The credential is fine and the message blamed it, and the `pull --rebase` that
-# would have resolved it is below and never ran. As a container entrypoint that
-# is a container that refuses to start after any push.
-#
-# A ref that does not exist cannot be a non-fast-forward, and --dry-run creates
-# nothing, so nothing is left behind on the remote. The push still negotiates
-# with git-receive-pack, which is the service write access is granted on, so this
-# proves write rather than merely read - which is the whole point of the check.
-#
-# The name is fixed rather than generated: it is greppable in a git host's audit
-# log, it carries the tool's name so nobody mistakes it for someone's work, and a
-# deterministic check is one an operator can reproduce by hand. It sits in
-# refs/heads/ because that is the namespace station.sh actually pushes to, and some
-# hosts refuse a namespace they do not recognise - testing the path we depend on
-# is the point.
-#
-# TWO THINGS THIS CHECK DELIBERATELY DOES NOT CATCH. Both are recorded here so
-# the next reader does not take either for an oversight and "fix" it.
-#
-# 1. A local filesystem remote whose directory is not writable. --dry-run never
-#    writes, so it cannot possibly know. Closed as a non-goal rather than fixed:
-#    a local path remote appears only in this repo's test fixtures, and the real
-#    transport is always a git host. The only way to catch it is to make the
-#    check actually write, which would put a real object into a real remote on
-#    every single preflight - a worse trade than the case it would cover. Do not
-#    "fix" it that way.
-#
-# 2. A pre-receive hook, or a host ruleset on which branch names may be created.
-#    Measured, not assumed: --dry-run negotiates with git-receive-pack and stops
-#    there. It sends no pack, so pre-receive and update hooks never run, and a
-#    push those would decline is reported here as accepted. The check therefore
-#    proves the CREDENTIAL may write, not that this particular ref would survive
-#    a hook. For a preflight that is the right side to be wrong on, and it is why
-#    the FAIL text below names only things the check can actually see.
-WRITE_CHECK_REF="refs/heads/heliograph-write-check"
-
-verify() {
-  local out
-  if out="$(cap_git ls-remote --heads origin 2>&1)"; then
-    report ok "git read" "ls-remote returned $(printf '%s\n' "$out" | grep -c .) ref(s)"
-  else
-    report FAIL "git read" "ls-remote failed: $(git_detail "$out"). Check the remote URL and the credential reported above"
+  if [ "$rc" != "0" ]; then
+    report FAIL transport "no transport named '$CAP_TRANSPORT' in $REPO_ROOT/transports/. This payload ships: $(transport_names). Set TRANSPORT to one of those, or re-run bootstrap.sh if the directory is missing entirely"
     return 0
   fi
+  # shellcheck disable=SC1090
+  . "$f"
 
-  # Read access is not write access, and the expensive failure is an hour-long
-  # step that captures a perfect log and cannot deliver it.
-  if out="$(cap_git push --dry-run origin "HEAD:$WRITE_CHECK_REF" 2>&1)"; then
-    report ok "git write" "push --dry-run was accepted"
-  elif printf '%s\n' "$out" | grep -qiE 'fast-forward|fetch first|behind'; then
-    # Classify rather than blaming the credential for every refusal. A
-    # fast-forward refusal is a statement about history, not about authorisation.
-    report warn "git write" "the remote refused a fast-forward, so write access is unproven rather than denied. That is history, not the credential: the sync below pulls, and station.sh keeps retrying. If it persists, run 'git pull --rebase' by hand"
+  errf="$(mktemp 2>/dev/null || printf '/tmp/hg-tp-init.%s' "$$")"
+  tp_init 2>"$errf"; rc=$?
+  # Its own words, with the "station: " prefix it writes for the loop's output
+  # stripped and the lines joined, because this goes in a one-line table cell.
+  why="$(sed -e 's/^ *station: */ /' -e 's/^ *//' "$errf" 2>/dev/null | tr '\n' ' ')"
+  why="${why%"${why##*[![:space:]]}"}"
+  rm -f "$errf"
+  if [ "$rc" != "0" ]; then
+    report FAIL transport "the '$CAP_TRANSPORT' transport will not initialise here.${why:+ $why}"
+    return 0
+  fi
+  # A tp_init that succeeded but still had something to say has said something
+  # worth reading. Swallowing it is how a warning about an unverified binary
+  # disappears on the machine that most needs it.
+  [ -n "$why" ] && report warn transport "$why"
+
+  report ok transport "$CAP_TRANSPORT - $(tp_describe)"
+
+  # A transport with more to say says it. Everything else gets the one question
+  # every transport can answer.
+  if declare -F tp_preflight >/dev/null 2>&1; then
+    TP_WANT_SCOPE="$WANT_BRANCH" tp_preflight
+    return 0
+  fi
+  if tp_check; then
+    report ok "$CAP_TRANSPORT reach" "the channel answered and the credential was accepted"
   else
-    # Every clause here has to name something this check can actually detect. It
-    # used to end on "a remote that restricts which branch names may be created
-    # refuses this check too", which --dry-run never reaches (see the note above
-    # WRITE_CHECK_REF), so on a hook- or ruleset-based host it pointed the
-    # operator at a red herring in the one message they read when they cannot
-    # push. The read check above passed with the same credential, so the URL, the
-    # host and the network are already ruled out and the message says so.
-    report FAIL "git write" "push --dry-run of HEAD:$WRITE_CHECK_REF was refused: $(git_detail "$out"). The station would capture logs it could not deliver. The read check above passed with this same credential, so the remote URL and the network are not the problem: it is git-receive-pack refusing the write. Check the credential reported above has write access and not just read - a read-only deploy key and a token missing the write scope both look exactly like this - and, on a host that requires it separately, that the token has been authorised for the organisation"
+    # tp_check writes its own diagnosis to stderr as it goes, which is why this
+    # line does not try to guess one. It names the variables instead, because on
+    # every non-git transport a misconfiguration is a variable.
+    report FAIL "$CAP_TRANSPORT reach" "the '$CAP_TRANSPORT' transport could not be reached, or refused this credential - see the line(s) above. The station would capture logs it could not deliver. Check the transport's variables: 'grep cap_need transports/$CAP_TRANSPORT.sh' lists every one it requires"
   fi
 }
+
+# What this payload actually ships, for a message that would otherwise say
+# "pick a valid one" and leave the operator guessing which those are.
+transport_names() {
+  local n out=""
+  for n in "$REPO_ROOT"/transports/*.sh; do
+    [ -f "$n" ] || continue
+    n="$(basename "$n" .sh)"
+    out="${out:+$out, }$n"
+  done
+  printf '%s' "${out:-none - transports/ is missing}"
+}
+
 
 echo "heliograph preflight on $(hostname -f 2>/dev/null || hostname)"
 echo
 preflight
-credential
-verify
+transport
+
+# --branch is git's, and only git's. Every other transport is pointed at its
+# scope by a variable - PIGEONHOLE_LANE, RELAY_STATION - which is set before
+# this script runs and which this script has no business rewriting.
+#
+# REFUSED RATHER THAN IGNORED. Silently accepting it would let somebody believe
+# they had pointed a relay station at a different scope, and being wrong about
+# which machine a station answers for is the failure the whole design exists to
+# prevent. Checked here, after the transport is known, so the message can name
+# the right variable rather than a general rule.
+if [ -n "$WANT_BRANCH" ] && [ "${CAP_TRANSPORT:-git}" != "git" ]; then
+  report FAIL --branch "--branch is the git transport's, and TRANSPORT is '$CAP_TRANSPORT'. A branch is not what this channel is bound to. Point it with the transport's own variable instead: 'grep cap_need transports/$CAP_TRANSPORT.sh' lists them, and tp_scope in that file names the one that decides the scope"
+fi
 echo
 
 if [ "$FAILED" -gt 0 ]; then
@@ -533,14 +348,14 @@ if [ -n "$WANT_BRANCH" ]; then
   fi
 fi
 
-if cap_git pull --rebase --quiet >/dev/null 2>&1; then
-  report ok pull "up to date with origin"
-else
-  # Bare git, not cap_git: abort touches no network, and cap_git would put the
-  # auth header in this process's argv for nothing - visible to anyone else on
-  # the box via ps. Do not "helpfully" wrap it back up.
-  git rebase --abort >/dev/null 2>&1
-  report warn pull "pull --rebase did not succeed, so the tree is being left alone. station.sh will keep retrying"
+# Bring the payload up to date, where the transport can do that at all.
+#
+# OPTIONAL, and asked rather than assumed: this was `cap_git pull --rebase`
+# unconditionally, which on a relay station is a git command in a directory that
+# need not be a repository. A transport with nothing to sync simply does not
+# define tp_sync, and the loop's first poll is where it gets current anyway.
+if declare -F tp_sync >/dev/null 2>&1; then
+  tp_sync
 fi
 
 echo

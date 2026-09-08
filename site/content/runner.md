@@ -12,13 +12,14 @@ and it is why there is exactly one implementation of the capture.
 ```bash
 ./start.sh                     # check this machine, then run the station
 ./start.sh --check             # check only, change nothing, exit
-./start.sh --branch task/foo   # check that branch out first
+./start.sh --branch task/foo   # check that branch out first (git only)
 ./start.sh -- --once           # everything after -- goes to station.sh
+TRANSPORT=relay ./start.sh     # any transport, same command, same table
 ```
 
 Three jobs and nothing else: prove the machine can produce a usable capture,
-prove the transport can be written to before an hour-long step discovers it
-cannot, then hand over.
+**ask the transport** whether it can carry a log from here before an hour-long
+step discovers it cannot, then hand over.
 
 **`--check` changes nothing.** It is what an operator runs to answer "will this
 work here", often before they are permitted to alter anything. Every `FAIL` it
@@ -26,6 +27,28 @@ prints names a remedy, because the person reading it usually cannot ask you.
 
 It does **not** clone. This file ships inside the transport repo, so by the
 time it runs the clone has already happened.
+
+### It asks the transport, rather than assuming git
+
+The machine checks are the same for everyone. The channel checks are the
+transport's, and it answers through the same contract the loop uses:
+
+| | |
+|---|---|
+| `tp_init` | what this transport needs locally. A missing `RELAY_URL` is reported here, in its own words |
+| `tp_describe` | the channel and the credential, by mechanism and never by value |
+| `tp_preflight` | **optional.** Checks only this transport knows to make |
+| `tp_check` | the fallback every transport answers: can it be reached at all |
+
+git implements `tp_preflight`, and that is where its credential diagnosis, its
+`ls-remote` and its `push --dry-run` live. Read access is not write access, and
+proving the push is worth far more than proving reachability - but it is a git
+answer to a git question, so it belongs to git.
+
+`--branch` belongs to git too, and is **refused** on any other transport rather
+than ignored. A branch is not what a relay or a blob lane is bound to, and
+letting somebody believe they had re-pointed a station is the failure this whole
+design exists to prevent.
 
 ## `station.sh` - the loop
 

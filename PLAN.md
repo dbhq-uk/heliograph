@@ -18,7 +18,7 @@ side. There is no PowerShell station.
 | | |
 |---|---|
 | control CLI over git | works, driven end to end in CI against a real station |
-| relay | station side complete; **no CLI command can select it** |
+| relay | station side complete and **startable by `./start.sh`**; no CLI command can select it |
 | Azure Blob | works end to end via `drop.sh` and `pigeonhole.sh`, not via the CLI |
 | file share, bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
@@ -42,27 +42,25 @@ side. There is no PowerShell station.
 | #32 | **`heliograph station add`** |
 | #33 | the multi-station hardening |
 | #34 | documented what shipped, and two more guards |
+| #35 | this file |
+| #36 | **the preflight stops assuming git** - `tp_preflight`, `tp_sync`, and a token that was being printed |
 
 ## Next, in order
 
-1. **Transport-aware preflight** (roadmap A/PR 3). `start.sh`'s `credential()`
-   FAILs without a git `origin`, and a non-zero `FAILED` stops before
-   `station.sh` runs - so **a relay or blob station cannot be started by the
-   command the operator is told to type.** Ask the transport through `tp_check`
-   and `tp_describe`, which already exist and which `station.sh` already calls.
-   This is what makes the matrix on `/hosts` stop saying "by hand"
-2. **`transports/share.sh`** (PR 4). The CLI implements `share` and the station
-   cannot read it. Cheapest missing far side, and the PowerShell station needs
-   the design anyway
-3. **Relay reachable from the CLI** (PR 5). `relay.go` is complete and
+1. **`transports/share.sh`** (roadmap A/PR 4). The CLI implements `share` and
+   the station cannot read it. Cheapest missing far side, and the PowerShell
+   station needs the design anyway
+2. **Relay reachable from the CLI** (PR 5). `relay.go` is complete and
    unselectable. Needs estate fields and a key-exchange procedure; the keys are
    the hard part, not the plumbing
-4. **Hosts can select a transport** (PR 6). `TRANSPORT` and the `RELAY_*` set
+3. **Hosts can select a transport** (PR 6). `TRANSPORT` and the `RELAY_*` set
    through the Docker entrypoint, the Kubernetes manifest and the five Azure
-   templates. Plant `heliograph-seal` with its checksum populated
-5. **Conformance across every transport in CI** (PR 7). Property 9 only
+   templates. Plant `heliograph-seal` with its checksum populated. The station
+   side is now ready for this: `./start.sh` starts a relay station, and what is
+   left is carrying the variables there
+4. **Conformance across every transport in CI** (PR 7). Property 9 only
    exercises git today, so a no-op `tp_put_log` on another transport would pass
-6. **Track B: the PowerShell station**, seven PRs, gated on 1-4. Windows
+5. **Track B: the PowerShell station**, seven PRs, gated on 1-3. Windows
    PowerShell 5.1, carrying git, share and relay. The conformance driver is the
    deliverable, not the code
 
@@ -101,6 +99,13 @@ station could never run a step at all. Nothing else had noticed.
 2026-09-08 found ten defects, five missed entirely - a quoting bypass of the
 env guard, `cap_push` returning 0 on failure, a committed test artefact that
 `bootstrap` would have planted into every station.
+
+**A command substitution is a subshell, and a transport's `tp_init` sets
+variables the rest of the run needs.** `why="$(tp_init 2>&1)"` looked like the
+tidy way to fold a failure into the preflight table. It reported the transport
+as `ok` and then killed every git check with `BRANCH: unbound variable`, because
+`BRANCH=$b` had been set in the subshell and thrown away. Capture stderr through
+a file when the function has to run in this shell.
 
 **Read the skill before changing a default.** Pinning an estate to its branch
 looked right and would have broken every existing user, because SKILL.md tells

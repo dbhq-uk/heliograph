@@ -546,4 +546,157 @@ OUT="$( cd "$TMP/good" && ./start.sh --branch 2>&1 )" || RC=$?
 assert_eq "--branch with no value is a usage error" "2" "$RC"
 assert_contains "and it names the problem" "--branch" "$OUT"
 
+# =============================================================================
+#  A station whose transport is not git
+# =============================================================================
+# THE DEFECT THESE EXIST FOR. start.sh checked a git remote, a git credential
+# and a git push unconditionally, and one FAIL stops before station.sh runs. So
+# `./start.sh` - the one command every host, every container entrypoint and
+# every page tells the operator to type - could not start a relay or blob
+# station at all. /hosts said "by hand", meaning: set eight variables and skip
+# the only preflight there is, on a machine nobody can log into.
+#
+# The fixture is deliberately NOT a git repository. That is the whole point: it
+# is the state a relay station is actually in, and the state in which every
+# assertion below used to fail.
+FAKE="$TMP/fake"; mkdir -p "$FAKE"
+cat > "$FAKE/curl" <<'EOS'
+#!/usr/bin/env bash
+# Health, then the authenticated poll. Both answer 200, which is what a
+# reachable relay with an accepted token looks like.
+printf '%s\n' "$*" >> "${FAKE_CALLS:-/dev/null}"
+printf '200'
+EOS
+chmod +x "$FAKE/curl"
+cat > "$FAKE/seal" <<'EOS'
+#!/usr/bin/env bash
+[ "${1:-}" = "fingerprint" ] && { printf 'SHA256:fake\n'; exit 0; }
+exit 0
+EOS
+chmod +x "$FAKE/seal"
+
+make_payload() {  # a bootstrapped payload with NO git repository in it
+  "$ROOT/station/bootstrap.sh" "$1" >/dev/null 2>&1
+  cat > "$1/station.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "STUB AGENT pid=$$ args=$*"
+EOF
+  chmod +x "$1/station.sh"
+}
+
+relay_env() {
+  export TRANSPORT=relay
+  export RELAY_URL=https://relay.invalid RELAY_ESTATE=e1 RELAY_STATION=s1 \
+         RELAY_TOKEN=tok RELAY_IDENTITY="$FAKE/id" RELAY_PEER="$FAKE/peer" \
+         RELAY_SEAL="$FAKE/seal" RELAY_SEAL_SHA256="$SEAL_SHA"
+  export PATH="$FAKE:$PATH"
+}
+: > "$FAKE/id"; : > "$FAKE/peer"
+SEAL_SHA="$(sha256sum "$FAKE/seal" | cut -d' ' -f1)"
+
+make_payload "$TMP/relaystation"
+RC=0
+OUT="$( cd "$TMP/relaystation" && relay_env && ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a relay station passes the preflight, in a directory that is not a git repository" \
+  "0" "$RC"
+assert_contains "and says so" "preflight: clear" "$OUT"
+assert_contains "the transport is named, not assumed" "ok    transport     relay" "$OUT"
+assert_contains "and it is reported reachable, which is what tp_check answered" \
+  "relay reach" "$OUT"
+assert_eq "no git check runs at all: there is no git here to check" "" \
+  "$(printf '%s\n' "$OUT" | grep -o 'git write')"
+assert_eq "and it never asks for an origin remote that this station has no use for" "" \
+  "$(printf '%s\n' "$OUT" | grep -o "no remote named 'origin'")"
+
+# The handover, not just the checks: a preflight that passes and then refuses to
+# hand over would be the same wasted trip in a different place.
+RC=0
+OUT="$( cd "$TMP/relaystation" && relay_env && ./start.sh 2>&1 )" || RC=$?
+assert_eq "and without --check it hands over to station.sh" "0" "$RC"
+assert_contains "which actually ran" "STUB AGENT" "$OUT"
+assert_eq "no git pull is attempted on a transport that cannot sync" "" \
+  "$(printf '%s\n' "$OUT" | grep -o 'ok    pull')"
+
+# --- a relay that is misconfigured says WHICH variable -------------------------
+# tp_init's own words, folded into the table. Without this the operator gets
+# either silence or a git message about a remote they were never going to have.
+make_payload "$TMP/relaybad"
+RC=0
+OUT="$( cd "$TMP/relaybad" && export TRANSPORT=relay PATH="$FAKE:$PATH" && ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a relay station with nothing configured blocks" "1" "$RC"
+assert_contains "and the failure is the transport's, named as such" \
+  "FAIL  transport" "$OUT"
+assert_contains "and it names the variable that is missing" "RELAY_URL" "$OUT"
+assert_eq "rather than blaming a git remote it was never going to have" "" \
+  "$(printf '%s\n' "$OUT" | grep -o "no remote named 'origin'")"
+
+# --- a relay that cannot be reached ------------------------------------------
+# tp_check's answer, which is the generic question every transport can answer.
+# A curl that never returns 200 is a relay that is down or a token that is wrong.
+mkdir -p "$FAKE/down"
+cat > "$FAKE/down/curl" <<'EOS'
+#!/usr/bin/env bash
+printf '503'
+EOS
+chmod +x "$FAKE/down/curl"
+cp "$FAKE/seal" "$FAKE/down/seal"
+make_payload "$TMP/relaydown"
+RC=0
+OUT="$( cd "$TMP/relaydown" && relay_env && export PATH="$FAKE/down:$PATH" && ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "an unreachable relay blocks rather than starting the station" "1" "$RC"
+assert_contains "and it is reported as the transport failing to answer" \
+  "FAIL  relay reach" "$OUT"
+assert_contains "and it says where to look for the variables" \
+  "transports/relay.sh" "$OUT"
+
+# --- --branch is refused where a branch means nothing --------------------------
+# REFUSED, NOT IGNORED. Accepting it silently would let somebody believe they
+# had pointed a relay station somewhere it is not pointed, and being wrong about
+# which machine a station answers for is the failure this design exists to stop.
+RC=0
+OUT="$( cd "$TMP/relaystation" && relay_env && ./start.sh --check --branch station/db-a 2>&1 )" || RC=$?
+assert_eq "--branch on a non-git transport blocks" "1" "$RC"
+assert_contains "and says whose flag it is" "the git transport's" "$OUT"
+assert_contains "and names the transport that was actually selected" "relay" "$OUT"
+
+# --- a transport name that is not one -----------------------------------------
+# The name becomes a filename that gets SOURCED. caplib refuses anything but
+# lowercase, digits and hyphens, and this is the check reaching the operator.
+RC=0
+OUT="$( cd "$TMP/good" && TRANSPORT=../station ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "a transport name that is a path blocks" "1" "$RC"
+assert_contains "and says why the name itself is the problem" \
+  "sourced" "$OUT"
+assert_eq "and it never sources the loop into the preflight" "" \
+  "$(printf '%s\n' "$OUT" | grep -o 'STUB AGENT')"
+
+RC=0
+OUT="$( cd "$TMP/good" && TRANSPORT=carrierpigeon ./start.sh --check 2>&1 )" || RC=$?
+assert_eq "an unknown transport blocks" "1" "$RC"
+assert_contains "and lists what this payload actually ships, rather than saying 'a valid one'" \
+  "git" "$OUT"
+assert_contains "including the ones that are not the default" "relay" "$OUT"
+
+# --- the git transport is unchanged -------------------------------------------
+# Everything moved, so this pins that nothing was lost on the way: the git
+# station still gets its own credential diagnosis and its own write check, which
+# tp_check alone would never have made.
+run_start "$TMP/good" --check
+assert_contains "git still reports the transport it selected" "ok    transport     git" "$OUT"
+assert_contains "git still proves write, which no generic tp_check does" "git write" "$OUT"
+assert_contains "and still reports the branch it is on" "ok    branch" "$OUT"
+
+# --- a token in the remote URL never reaches the transport line ---------------
+# tp_describe prints the remote, and station.sh says it at start straight to the
+# terminal and the journal. cap_redact cannot help: that is a stream filter on
+# the capture path and this line does not go down it.
+make_repo "$TMP/tokenurl"
+( cd "$TMP/tokenurl" && git remote set-url origin \
+    'https://ci-user:glpat-SECRETVALUE@git.invalid/org/repo.git' ) >/dev/null 2>&1
+run_start "$TMP/tokenurl" --check
+assert_eq "the transport line never prints a token from the remote URL" "" \
+  "$(printf '%s\n' "$OUT" | grep -o 'glpat-SECRETVALUE')"
+assert_contains "the rest of the URL survives, or the line diagnoses nothing" \
+  "git.invalid/org/repo.git" "$OUT"
+
 t_summary
