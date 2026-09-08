@@ -11,6 +11,30 @@ PowerShell station's premise is a box with no git, and the non-git transports
 are the ones with the hole in them. Track C is last, because documenting a
 claim before it is true is how the current drift happened.
 
+## What has landed
+
+Updated as work merges, so this file stays the register rather than a snapshot.
+
+| | | |
+|---|---|---|
+| PR 1 | status claims match the code, plus a drift guard | **merged** (#21) |
+| PR 2 | `tp_put_log`, so the finished log ships on every transport | **merged** (#24) |
+| Track C | the far side published: 14 pages, 8 -> 22, plus coverage guards | **merged** (#25) |
+
+Track C landed early, out of the order below, and the reason is worth keeping:
+writing the pages is what found the defects. Documenting a component forces
+somebody to state what it does, and three claims turned out to be false the
+moment they were written down - including one that meant a relay or blob station
+could never run a step at all. The pages describe only what is true today, and
+say plainly what is not yet.
+
+Two adversarial review passes ran against this work (codex, high effort,
+read-only). Between them they found ten defects, five of which I had missed
+entirely, including the fatal one above and a request-side guard that quoting
+walked straight through. Both passes are recorded on #22 and #25.
+
+Still open, in the order below: PRs 3 to 7 of track A, and the whole of track B.
+
 ## Global constraints
 
 Every PR in this roadmap obeys these. They are not restated per task.
