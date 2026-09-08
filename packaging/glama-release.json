@@ -1,0 +1,36 @@
+{
+  "_comment": "What the Glama listing was last released with. Glama scores the tool definitions and publishes that score against a release version, so when these change the listing describes tools that no longer exist. cmd/heliograph/glama_snapshot_test.go fails when they drift and says what to do. Creating a Glama release needs a person: the admin route redirects to /sign-up even with a valid API key.",
+  "listing": "https://glama.ai/mcp/servers/dbhq-uk/heliograph",
+  "releasedVersion": "0.3.2",
+  "tools": [
+    {
+      "name": "heliograph_doctor",
+      "description": "Check whether the transport works from here, and change nothing. Run this before a long step: read access is not write access, and finding out afterwards costs a whole round trip through somebody who cannot debug the machine."
+    },
+    {
+      "name": "heliograph_estates",
+      "description": "List the configured estates and the transport each uses. Call this first when you do not know which estate to act on."
+    },
+    {
+      "name": "heliograph_gaps",
+      "description": "Where a run stalled. Returns the intervals in the log's timestamp column, longest first, each attributed to the line BEFORE it, which is what was running. Do this before reading a long log: a hang and slow progress are indistinguishable without it. If every line carries the same timestamp the capture was buffered and the log cannot answer the question at all, which this reports as an error."
+    },
+    {
+      "name": "heliograph_logs",
+      "description": "List the captured logs, newest first. Each name carries the request id that produced it, so the log for a run you sent is the one whose name matches the id heliograph_send returned. Use this to find a log; use heliograph_read_log to read one."
+    },
+    {
+      "name": "heliograph_read_log",
+      "description": "Read a captured log whole. Every line carries a UTC timestamp. Read all of it, including the parts that worked: a passing probe beside a failing one is the control that says what the failure means. A green exit means the probes that ran passed, not that the work happened."
+    },
+    {
+      "name": "heliograph_send",
+      "description": "Publish a step for the station to run, and return immediately. This does NOT wait for the result: poll heliograph_status until it reports a terminal state, then read the log. The station decides whether to run it at all: a step that declares no mode is refused, and one that changes state needs CONFIRM=yes and a station started with --allow-actions."
+    },
+    {
+      "name": "heliograph_status",
+      "description": "What the station is doing now. State is one of running, idle, cancelled, refused or stopped. An empty state means the station has published nothing yet, which usually means it has not been started. `refused` is not a failure: it means the station would not run the step, and the reason names the flag that would permit it."
+    }
+  ],
+  "toolsDigest": "d21b5eb6b6f329e567a06eaf1eba1bd2c353b77b5dfbc220c4222cdf870a52b1"
+}
