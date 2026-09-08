@@ -83,9 +83,13 @@ Two consequences worth having deliberately:
 
 | layer | |
 |---|---|
-| key agreement, encryption | the [age](https://age-encryption.org/v1) format and primitives: X25519, HKDF-SHA256, ChaCha20-Poly1305, via `filippo.io/age` |
+| key agreement, encryption | the [age](https://age-encryption.org/v1) **construction**: X25519, HKDF-SHA256, ChaCha20-Poly1305 |
 | origin authentication | Ed25519, over the plaintext, inside the encryption |
-| transport | HTTPS, TLS 1.3, certificate verification on, no pinning |
+| transport | HTTPS, certificate verification on, no pinning |
+
+**Corrected 2026-09-08.** This table said "via `filippo.io/age`" and "TLS 1.3", and `internal/seal` does neither. It uses the same primitives directly from the Go standard library - `crypto/ecdh`, `crypto/hkdf`, `crypto/ed25519`, `chacha20poly1305` - with its own envelope, and `filippo.io/age` is not a dependency at all. The HTTP client is the default one, so TLS 1.2 is the floor and 1.3 is negotiated when the server offers it; nothing enforces a minimum.
+
+Neither is a defect, and both were worth correcting anyway. "Same construction, standard primitives, no invented protocol" is the claim that survives review; "we import the reference implementation" is a different and stronger claim that was not true, and a reviewer checking the imports would have found that out at the worst possible moment. If a TLS floor is wanted it should be set explicitly rather than described.
 
 ChaCha20-Poly1305 rather than AES-GCM because station hardware is unknown and may lack AES-NI, where ChaCha is both faster and constant-time in software.
 

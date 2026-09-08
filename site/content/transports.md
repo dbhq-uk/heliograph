@@ -26,10 +26,13 @@ its own moves nothing, so the status column below names both.
 | **file share** | both machines mount the same directory | works | none yet |
 | **object store** | S3-compatible storage is permitted where git is not | works | none yet |
 | **bundle** | nothing crosses the gap but a person | works | none yet |
-| **Azure Blob** | a VNet-local private endpoint is the only reachable thing | `drop.sh`, in the station payload | works |
+| **Azure Blob** | a VNet-local private endpoint is the only reachable thing | `drop.sh`, in the station payload, not the CLI | works |
 
-**Git is the one that works end to end today.** The others are at the stage the
-table says and no further; what each still needs is in
+**Git is the one the CLI drives end to end today.** Azure Blob also works end
+to end, through `drop.sh` in the station payload rather than through the
+`heliograph` binary - it is the transport the Azure Function host uses, and it
+is deployed. The rest are at the stage the table says and no further; what each
+still needs is in
 [the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
 This page describes each one as designed, so that the design can be reviewed -
 not as though you could reach for it this afternoon.
@@ -178,20 +181,29 @@ which would be the log, an hour later, with nobody left to tell.
 
 ## What a transport must implement
 
-Six verbs on the station side, so the loop never learns which one it is talking
-to and the read-only gates live in one place rather than one copy per transport.
+Seven verbs on the station side, so the loop never learns which one it is
+talking to and the read-only gates live in one place rather than one copy per
+transport.
 
 ```
-tp_fetch_request     emit the request document
+tp_fetch_request       emit the request document
 tp_fetch_request_live  the same, DURING a run, without touching the working tree
-tp_fetch_self        bring a newer station payload, if this transport can
-tp_put_status        publish a status document
-tp_put_progress      publish a partial-log snapshot
-tp_check             can this station reach the transport at all
+tp_fetch_self          bring a newer station payload, if this transport can
+tp_put_status          publish a status document
+tp_put_progress        publish a partial-log snapshot
+tp_put_log             deliver the FINISHED log
+tp_check               can this station reach the transport at all
 ```
 
-`tp_capabilities` reports which optional verbs a transport actually offers, and
-the station says at **start** what it will not be able to do later.
+`tp_put_log` is required of every transport, with no capability flag and no way
+to opt out, and it is the newest of the seven for an uncomfortable reason. It
+did not exist: the runner ended at a git push, unconditionally, so a station on
+any other channel captured a perfect log and delivered nothing. **A transport
+that cannot deliver a completed log is not a transport**, so this one is not
+optional. See [the capture contract](/conformance), property 9.
+
+`tp_capabilities` reports which of the genuinely optional verbs a transport
+offers, and the station says at **start** what it will not be able to do later.
 
 That last part was learned rather than designed. The loop self-updates: a pull
 brings a newer `station.sh` and it re-executes into it, which is what lets a fix

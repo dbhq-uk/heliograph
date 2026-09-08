@@ -135,13 +135,14 @@ timestamp is reported as an **error**, not as "no gaps".
 | `--gaps` | works |
 | MCP server (`heliograph mcp`) | works |
 | bash station | in use over git: the loop, the gates, the capture, Azure hosts, Kubernetes, the Windows launcher |
-| relay | **half a transport.** The station side is written (`station/bash/transports/relay.sh`) and the [relay server](https://github.com/dbhq-uk/heliograph-relay) is deployed, but no CLI command can select it, and the finished log does not ship |
+| relay | **half a transport.** The station side is written and complete - it fetches requests, publishes status and delivers the finished log - and the [relay server](https://github.com/dbhq-uk/heliograph-relay) is deployed. No CLI command can select it |
 | file share, bundle, object store | **control side only.** The CLI implements all three; the station has no transport for any of them |
+| Azure Blob | works end to end, through `drop.sh` in the station payload rather than the CLI. It is what the Azure Function host uses |
 | PowerShell station | planned: [A8](docs/specs/2026-09-08-powershell-station-and-full-documentation-design.md) |
-| documentation site | [heliograph.dbhq.uk](https://heliograph.dbhq.uk), and it covers the near side only. The far side is documented in `skills/heliograph/references/` |
+| documentation site | [heliograph.dbhq.uk](https://heliograph.dbhq.uk): the CLI, the transports, and the far side - the station, the runner, steps, hosts, Azure, Windows, containers, services, secrets, security and the capture contract |
 
 A transport that works on one side of the gap is not a transport, so this
-table names both sides. Git is the one that works end to end today; what the
+table names both sides. Git is the one the CLI drives end to end; what the
 others still need, and in what order, is
 [the roadmap](docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
 
@@ -150,9 +151,8 @@ others still need, and in what order, is
 Both sides dial out over ordinary HTTPS, so an estate needs no git host, no
 storage account and no VNet. Hosted, and self-hostable from the same binary.
 
-**Not yet usable end to end**, and the status table above says which half is
-missing. The design below is settled and the server is deployed; the wiring is
-not done.
+**Not yet usable end to end.** The station side is complete and the server is
+deployed; no CLI command can select it, so the near side is the missing half.
 
 **The relay cannot read your logs, and cannot make a station run anything.**
 That second half is the one that matters: a relay able to forge a request
