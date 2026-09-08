@@ -13,8 +13,9 @@ The operator starts it once. Everything after that is the transport.
 
 ## What it depends on
 
-Bash 4+, git, and GNU coreutils. That is the whole list, and it is the entire
-proposition: on a locked-down box, installing anything is its own change
+Bash 4+ and GNU coreutils, plus whatever the transport needs: `git` for the git
+transport, `curl` for blob and relay. That is the whole list, and it is the
+entire proposition - on a locked-down box, installing anything is its own change
 request. **Nothing is ever installed on the far side.**
 
 CI enforces it. No Go, no binary, no interpreter and no package may appear
@@ -65,8 +66,8 @@ Details of each: [the runner](/runner), [writing a step](/steps).
 |---|---|
 | `starting` | the loop is up and its credential works. Nothing asked yet |
 | `running` | a step is in flight |
-| `idle` | the run finished and the log was delivered |
-| `undelivered` | the run finished, the log is complete, and it could not be shipped |
+| `idle` | the run finished **and the log was delivered**. Only a confirmed delivery earns it |
+| `undelivered` | the run finished and the log did not arrive - refused by the transport, skipped, or the runner never reached delivery. The reason is published with it |
 | `refused` | a gate said no, and says which one |
 | `cancelled` | signalled mid-run. The partial log is kept |
 | `stopped` | the loop ended, by `stop: yes` or by Ctrl-C |
@@ -97,7 +98,9 @@ executable form of the contract rather than a description of it.
 `stop: yes` in the request ends the loop from your side, which matters because
 nobody is sitting at that terminal. `cancel: yes` kills the step running right
 now; `cancel: <id>` kills it only if that id is the one running, so a stale
-cancel cannot reap a later run.
+cancel cannot reap a later run. The partial log is always kept **on the
+station**, and on the git transport it is delivered with the cancellation; on
+blob and relay it currently is not, and stays local.
 
 `station.sh` deliberately does **not** trap `HUP`. Its cleanup signals the
 running step's process group, so trapping `HUP` would kill an in-flight step
