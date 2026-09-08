@@ -22,10 +22,10 @@ that, run the step again.
 | ACI | One container. Cheapest and simplest to explain | You cannot read logs while it is crash-looping. See below |
 | Web App for Containers | You can get a shell into it to debug | Built for web servers: a container with no open port gets killed and restarted every 230s unless you raise `WEBSITES_CONTAINER_START_TIME_LIMIT`. It also always has a public HTTPS endpoint - VNet integration is outbound-only |
 | Container Apps Job | Runs on a schedule, so nothing is long-lived | The published image refuses `REPO_URL` and an argument together, and a Job's whole point is passing `--once` - so the repo URL has to travel positionally instead |
-| VM (systemd, no container) | Easiest to debug: SSH in, or `az vm run-command`. No image, no registry | You own an OS and its patching. Could not be proven live in this subscription - see below |
+| VM (systemd, no container) | Easiest to debug: SSH in, or `az vm run-command`. No image, no registry | You own an OS and its patching. Pick the REGION before the SKU, and give the subnet outbound internet - both cost a deployment to find, see below |
 | Function App (Flex Consumption) | The estate will not give you anywhere to keep a process. No VM quota, no inbound path, no long-lived compute | Not a loop: a timer answers one request per tick. Needs `PIGEONHOLE_RESUME`, and there is no `git` in the image |
 
-The first four were deployed for real against `rg-heliograph-test` and torn down again, except the VM, which this subscription refused to provision at all (any SKU, any region) - see "The VM host could not be deployed" below. Every other finding on this page came from watching a real deployment fail or succeed, not from documentation.
+Four were deployed for real against `rg-heliograph-test` and torn down again. The VM took two attempts - it could not be provisioned in `uksouth` at any size, and then deployed on `Standard_D2s_v3` in `westeurope`, ran a step and returned a log - see "The VM host, and the region that had no VMs" below. Only the Function App has never been deployed. Every finding on this page came from watching a real deployment fail or succeed, not from documentation.
 
 ## The Function host, and the estate that forced it
 
@@ -597,7 +597,9 @@ bicep-built/`terraform validate`d clean, and the cloud-init script that
 drives first boot passes `shellcheck -S warning` and `bash -n` - but neither
 could be proven with a real deployment.
 
-### The VM host could not be deployed in this subscription
+### The VM host, and the region that had no VMs
+
+**It is proven now**, on `Standard_D2s_v3` in `westeurope`: it booted, cloned, ran a step and the log came back. Getting there cost two findings, and the first one wastes an afternoon if you do not know it.
 
 Every `Microsoft.Compute/virtualMachines` size tried - `Standard_B1s`,
 `Standard_B1ms`, `Standard_B2s`, `Standard_D2s_v3`, `Standard_D2_v5`,
@@ -625,17 +627,25 @@ tried, while ACI, Web App for Containers and Container Apps Jobs - all VM-backed
 under the hood, all provisioned through a managed platform rather than
 directly - worked without incident.
 
-**This is an environment limitation, not a template defect.** The templates
-are built, validated and reviewed against the same patterns already proven
-live on the other three hosts (the credential handling mirrors
-`entrypoint.sh`'s own env-based approach exactly; the systemd unit's
-`Restart=on-failure` mirrors ACI's `restartPolicy: OnFailure`). They have not
-been proven by an actual boot, and that gap should not be quietly assumed
-away: the next person to reach for this host needs a subscription where
-`Microsoft.Compute/virtualMachines` is actually enabled, and should expect to
-spend their first attempt confirming that, not debugging cloud-init.
+**It was the region, not the subscription.** The conclusion drawn at the time -
+a subscription-level restriction on raw IaaS - was wrong, and it is worth
+leaving the reasoning above visible because it was a reasonable read of the
+evidence and it still sent the next attempt in the wrong direction. `westeurope`
+had unrestricted SKUs (583 of 1314, against uksouth's much smaller set) and the
+same subscription provisioned a `Standard_D2s_v3` there without complaint.
 
-### The design, for whenever a working subscription is available
+The lesson is the one the error message actively works against: `SkuNotAvailable`
+reads as a per-SKU stock-out and invites trying another size. Trying another
+REGION is the move, and the SKU list is what settles it in one call rather than
+eleven.
+
+**A bring-your-own VNet has to have outbound internet.** The second finding, and
+it presents as a healthy VM with no loop on it. The first westeurope deployment
+succeeded, then cloud-init timed out cloning after 135 seconds and systemd
+reported `203/EXEC` on a `start.sh` that had never arrived. Azure removed
+default outbound access; a NAT gateway on the subnet fixed it.
+
+### The design
 
 - **Custom data, not a container.** `cloud-init.sh` runs once at first boot:
   installs `git` and `ca-certificates` (everything else `start.sh`'s
