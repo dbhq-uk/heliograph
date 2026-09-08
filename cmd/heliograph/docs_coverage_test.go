@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -193,5 +194,55 @@ func TestEveryShippedInstallerIsDocumented(t *testing.T) {
 	}
 	if found == 0 {
 		t.Fatal("no installers were found, so this check asserted nothing")
+	}
+}
+
+// Every credential mechanism the station honours must be documented.
+//
+// The git transport's whole credential chain lived in caplib.sh and in a skill
+// reference that was never published. The transports page - the page about the
+// git transport - did not mention a token at all, and the mechanisms appeared
+// only as asides on five other pages: containers, service, pipelines, azure and
+// hosts. Somebody setting up their first station read the page named after
+// their transport and was told nothing about the thing most likely to stop it
+// working.
+func TestEveryGitCredentialMechanismIsDocumented(t *testing.T) {
+	site := siteText(t)
+
+	dir := stationDir(t)
+	caplib := read(t, filepath.Join(dir, "station", "bash", "caplib.sh"))
+
+	// Read the names out of the implementation rather than listing them here,
+	// so a mechanism added to the chain and not written up fails this test.
+	// LONGEST ALTERNATIVE FIRST, and a word boundary. Written the obvious way
+	// round, GIT_TOKEN matches first and GIT_TOKEN_FILE is only ever seen as
+	// GIT_TOKEN followed by _FILE - so the check found two mechanisms out of
+	// four and would have passed a page documenting half of them.
+	mechanisms := regexp.MustCompile(`GIT_(?:AUTH_HEADER|TOKEN_FILE|TOKEN_USER|TOKEN)\b`).
+		FindAllString(caplib, -1)
+	seen := map[string]bool{}
+	for _, m := range mechanisms {
+		seen[m] = true
+	}
+	if len(seen) < 4 {
+		t.Fatalf("expected four credential mechanisms in caplib.sh, found %d - "+
+			"this check would assert almost nothing", len(seen))
+	}
+	for m := range seen {
+		if !strings.Contains(site, m) {
+			t.Errorf("the station honours %s and no site page names it", m)
+		}
+	}
+
+	// The transports page is where somebody setting up git actually looks.
+	tp, err := os.ReadFile("../../site/content/transports.md")
+	if err != nil {
+		t.Skipf("the transports page is not here: %v", err)
+	}
+	for _, want := range []string{"GIT_TOKEN", "ssh", "start.sh --check"} {
+		if !strings.Contains(string(tp), want) {
+			t.Errorf("the transports page never mentions %q, so the git section "+
+				"does not tell a reader how the station authenticates", want)
+		}
 	}
 }
