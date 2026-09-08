@@ -139,6 +139,19 @@ libraries. If a design seems to need something novel, the design is wrong.
   changed and *what it cost* - the measurement, the failure it prevents, the
   thing that was tried and did not work.
 
+## Where the work stands
+
+[`PLAN.md`](PLAN.md) is the register: what has landed, what is next and in what
+order, which defects are known and deliberately unfixed, and the lessons this
+repository has already paid for. Read it before starting, and write to it as
+work lands rather than at the end - it is what survives a handover.
+
+One rule from it belongs here too, because it is a hard one: **a check nobody
+has watched fail is a check nobody knows works.** Break every new assertion
+deliberately and watch it fail before keeping it. Two coverage guards written
+on 2026-09-08 were wrong in ways that read as correct and reported PASS while
+asserting nothing.
+
 ## Validating a change
 
 ```bash
