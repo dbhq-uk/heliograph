@@ -12,15 +12,16 @@ for the 19-PR breakdown. This file says where we are and what is next.
 
 ## Where we are
 
-Git is the only transport that works end to end. The site documents the far
-side. There is no PowerShell station.
+Git and the file share work end to end. The site documents the far side. There
+is no PowerShell station.
 
 | | |
 |---|---|
 | control CLI over git | works, driven end to end in CI against a real station |
 | relay | station side complete and **startable by `./start.sh`**; no CLI command can select it |
 | Azure Blob | works end to end via `drop.sh` and `pigeonhole.sh`, not via the CLI |
-| file share, bundle, object store | control side only; **no station side at all** |
+| file share | **works end to end**, proved by a CLI round trip in CI |
+| bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
 | PowerShell station | `station.ps1` is a launcher. No native station |
 | site | 24 pages, near and far side |
@@ -44,23 +45,21 @@ side. There is no PowerShell station.
 | #34 | documented what shipped, and two more guards |
 | #35 | this file |
 | #36 | **the preflight stops assuming git** - `tp_preflight`, `tp_sync`, and a token that was being printed |
+| #37 | **`transports/share.sh`** - the file share gets its far side |
 
 ## Next, in order
 
-1. **`transports/share.sh`** (roadmap A/PR 4). The CLI implements `share` and
-   the station cannot read it. Cheapest missing far side, and the PowerShell
-   station needs the design anyway
-2. **Relay reachable from the CLI** (PR 5). `relay.go` is complete and
+1. **Relay reachable from the CLI** (PR 5). `relay.go` is complete and
    unselectable. Needs estate fields and a key-exchange procedure; the keys are
    the hard part, not the plumbing
-3. **Hosts can select a transport** (PR 6). `TRANSPORT` and the `RELAY_*` set
+2. **Hosts can select a transport** (PR 6). `TRANSPORT` and the `RELAY_*` set
    through the Docker entrypoint, the Kubernetes manifest and the five Azure
    templates. Plant `heliograph-seal` with its checksum populated. The station
    side is now ready for this: `./start.sh` starts a relay station, and what is
    left is carrying the variables there
-4. **Conformance across every transport in CI** (PR 7). Property 9 only
+3. **Conformance across every transport in CI** (PR 7). Property 9 only
    exercises git today, so a no-op `tp_put_log` on another transport would pass
-5. **Track B: the PowerShell station**, seven PRs, gated on 1-3. Windows
+4. **Track B: the PowerShell station**, seven PRs, gated on 1-2. Windows
    PowerShell 5.1, carrying git, share and relay. The conformance driver is the
    deliverable, not the code
 
@@ -69,7 +68,8 @@ side. There is no PowerShell station.
 Stated on the site rather than hidden, so nobody plans around a promise.
 
 - **A cancelled run's partial log does not ship on blob or relay.** The station
-  passes it as `tp_put_status`'s third argument, which only git honours
+  passes it as `tp_put_status`'s third argument, which only git and the share
+  honour
 - **Relay sequence numbers can collide** between the parent loop and the child
   runner: the parent loads `RELAY_OUT` once and does not reload before
   publishing `idle`, so it can emit a number the runner already used, and the

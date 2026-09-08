@@ -89,15 +89,19 @@ jobs:
       # second checkout and nothing for the test to skip - but the non-skip
       # assertion stays: a silently skipped end-to-end test is the same shape
       # of problem as a green suite that checked nothing.
+      # ONE PER TRANSPORT THAT HAS BOTH HALVES. The git round trip cannot prove
+      # anything about the share: the two are separate implementations of a
+      # layout, on opposite sides of a gap nobody can reach, and a disagreement
+      # about a path is two sides that each work perfectly and never meet.
       - name: the CLI drives a stock station, and both bootstraps agree
         run: |
-          out="$(go test ./cmd/heliograph/ -run 'TestCLIDrivesAStockStation|TestBootstrapMatchesTheShellScript' -v -count=1)"
+          out="$(go test ./cmd/heliograph/ -run 'TestCLIDrivesAStockStation|TestCLIDrivesAShareStation|TestBootstrapMatchesTheShellScript' -v -count=1)"
           echo "$out"
           if echo "$out" | grep -q -- '--- SKIP'; then
             echo "::error::the end-to-end test skipped instead of running."
             exit 1
           fi
-          for want in CLIDrivesAStockStation BootstrapMatchesTheShellScript; do
+          for want in CLIDrivesAStockStation CLIDrivesAShareStation BootstrapMatchesTheShellScript; do
             echo "$out" | grep -q -- "--- PASS: Test$want" || {
               echo "::error::Test$want did not run. If it was renamed, rename it here too."
               exit 1

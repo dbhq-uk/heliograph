@@ -23,12 +23,13 @@ its own moves nothing, so the status column below names both.
 |---|---|---|---|
 | **git** | the far side can reach a git host | works | works |
 | **relay** | there is no git host, no storage, no share | written, not selectable | written |
-| **file share** | both machines mount the same directory | works | none yet |
+| **file share** | both machines mount the same directory | works | works |
 | **object store** | S3-compatible storage is permitted where git is not | works | none yet |
 | **bundle** | nothing crosses the gap but a person | works | none yet |
 | **Azure Blob** | a VNet-local private endpoint is the only reachable thing | `drop.sh`, in the station payload, not the CLI | works |
 
-**Git is the one the CLI drives end to end today.** Azure Blob also works end
+**Git and the file share are the two the CLI drives end to end today**, both
+proved by a round trip in CI against a real station. Azure Blob also works end
 to end, through `drop.sh` in the station payload rather than through the
 `heliograph` binary - it is the transport the Azure Function host uses, and it
 is deployed. The rest are at the stage the table says and no further; what each
@@ -196,6 +197,63 @@ as the account the station runs as.
 other. Requests are written with write-then-rename: a station polling the
 directory can read at any instant, and a partially written request is one with
 no `id:` yet, or worse a truncated `env:`, and it would be acted on.
+
+### On the station
+
+```bash
+TRANSPORT=share SHARE_DIR=/mnt/ops SHARE_SCOPE=dns-timeouts ./start.sh
+```
+
+Three files and one directory, and both sides agree on every path because a
+[round trip in CI](/conformance) drives the real CLI against a real station over
+a real directory:
+
+```
+/mnt/ops/dns-timeouts/request          the control side writes it
+/mnt/ops/dns-timeouts/status           the station writes it
+/mnt/ops/dns-timeouts/ops-logs/*.txt   the station writes them
+```
+
+Everything the station publishes is written with the same write-then-rename,
+into the same directory, under a name `mktemp` chose. A rename across
+filesystems is not a rename - it degrades to copy-then-unlink - and a share is
+by definition a different filesystem from `/tmp`. A half-copied log matters more
+than a half-written status: it ends mid-line with no footer, which is the one
+shape an operator is trained to read as *still running*.
+
+The temporary's name is unguessable rather than derived from the process id,
+and that is worth a sentence. Two stations in two containers commonly have the
+same pid; and on a share anyone who can write can plant a file where a
+predictable temporary would go.
+
+`./start.sh --check` proves the whole publish and not merely a write: it
+creates, renames and removes. An SMB share that permits create but denies
+rename or delete is an ordinary way to configure a drop box, and it fails every
+publication at the rename while passing any check that only writes a file.
+
+### Two things a share can be wrong about and git cannot
+
+**A typo in `SHARE_SCOPE` is not an error.** The first thing the station
+publishes creates that directory, and then both sides run perfectly, for ever,
+into two directories that never meet - every symptom pointing at a station that
+is asleep. git cannot do this: a branch that does not exist is refused by the
+remote. So `./start.sh --check` says out loud when the scope directory is not
+there yet, and it does **not** create it: `--check` changes nothing, on a share
+as anywhere else.
+
+**A symlink is refused**, for the scope directory and for `ops-logs`. On NFS or
+SMB a symlink is resolved by each client separately, so one link can send the
+two sides to two different local directories - the same failure again, in the
+one shape where both machines look correctly configured.
+
+**The steps have to be there already.** A share carries the request, the status
+and the logs and nothing else, so `heliograph send steps/probe.sh` names a step
+the station must already have. On git the file travels in the repository; here
+it is planted with the payload. This is what `heliograph plant` means when it
+refuses a non-git estate with *nothing for the far side to clone*.
+
+It cannot self-update for the same reason, and says so at start rather than
+letting you find out when a fix is needed.
 
 ## Bundle
 

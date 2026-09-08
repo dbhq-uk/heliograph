@@ -368,16 +368,50 @@ func TestThePlanIsPresentAndAgreesWithTheCode(t *testing.T) {
 		}
 	}
 
-	// It claims share, bundle and objstore have no station side. The moment one
-	// gains a transport file that claim is false, and this is the register a
-	// reader trusts about what works.
-	for _, name := range []string{"share", "bundle", "objstore"} {
-		_, err := os.Stat(filepath.Join("../../station/bash/transports", name+".sh"))
-		exists := err == nil
-		claimsNone := strings.Contains(p, "no station side")
-		if exists && claimsNone {
-			t.Errorf("station/bash/transports/%s.sh now exists, so PLAN.md's "+
-				"\"no station side\" claim is out of date", name)
+	// It says which transports have no station side. The moment one gains a
+	// transport file that claim is false, and this is the register a reader
+	// trusts about what works.
+	//
+	// PER LINE, NOT PER FILE. The first version asked whether "no station side"
+	// appeared anywhere in PLAN.md, which was true of all three transports while
+	// it was true of any of them - so writing share.sh made the register wrong
+	// about share AND made it impossible to record that bundle still has none.
+	// It caught the real drift on the day share.sh landed and then could not be
+	// satisfied without deleting a true sentence. A claim is made about a
+	// transport on the line that names it.
+	//
+	// The spelling is how the register writes it, not how the file is named:
+	// this is prose for a reader.
+	planSpelling := map[string]string{
+		"share":    "file share",
+		"bundle":   "bundle",
+		"objstore": "object store",
+	}
+	//
+	// BOTH DIRECTIONS. Only checking "the file exists and the register says it
+	// does not" is half a guard: delete a transport and the register goes on
+	// promising it works, which is the more dangerous of the two errors. So a
+	// transport with no station file must be SAID to have none.
+	for name, spelt := range planSpelling {
+		_, statErr := os.Stat(filepath.Join("../../station/bash/transports", name+".sh"))
+		exists := statErr == nil
+		claimed := false
+		for _, line := range strings.Split(p, "\n") {
+			if !strings.Contains(strings.ToLower(line), spelt) {
+				continue
+			}
+			if strings.Contains(line, "no station side") {
+				claimed = true
+				if exists {
+					t.Errorf("station/bash/transports/%s.sh exists, and PLAN.md still says "+
+						"%q has no station side:\n  %s", name, spelt, strings.TrimSpace(line))
+				}
+			}
+		}
+		if !exists && !claimed {
+			t.Errorf("there is no station/bash/transports/%s.sh, and no line of PLAN.md "+
+				"mentioning %q says so. The register would be promising a transport "+
+				"that has only one half", name, spelt)
 		}
 	}
 
