@@ -96,17 +96,24 @@ header{
   font-family:'Archivo',sans-serif;font-weight:600;font-size:1.12rem;letter-spacing:-.02em}
 .brand:hover{color:var(--ink)}
 .brand svg{width:26px;height:26px;color:var(--gold);flex:none}
-nav{display:flex;gap:1.35rem;flex-wrap:wrap;margin-left:auto}
-/* On a docs page the sidebar carries these links, so the header keeps only
-   the brand. Two copies of one navigation is a choice a reader has to make
-   twice. */
-body:has(.shell) header nav{display:none}
-nav a{color:var(--ink-2);text-decoration:none;font-size:.93rem;position:relative;padding:.15rem 0}
-nav a::after{content:'';position:absolute;left:0;right:100%;bottom:-2px;height:1px;
+/* SCOPED to the header's own nav with a child combinator, not to every nav on
+   the page. The unscoped rules leaked into .side nav and .rail nav, which then
+   had to undo them one at a time. The header carries three links on the home
+   page and none anywhere else - the sidebar is the navigation once you are in
+   the docs. */
+header>nav{display:flex;gap:1.35rem;flex-wrap:nowrap;margin-left:auto}
+header>nav a{color:var(--ink-2);text-decoration:none;font-size:.93rem;
+  position:relative;padding:.15rem 0;white-space:nowrap}
+header>nav a::after{content:'';position:absolute;left:0;right:100%;bottom:-2px;height:1px;
   background:var(--gold);transition:right .3s var(--ease)}
-nav a:hover{color:var(--ink)}
-nav a:hover::after,nav a.here::after{right:0}
-nav a.here{color:var(--flash)}
+header>nav a:hover{color:var(--ink)}
+header>nav a:hover::after{right:0}
+/* Below this the three links become a deliberate second row rather than
+   wrapping mid-list. A link never breaks across lines. */
+@media(max-width:420px){
+  header{flex-wrap:wrap;gap:.55rem}
+  header>nav{width:100%;margin-left:0;justify-content:space-between}
+}
 
 /* ----------------------------------------------------------------- hero */
 /* The authored moment. One beam crosses the valley, lands, and the log comes
