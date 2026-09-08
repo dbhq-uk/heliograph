@@ -267,8 +267,18 @@ preflight() {
       report ok "branch wanted" "$WANT_BRANCH exists on origin and would be checked out"
     elif git rev-parse --verify --quiet "refs/heads/$WANT_BRANCH" >/dev/null 2>&1; then
       report warn "branch wanted" "$WANT_BRANCH is here but NOT on origin, so this station would publish where nobody is reading. Push it with 'git push -u origin $WANT_BRANCH'"
-    else
+    elif [ "$CHECK_ONLY" = "1" ]; then
+      # --check is being asked "will this work here", and it will not. Nothing
+      # further will run to say so, because --check exits before the checkout.
       report FAIL "branch wanted" "$WANT_BRANCH is neither here nor on origin. Create it on the control side with 'heliograph station add <name>', or check the name"
+    else
+      # A real run WILL reach the checkout, and that stage is the authority on
+      # its own failure. Failing here instead would pre-empt a better message
+      # with a worse one - it cannot tell a missing branch from a dirty tree,
+      # and the container asserts that the checkout's own text reaches the
+      # operator through the entrypoint. Say what the remote looks like and
+      # leave the verdict to the stage that can give a full one.
+      report warn "branch wanted" "$WANT_BRANCH is neither here nor on origin, so the checkout below will fail. Create it on the control side with 'heliograph station add <name>', or check the name"
     fi
   fi
 
