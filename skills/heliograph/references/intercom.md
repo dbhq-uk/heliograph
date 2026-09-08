@@ -33,7 +33,7 @@ A leaked key is useless off-network. An on-network caller still needs the key. E
 export INTERCOM_URL=https://<your-function-app>.azurewebsites.net
 export INTERCOM_KEY=$(az functionapp keys list -g <rg> -n <app> --query functionKeys.default -o tsv)
 
-${CLAUDE_SKILL_DIR}/toolkit/intercom.sh run steps/net-probe.sh HOSTS="sql.example db.example" PORTS=1433
+./intercom.sh run steps/net-probe.sh HOSTS="sql.example db.example" PORTS=1433
 ```
 
 It prints the log, keeps a copy under `ops-logs/`, and **exits with the step's own exit code**, so it composes in a script the way `run.sh` does. A step that fails is still a result: the log comes back either way.
@@ -160,7 +160,7 @@ The container and queue are created on first use if they are absent, so terrafor
 ## Deploying
 
 ```bash
-${CLAUDE_SKILL_DIR}/toolkit/azure/function/build.sh /tmp/heliograph-function.zip
+./azure/function/build.sh /tmp/heliograph-function.zip
 az functionapp deployment source config-zip -g <rg> -n <app> --src /tmp/heliograph-function.zip
 ```
 

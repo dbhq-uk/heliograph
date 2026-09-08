@@ -14,7 +14,7 @@ echo "=== heliograph skill installer (Codex) ==="
 echo
 
 # See install.sh: bash and git, nothing else.
-echo "No dependencies beyond bash and git."
+echo "The skill drives the heliograph CLI - it prints the install command if the binary is missing."
 echo
 
 mkdir -p "$SKILLS_ROOT"
@@ -31,10 +31,9 @@ for src in "$SCRIPT_DIR"/skills/*/; do
   # installed. Only symlinks are removed, so a real SKILL.md is never at risk.
   find "$target" -mindepth 1 -maxdepth 1 -type l -exec rm -f {} +
   # Every directory SKILL.md can reference, so each one exists under the
-  # rewritten path too. toolkit/ is here because bootstrap.sh copies out of it:
-  # a Codex install that linked the script but not its payload would fail at the
-  # first thing the skill does.
-  for sub in references scripts toolkit; do
+  # rewritten path too. The skill drives the heliograph CLI, so references/
+  # is the only payload it carries - the station ships inside the binary.
+  for sub in references; do
     [ -d "$src/$sub" ] && ln -sfn "$src/$sub" "$target/$sub"
   done
   sed "s#\${CLAUDE_SKILL_DIR}#$target#g" "$src/SKILL.md" > "$target/SKILL.md"

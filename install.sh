@@ -4,8 +4,8 @@
 # SKILL.md references scripts via ${CLAUDE_SKILL_DIR}, which Claude Code
 # substitutes to the skill's own directory for personal, project, and plugin
 # installs alike. So this script symlinks the whole skill directory into
-# ~/.claude/skills/ - every edit (SKILL.md, references/, scripts/ AND the
-# toolkit) is immediately live, with no per-file rewrite. Re-run only when you
+# ~/.claude/skills/ - every edit (SKILL.md and references/) is immediately
+# live, with no per-file rewrite. Re-run only when you
 # add a new skill directory.
 
 set -e
@@ -20,7 +20,7 @@ echo
 # Bash and git, both of which you already have if you are reading this. The
 # toolkit deliberately needs nothing else: it runs on locked-down control nodes
 # where installing a package is a change request, not a command.
-echo "No dependencies beyond bash and git."
+echo "The skill drives the heliograph CLI - it prints the install command if the binary is missing."
 echo
 
 # --- Install each skill in this repo as a full-directory symlink ---

@@ -79,43 +79,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: heliograph
-
-      # The only test that can catch this repo and the skill repo drifting
-      # apart. Everything else checks each half against our own idea of the
-      # shared format, which both halves can satisfy while disagreeing.
-      - uses: actions/checkout@v4
-        with:
-          repository: dbhq-uk/heliograph-skill
-          path: heliograph-skill
 
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27'
           check-latest: true
 
-      - name: run it
-        working-directory: heliograph
-        env:
-          HELIOGRAPH_SKILL_DIR: ${{ github.workspace }}/heliograph-skill
-        run: go test ./cmd/heliograph/ -run TestCLIDrivesAStockStation -v -count=1
-
-      - name: it must not have skipped
-        # A silently skipped end-to-end test is the same shape of problem as a
-        # green suite that checked nothing. If the variable is set but wrong
-        # the test fails on its own; this catches the case where the step above
-        # passes without having run.
-        working-directory: heliograph
-        env:
-          HELIOGRAPH_SKILL_DIR: ${{ github.workspace }}/heliograph-skill
+      # The station lives in this repository since the merge, so there is no
+      # second checkout and nothing for the test to skip - but the non-skip
+      # assertion stays: a silently skipped end-to-end test is the same shape
+      # of problem as a green suite that checked nothing.
+      - name: the CLI drives a stock station, and both bootstraps agree
         run: |
-          out="$(go test ./cmd/heliograph/ -run TestCLIDrivesAStockStation -v -count=1)"
+          out="$(go test ./cmd/heliograph/ -run 'TestCLIDrivesAStockStation|TestBootstrapMatchesTheShellScript' -v -count=1)"
           echo "$out"
-          if echo "$out" | grep -q 'SKIP'; then
-            echo "::error::the end-to-end test skipped. It is the only test that checks the two repositories agree."
+          if echo "$out" | grep -q -- '--- SKIP'; then
+            echo "::error::the end-to-end test skipped instead of running."
             exit 1
           fi
+          for want in CLIDrivesAStockStation BootstrapMatchesTheShellScript; do
+            echo "$out" | grep -q -- "--- PASS: Test$want" || {
+              echo "::error::Test$want did not run. If it was renamed, rename it here too."
+              exit 1
+            }
+          done
 
       - name: the docs agree with the station
         # The end-to-end test proves the two halves INTEROPERATE. This proves
@@ -125,19 +112,14 @@ jobs:
         # CONFIRM=yes and --allow-actions. A model follows that literally. If
         # the station ever spelled a gate differently, every such request would
         # be refused, the model would read the refusal as a fault, and it would
-        # retry forever against a machine nobody here can reach - with both
-        # repositories' own test suites green, because each checks itself
-        # against its own idea of the contract.
-        working-directory: heliograph
-        env:
-          HELIOGRAPH_SKILL_DIR: ${{ github.workspace }}/heliograph-skill
+        # retry forever against a machine nobody here can reach.
         run: |
           set -euo pipefail
           out="$(go test ./cmd/heliograph/ -v -count=1 \
                    -run 'GateSpellingsMatchTheStation|WirePathsMatchTheStation|StatusStatesAreAllKnownHere|TheIDIsTheTrigger')"
           echo "$out"
           if echo "$out" | grep -q -- '--- SKIP'; then
-            echo "::error::a cross-repository coherence check skipped instead of running."
+            echo "::error::a coherence check skipped instead of running."
             exit 1
           fi
           # Four checks, named individually rather than counted loosely: a
@@ -150,6 +132,25 @@ jobs:
               exit 1
             }
           done
+
+  station-purity:
+    name: No Go crosses the gap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Everything under station/ ships to the far side, where "plain bash,
+      # you can read it before you run it" is the entire proposition. The one
+      # exception is station/embed.go, which exists so the binary can carry
+      # the payload and never ships anywhere.
+      - name: the only Go under station/ is embed.go
+        run: |
+          bad="$(find station -name '*.go' ! -path 'station/embed.go')"
+          if [ -n "$bad" ]; then
+            echo "$bad"
+            echo "::error::Go under station/ beyond embed.go. The far side never gets a binary dependency."
+            exit 1
+          fi
+          echo "station/ is clean"
 
   site:
     name: The site builds

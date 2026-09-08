@@ -10,14 +10,14 @@ install via the [DBHQ marketplace](../README.md#install).
 - Optional: `shellcheck`, which CI runs at `-S warning`
 
 That is the whole list, and keeping it that short is a design constraint rather
-than an accident. The toolkit has to run on control nodes where installing
+than an accident. The station has to run on machines where installing
 anything is a change request.
 
 ## 1. Clone
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph-skill.git ~/dbhq-uk/heliograph-skill
-cd ~/dbhq-uk/heliograph-skill
+git clone https://github.com/dbhq-uk/heliograph.git ~/dbhq-uk/heliograph
+cd ~/dbhq-uk/heliograph
 ```
 
 ## 2. Install (symlink)
@@ -34,10 +34,10 @@ and every edit takes effect with no re-run. Codex does not substitute
 `${CLAUDE_SKILL_DIR}`, so `install-codex.sh` rewrites it to the install path -
 **re-run `./install-codex.sh` after editing `SKILL.md`** for Codex.
 
-## 3. Work on the toolkit
+## 3. Work on the station
 
 `station/bash/` is never executed from this repo. It is a payload
-that `bootstrap.sh` copies into a transport repo, so develop it from a
+that `heliograph bootstrap` (or `station/bootstrap.sh`) plants into a transport repo, so develop it from a
 bootstrapped copy:
 
 ```bash
@@ -62,7 +62,7 @@ the timestamps and the push. Keep it that way.
 
 ## 4. Verify
 
-Three behaviours matter, and CI asserts all three (`toolkit` job). Run them by
+Three behaviours matter, and CI asserts all three (the `station` job). Run them by
 hand after touching `caplib.sh`, `run.sh` or `station.sh`, because they are the
 ones whose failure is invisible until someone is waiting on the far side of a gap
 for a log that never arrives:
@@ -93,7 +93,7 @@ evidence the loop works is the mistake this section exists to prevent.
 | `skills/heliograph/references/transport.md` | how the control node authenticates to the git host |
 | `skills/heliograph/references/remote-repo.md` | changing a repo that is also on the far side |
 | `skills/heliograph/references/container.md` | running the loop in a container, and the honest limits |
-| `station/bootstrap.sh` | installs the toolkit into a transport repo |
+| `station/bootstrap.sh` | plants the station into a transport repo, no CLI needed |
 | `station/bash/` | the payload: runners, `lib/`, `steps/`, `docker/`, `TASK.md` |
 | `station/bash/docker/` | the image, the entrypoint that clones, and the `docker run` wrapper |
 
@@ -104,7 +104,7 @@ stops being obeyed.
 
 ## Working across machines
 
-Editing anything under `~/dbhq-uk/heliograph-skill` is live immediately in Claude Code -
+Editing anything under `~/dbhq-uk/heliograph` is live immediately in Claude Code -
 the skill directory is symlinked whole. For Codex, re-run `./install-codex.sh`
 after a `SKILL.md` edit. If you develop on more than one machine, `git pull`
 before you start and `git push` when done.

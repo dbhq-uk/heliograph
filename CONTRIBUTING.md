@@ -4,19 +4,19 @@ Thanks for your interest - contributions are welcome.
 
 ## Ways to help
 
-- Report a bug or request a feature via [issues](https://github.com/dbhq-uk/heliograph-skill/issues)
+- Report a bug or request a feature via [issues](https://github.com/dbhq-uk/heliograph/issues)
 - Add a generic step, a `lib/` helper, or a hard-won lesson to `references/method.md`, via a pull request
 
 ## Local development
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph-skill.git
+git clone https://github.com/dbhq-uk/heliograph.git
 cd heliograph
 ./install.sh          # symlinks into ~/.claude/skills (edits are live)
 ```
 
 The whole skill directory is symlinked, so edits - to `SKILL.md`, `references/`,
-`scripts/` and `toolkit/` alike - are live immediately. For Codex, re-run
+and `references/` alike - are live immediately. For Codex, re-run
 `./install-codex.sh` after editing `SKILL.md`, since that one file is rewritten
 at install time. Full walkthrough in [`docs/dev-setup.md`](docs/dev-setup.md).
 
@@ -31,9 +31,9 @@ at install time. Full walkthrough in [`docs/dev-setup.md`](docs/dev-setup.md).
   is still committed
 - British English, plain hyphens, no trailing full stops on headings
 
-## The bar for a change to `toolkit/`
+## The bar for a change to `station/bash/`
 
-The toolkit runs on a machine you will never see, in front of someone who cannot
+The station runs on a machine you will never see, in front of someone who cannot
 debug it, and each round trip is expensive. So:
 
 **A change may not cost a round trip.** Anything that can hang without printing
@@ -71,7 +71,7 @@ investigation, no internal DNS names, no client or employer names, and no
 environment-specific defaults. Fixture-style examples are fine; a redacted real
 one is not, because redaction fails quietly.
 
-**A dependency.** Bash, git and GNU coreutils. A control node in a locked-down
+**A far-side dependency.** Bash, git and GNU coreutils. A machine in a locked-down
 environment often has no package manager you can use, no network route to a
 registry, and no appetite for a change request. Anything that needs installing
 cannot run where this is meant to run.
