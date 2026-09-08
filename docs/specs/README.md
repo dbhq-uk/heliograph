@@ -12,6 +12,7 @@ decisions and, more usefully, what they cost.
 | [`2026-09-06-relay-encryption-design.md`](2026-09-06-relay-encryption-design.md) | C1: what a relay operator can and cannot do |
 | [`2026-09-08-station-and-skill-merge.md`](2026-09-08-station-and-skill-merge.md) | why the two repositories became one, and where the boundary went instead |
 | [`2026-09-08-powershell-station-and-full-documentation-design.md`](2026-09-08-powershell-station-and-full-documentation-design.md) | A8: the pure PowerShell station, the transport contract's missing verb, and publishing the far side |
+| [`2026-09-08-one-repo-many-stations-design.md`](2026-09-08-one-repo-many-stations-design.md) | one repository, many stations: the branch is already the channel, and the blast-radius rule that bounds it |
 
 The master design and the relay spec were written in `heliograph-skill` and
 moved here when the two-repo split was decided. Their git history lives in that
