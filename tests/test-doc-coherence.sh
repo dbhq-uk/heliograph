@@ -30,18 +30,18 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SKILL_DIR="$HERE/../skills/heliograph"
 SKILL="$SKILL_DIR/SKILL.md"
-TOOLKIT="$SKILL_DIR/toolkit"
+TOOLKIT="$HERE/../station/bash"
 STATION="$TOOLKIT/station.sh"
 
 # --- the file has to exist before anything below means anything --------------
 # Without this the greps below all find nothing and every assertion "passes" by
 # looking at an empty string.
 if [ ! -f "$SKILL" ] || [ ! -f "$STATION" ]; then
-  t_no "SKILL.md and toolkit/station.sh are both present"
+  t_no "SKILL.md and station/bash/station.sh are both present"
   t_summary
   exit 1
 fi
-t_ok "SKILL.md and toolkit/station.sh are both present"
+t_ok "SKILL.md and station/bash/station.sh are both present"
 
 # --- defaults ----------------------------------------------------------------
 # Pulled OUT of the code rather than compared to a literal written twice. A

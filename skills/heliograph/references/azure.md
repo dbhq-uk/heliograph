@@ -693,7 +693,7 @@ about `.gitignore`. Before this was fixed, a bootstrapped transport repo was
 is often the machine with the slowest link.
 
 `bootstrap.sh` now prunes `.terraform`, `.git` and `node_modules`. If you add a
-tool that writes build artefacts under `toolkit/`, add it to that prune list.
+tool that writes build artefacts under `station/bash/`, add it to that prune list.
 
 Check it after any change:
 
@@ -713,7 +713,7 @@ to approve it".
 
 ### A build agent, triggered by the request itself
 
-`toolkit/pipelines/github-actions.yml` and `azure-pipelines.yml`.
+`station/bash/pipelines/github-actions.yml` and `azure-pipelines.yml`.
 
 The station is already inside the estate with network reach and git credentials,
 because that is what a build agent is for. Adding a pipeline is an approved
@@ -830,7 +830,7 @@ the queue.
 
 ### A Kubernetes cluster they already run
 
-`toolkit/kubernetes/heliograph.yaml`. One `Deployment`, one replica, no Service
+`station/bash/kubernetes/heliograph.yaml`. One `Deployment`, one replica, no Service
 and no Ingress, because the station only makes outbound connections.
 
 The cluster has already solved what bit the other hosts: egress is configured,

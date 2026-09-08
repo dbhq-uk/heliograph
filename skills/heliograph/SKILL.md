@@ -49,7 +49,7 @@ curl -sSL https://github.com/dbhq-uk/heliograph/releases/latest/download/heliogr
 ```
 
 If you cannot install it (no network, no permission), stop and say so. The
-no-CLI fallback is a human procedure, not an agent one: clone
+no-CLI fallback is a procedure for a person, not for you: clone
 [dbhq-uk/heliograph](https://github.com/dbhq-uk/heliograph) and run
 `station/bootstrap.sh` by hand - the station is plain bash and stands on its
 own. Do not reimplement `send`, `watch` or the gates by editing files: one
@@ -83,10 +83,11 @@ the credential now - a forwarded ssh agent key dies with the session; an
 unattended loop needs a key on disk, a deploy key, or a token in
 `~/.git-token`. See [references/transport.md](references/transport.md).
 
-Other transports at `init`: `--transport share` (a mounted directory),
-`--transport bundle` (a true air gap), `--transport objstore` (S3-compatible,
-keys from `HELIOGRAPH_S3_ACCESS_KEY` / `HELIOGRAPH_S3_SECRET_KEY`). Full
-detail: <https://heliograph.dbhq.uk/transports>.
+Git is the default. A mounted file share, a signed bundle for a true air gap,
+an S3-compatible object store and the relay are all available at `init`, and
+the loop is identical whichever you pick. Which flags each needs is on the
+site, next to the binary that implements them:
+<https://heliograph.dbhq.uk/transports>.
 
 ## 2. Baseline before theorising
 
@@ -147,13 +148,18 @@ cancel. To kill the running step, set `cancel: yes` in `station/request` (or
 responsive while a step runs. `stop: yes` ends the loop from your side, which
 matters because nobody is sitting at that terminal.
 
-**The gates.** Every step declares itself in its own file -
-`# heliograph-mode: read-only` or `action` - and a step that declares neither
-does not run. A state-changing step needs `CONFIRM=yes` in the request's env
-**and** the station must have been started with `--allow-actions`, or the
-refusal is published to `station/status` within one poll. The loop refuses to
-run as root. These gates live in the station and the CLI; never work around
-them.
+**The gates. The loop is read-only by default.** Every step declares itself in
+its own file - `# heliograph-mode: read-only` or `action` - and a step that
+declares neither does not run. A state-changing step needs `CONFIRM=yes` in
+the request's env **and** the station must have been started with
+`--allow-actions`, or the refusal is published to `station/status` within one
+poll. The loop refuses to run as root. These gates live in the station and the
+CLI; never work around them.
+
+A long run is not a black box: the partial log is pushed every 60 seconds with
+a line count and the last real line, so `heliograph status` shows where it has
+got to. The finished log lands in `ops-logs/` in the transport repo, committed
+and pushed - that is how a run escapes a machine nobody can reach.
 
 While a station is running, **say so and wait for the log**. Ask the operator
 only for what the transport cannot carry: an interactive cloud login, a

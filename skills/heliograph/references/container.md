@@ -1,6 +1,6 @@
 # The container - somewhere the loop can live
 
-`toolkit/docker/` is a third way to get `start.sh` running on a control node,
+`station/bash/docker/` is a third way to get `start.sh` running on a control node,
 alongside "install bash/git/coreutils by hand" and "it's already there". It
 exists for a node where installing anything is a change request but running a
 container someone already built is not, or for an operator you would rather
@@ -17,7 +17,7 @@ station/bash/docker/
   heliograph.sh   the docker/podman run, turned into one command
 ```
 
-Because `bootstrap.sh` copies the whole of `toolkit/` file by file, these
+Because the bootstrap copies the whole station file by file, these
 three files also land in every transport repo it sets up, alongside
 `start.sh` and the rest. They do nothing there unless someone chooses to
 build from that copy too - it is a side effect of a directory walk, not a

@@ -166,7 +166,7 @@ Copy `steps/_template.ps1` to start one. The rules are the same as for a bash
 step: print to stdout and nothing else, never prompt, never buffer output and
 print it at the end, and stay read-only unless the step is declared an action.
 
-`toolkit/steps/win-snapshot.ps1` is a worked example, and is what
+`steps/win-snapshot.ps1` is a worked example, and is what
 `env-snapshot.sh` is for a Windows box: OS and uptime, tooling, disk, network
 and proxy, automatic services that are not running, errors from the System and
 Application logs in the last 24 hours, and whether a reboot is pending.
@@ -340,7 +340,7 @@ never on the same line.
 Git for Windows' bash the MSYS runtime normalises the line ending further up the
 pipeline, before `cap_run` ever sees it, so a Windows control node never had this
 problem. On Linux the CR arrives intact and `cap_run` is what removes it. The
-container and every host under `toolkit/azure/` are Linux, so that is the case
+container and every host under `station/bash/azure/` are Linux, so that is the case
 that matters in practice.
 
 `tests/test-remote.sh` probes for this rather than assuming it, in the same shape

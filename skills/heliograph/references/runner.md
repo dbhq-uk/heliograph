@@ -83,7 +83,7 @@ run where installing is forbidden.
 ```
 
 Start it once on the control node and leave it. It polls this branch, and when the `id:` in
-[`station/request`](../toolkit/station/request) changes it runs that step and pushes the log back:
+[`station/request`](../../../station/bash/station/request) changes it runs that step and pushes the log back:
 
 ```
 Claude   edits station/request (new id), pushes ─────────────▶ repo

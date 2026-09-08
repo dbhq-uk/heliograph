@@ -2,7 +2,7 @@
 # =============================================================================
 #  test-hosts.sh - every host template is accounted for, and says what it is
 # =============================================================================
-# toolkit/kubernetes/heliograph.yaml sat in this repository with no test, no
+# station/bash/kubernetes/heliograph.yaml sat in this repository with no test, no
 # mention in any document, and nothing saying whether it had ever been applied
 # to a cluster. Ninety-one lines of confident YAML that somebody would sooner or
 # later run against an estate they cannot easily debug, on the strength of it
@@ -34,7 +34,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SKILL_DIR="$HERE/../skills/heliograph"
 HOSTS="$SKILL_DIR/references/hosts.md"
-TOOLKIT="$SKILL_DIR/toolkit"
+TOOLKIT="$HERE/../station/bash"
 K8S="$TOOLKIT/kubernetes/heliograph.yaml"
 
 if [ ! -f "$HOSTS" ]; then
@@ -59,13 +59,13 @@ for d in "$TOOLKIT"/azure/*/; do
   # The function app is a transport (intercom), not a host for the loop. It is
   # excluded by name rather than by pattern so that the exclusion is visible.
   case "$(basename "$d")" in function) continue ;; esac
-  hosts="$hosts toolkit/azure/$(basename "$d")"
+  hosts="$hosts station/bash/azure/$(basename "$d")"
 done
 for d in "$TOOLKIT"/docker "$TOOLKIT"/kubernetes; do
-  [ -d "$d" ] && hosts="$hosts toolkit/$(basename "$d")"
+  [ -d "$d" ] && hosts="$hosts station/bash/$(basename "$d")"
 done
 for f in "$TOOLKIT"/service.sh "$TOOLKIT"/service.ps1; do
-  [ -f "$f" ] && hosts="$hosts toolkit/$(basename "$f")"
+  [ -f "$f" ] && hosts="$hosts station/bash/$(basename "$f")"
 done
 
 for host in $hosts; do
@@ -134,15 +134,15 @@ while IFS= read -r line; do
     fi
   done
   # A CI workflow step is evidence too, and the rule originally missed that -
-  # it rejected the Windows scheduled task, which is proven by a step in
-  # validate.yml rather than by a file under tests/. Caught by its own gate,
-  # which is the outcome to want.
+  # it rejected the Windows scheduled task, which is proven by a step in the
+  # station workflow rather than by a file under tests/. Caught by its own
+  # gate, which is the outcome to want.
   if printf '%s\n' "$line" | grep -q 'the Windows runner'; then
     if grep -q "registers, reports and removes a scheduled task" \
-         "$HERE/../.github/workflows/validate.yml" 2>/dev/null; then
-      t_ok "the Windows row cites a CI step that is still in validate.yml"
+         "$HERE/../.github/workflows/station.yml" 2>/dev/null; then
+      t_ok "the Windows row cites a CI step that is still in station.yml"
     else
-      t_no "the Windows row cites a CI step that no longer exists in validate.yml"
+      t_no "the Windows row cites a CI step that no longer exists in station.yml"
     fi
     continue
   fi

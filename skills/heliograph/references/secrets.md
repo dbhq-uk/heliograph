@@ -7,7 +7,7 @@ store on your side is not reachable from theirs, and the transport repo is the
 only thing both can see. It is also committed and pushed, so a value pasted into
 a step is in that history permanently.
 
-`toolkit/secret.sh` carries it as **ciphertext**. The passphrase travels through
+`secret.sh` carries it as **ciphertext**. The passphrase travels through
 a human who defines it on both machines, and never through git, so what git
 carries is useless on its own.
 

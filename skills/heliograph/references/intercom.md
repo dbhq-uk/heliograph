@@ -170,7 +170,7 @@ The module is bring-your-own: it creates the plan and the app, and nothing else.
 
 ```hcl
 module "agent" {
-  source              = "${path.module}/toolkit/azure/function"
+  source              = "${path.module}/station/bash/azure/function"
   name                = local.app_name
   location            = local.location
   resource_group_name = local.rg

@@ -23,9 +23,8 @@ import unittest
 
 FUNCTION_DIR = (
     pathlib.Path(__file__).resolve().parent.parent
-    / "skills"
-    / "heliograph"
-    / "toolkit"
+    / "station"
+    / "bash"
     / "azure"
     / "function"
 )
