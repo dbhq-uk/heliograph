@@ -342,3 +342,50 @@ func TestEveryStatusFieldIsDocumented(t *testing.T) {
 		}
 	}
 }
+
+// PLAN.md is the register: what has landed, what is next, and which defects are
+// known and unfixed. It is what survives a handover or a context compaction, so
+// it is worth a little machinery to stop it going quietly stale.
+//
+// The check is deliberately narrow. Whether "next" is still the right order is
+// a judgement no test can make. Whether the register still agrees with the
+// filesystem about which transports exist is not a judgement at all.
+func TestThePlanIsPresentAndAgreesWithTheCode(t *testing.T) {
+	plan, err := os.ReadFile("../../PLAN.md")
+	if err != nil {
+		t.Fatalf("PLAN.md is the register and it is not here: %v", err)
+	}
+	p := string(plan)
+
+	// An unreferenced register is one nobody opens.
+	for _, f := range []string{"../../AGENTS.md", "../../README.md"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		if !strings.Contains(string(b), "PLAN.md") {
+			t.Errorf("%s does not point at PLAN.md, so nobody arriving would find it", filepath.Base(f))
+		}
+	}
+
+	// It claims share, bundle and objstore have no station side. The moment one
+	// gains a transport file that claim is false, and this is the register a
+	// reader trusts about what works.
+	for _, name := range []string{"share", "bundle", "objstore"} {
+		_, err := os.Stat(filepath.Join("../../station/bash/transports", name+".sh"))
+		exists := err == nil
+		claimsNone := strings.Contains(p, "no station side")
+		if exists && claimsNone {
+			t.Errorf("station/bash/transports/%s.sh now exists, so PLAN.md's "+
+				"\"no station side\" claim is out of date", name)
+		}
+	}
+
+	// The sections that make it a register rather than a note.
+	for _, want := range []string{"## Where we are", "## Next, in order",
+		"## Known defects", "## Lessons"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("PLAN.md has no %q section, so it has stopped being the register", want)
+		}
+	}
+}

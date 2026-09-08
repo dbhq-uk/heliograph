@@ -212,6 +212,8 @@ its full history; the reasoning is in
 
 ## Development
 
+[`PLAN.md`](PLAN.md) is where the work stands: what has landed, what is next,
+and which defects are known and unfixed.
 [`CONTRIBUTING.md`](CONTRIBUTING.md) covers working on it and
 [`AGENTS.md`](AGENTS.md) is for an AI agent doing so. The skill is
 [`skills/heliograph/SKILL.md`](skills/heliograph/SKILL.md);
