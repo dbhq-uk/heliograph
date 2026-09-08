@@ -227,4 +227,48 @@ assert_eq "a stale 'no' from an earlier run does not leak into the next status" 
 assert_eq "because the marker is rewritten by the run that owns it" \
   "yes" "$(delivery_field delivered)"
 
+# --- the request may not choose the channel, however it is spelled ------------
+# The first version of this guard matched ` TRANSPORT=` against the RAW env
+# line, and quoting walked straight through it: an adversarial review
+# reproduced three bypasses in a minute. The check now runs on the PARSED
+# assignments, so each of these has to be refused by meaning rather than by
+# spelling.
+protected_refused() {  # protected_refused <label> <envline>
+  request "$2x" reader "$3"
+  agent
+  assert_eq "$1" "refused" "$(status_field state)"
+}
+protected_refused "a plain TRANSPORT= in the env line is refused" p1 "TRANSPORT=blob"
+protected_refused "a QUOTED assignment is refused too, which the old guard missed" p2 'FOO=1 "TRANSPORT=blob"'
+protected_refused "a quote INSIDE the name is refused, which it also missed" p3 'T"RANSPORT"=blob'
+protected_refused "PUSH=0 is refused: it would deliver nothing and still read clean" p4 "PUSH=0"
+protected_refused "REDACT=0 is refused: the log is committed and cannot be unpublished" p5 "REDACT=0"
+protected_refused "LOG_DIR is refused: it moves the log where the loop cannot report it" p6 "LOG_DIR=/tmp"
+
+# The control. Without it every assertion above would pass just as well against
+# a station that refused every env line it was given.
+request p7 reader "HOSTS=sql01"
+agent
+assert_eq "an ordinary env line still runs, so the guard is not refusing everything" \
+  "idle" "$(status_field state)"
+
+# --- an absent marker is not a delivery --------------------------------------
+# `idle` used to be the default for anything that was not literally `no`, so a
+# runner that exited before it ever reached delivery - refused as root, an
+# unknown step, killed - was published as a clean run with a log nobody would
+# ever receive.
+request p8 reader
+rm -f "$DELIVERY"
+# Run the loop with the marker removed and the runner unable to write one.
+( cd "$TR" && chmod a-w . 2>/dev/null ) || true
+agent
+( cd "$TR" && chmod u+w . 2>/dev/null ) || true
+d8="$(delivery_field delivered)"
+if [ "$d8" = "yes" ]; then
+  t_ok "p8: the runner recorded a delivery, so this environment could not stage the case"
+else
+  assert_eq "a run with no recorded delivery is NOT published as idle" \
+    "undelivered" "$(status_field state)"
+fi
+
 t_summary

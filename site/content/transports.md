@@ -181,9 +181,10 @@ which would be the log, an hour later, with nobody left to tell.
 
 ## What a transport must implement
 
-Seven verbs on the station side, so the loop never learns which one it is
+Ten functions on the station side, so the loop never learns which one it is
 talking to and the read-only gates live in one place rather than one copy per
-transport.
+transport. Three are lifecycle - `tp_init`, `tp_scope`, `tp_describe` - and
+`tp_capabilities` and `tp_revision` report. These seven do the work:
 
 ```
 tp_fetch_request       emit the request document

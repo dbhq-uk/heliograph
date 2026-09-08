@@ -85,10 +85,12 @@ So `heliograph-seal` does the sealing and **no networking at all**. `curl` stays
 in the shell, where its behaviour can be read and debugged. Every other
 transport stays pure bash and always will.
 
-The binary is **checksum-verified before it is executed**, and the station
-refuses to start if it is missing or wrong. There is no plaintext fallback and
-no degraded mode: a station that cannot verify must not start rather than start
-and accept.
+The binary must be present and executable or the station refuses to start:
+there is no plaintext fallback and no degraded mode.
+
+**The checksum is only enforced if you set one.** With `RELAY_SEAL_SHA256`, a
+binary that does not match refuses to run. Without it the station prints a
+warning and carries on, which is weaker than this page used to claim. Set it.
 
 ## Configuring a station
 
@@ -103,12 +105,10 @@ RELAY_PEER=/path/to/control.pub          # the control side's public identity
 RELAY_SEAL_SHA256=<checksum from the release>
 ```
 
-`RELAY_SEAL_SHA256` is optional and should not be. Without it the station warns
-that `heliograph-seal` is unverified and carries on; with it, a binary that does
-not match refuses to run. Set it.
+`RELAY_SEAL_SHA256` is optional and should not be - see above.
 
-A request may **not** override `TRANSPORT`. Otherwise the far side could
-redirect where its own log is delivered.
+A request may **not** set `TRANSPORT`, `PUSH`, `REDACT` or `LOG_DIR`. See
+[security](/security).
 
 ## Self-hosting
 

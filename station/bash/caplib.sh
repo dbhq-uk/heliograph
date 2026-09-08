@@ -747,9 +747,17 @@ cap_deliver() {
   if [ "$_CAP_TP_STATE" != "ready" ] || ! declare -F tp_put_log >/dev/null 2>&1; then
     # cap_push stays the fallback so `./run.sh env` in an ordinary transport
     # repo behaves exactly as it always has, including all of its own recovery.
-    cap_push "$out" "$msg"
-    cap_record_delivery unknown "$out"
-    return 0
+    #
+    # ITS RESULT IS HONOURED. This recorded `unknown` and returned 0 whatever
+    # happened, so a fallback push that failed was published as a clean run -
+    # the same lie this function exists to stop, on the path most likely to be
+    # taken by somebody running a step by hand.
+    if cap_push "$out" "$msg"; then
+      cap_record_delivery yes "$out"
+      return 0
+    fi
+    cap_record_delivery no "$out"
+    return 1
   fi
   if tp_put_log "$out" "$msg"; then
     cap_record_delivery yes "$out"

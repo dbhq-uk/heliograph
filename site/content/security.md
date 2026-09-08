@@ -78,10 +78,13 @@ still not a reason to hand it a shell.
   `|`, `<`, `>` or `(`. It is split the way a shell would split it, honouring
   quotes, and assigned as an array - so a value that got past the guard still
   could not execute
-- It may not set `TRANSPORT`. Otherwise a request could redirect where its own
-  log is delivered, or traverse a path into a file that then gets sourced
-- A `version:` the station does not recognise is refused, and it says why,
-  rather than guessing
+- It may not set `TRANSPORT`, `PUSH`, `REDACT` or `LOG_DIR`. Those control
+  where the log goes, whether it is delivered at all, and whether secrets are
+  masked in it. They are settled when the station is started, not per request.
+  The check runs on the **parsed** assignments rather than on the raw line, so
+  quoting cannot walk around it
+- The transport name is validated before it becomes a filename that gets
+  sourced
 
 ## The transport repo is private, and separate
 

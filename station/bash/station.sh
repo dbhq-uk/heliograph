@@ -449,7 +449,18 @@ while :; do
     fi
   fi
 
-  [ -f "$REQUEST" ] || { sleep "$INTERVAL"; continue; }
+  # THE BODY THE TRANSPORT HANDED US, not a file on disk.
+  #
+  # This was `[ -f "$REQUEST" ]`, and it made the whole transport interface a
+  # fiction for anything but git. blob and relay return the request document on
+  # stdout and create no local file at all, so a station on either fetched a
+  # perfectly good request, found no `station/request` beside it, and threw the
+  # request away - every poll, forever, while reporting nothing wrong. A
+  # relay station has never been able to run a step.
+  #
+  # git is unaffected: its tp_fetch_request cats that same file, so an absent
+  # or empty request yields an empty body here exactly as before.
+  [ -n "$REQ_BODY" ] || { sleep "$INTERVAL"; continue; }
 
   if [ "$(field stop)" = "yes" ]; then
     say "stop requested in $REQUEST"
@@ -553,27 +564,6 @@ while :; do
         [ "$ONCE" = "1" ] && cleanup
         continue ;;
     esac
-    # THE REQUEST MAY NOT CHOOSE THE CHANNEL ITS OWN LOG COMES BACK ON.
-    #
-    # The env line is passed to run.sh through `env`, and run.sh reads TRANSPORT
-    # to decide where to deliver. So `env: TRANSPORT=git` on a relay station
-    # would send the log somewhere nobody is reading, and the request would
-    # still be published as a clean run. That is the defect this whole change
-    # exists to remove, handed to whoever can write a request.
-    #
-    # The operator chose the transport when they started the station, and it is
-    # not the far side's to revise. Refused rather than ignored: a request that
-    # asked for something and silently did not get it is worse than one told no.
-    case " $ENVLINE" in
-      *' TRANSPORT='*)
-        say "REFUSED: the env line sets TRANSPORT, which would redirect the log"
-        say "  env: $ENVLINE"
-        say "  The transport is chosen when the station is started, not per request."
-        publish_status "refused" "$ID" "$STEP" "reason:   the env line sets TRANSPORT, which would redirect where the log is delivered. The transport is chosen at station start"
-        LAST_ID="$ID"; echo "$ID" > "$STATE_FILE"
-        [ "$ONCE" = "1" ] && cleanup
-        continue ;;
-    esac
     eval "ENVARR=($ENVLINE)" 2>/dev/null || {
       say "REFUSED: env line is not parseable as NAME=value pairs"
       say "  env: $ENVLINE"
@@ -582,6 +572,41 @@ while :; do
       [ "$ONCE" = "1" ] && cleanup
       continue
     }
+
+    # A REQUEST MAY NOT SET THE VARIABLES THAT CONTROL DELIVERY OR THE GATES.
+    #
+    # The env line reaches run.sh through `env`, so every name in it becomes a
+    # variable the runner reads. Four of those are not the far side's to set:
+    #
+    #   TRANSPORT  redirects where the log is delivered, or names a file that
+    #              gets sourced. The operator chose the channel at start
+    #   PUSH       PUSH=0 captures and delivers NOTHING, while the run still
+    #              looks clean from here. That is the exact defect tp_put_log
+    #              exists to remove, handed to whoever can write a request
+    #   REDACT     REDACT=0 turns off secret masking on a log that is about to
+    #              be committed and cannot be unpublished
+    #   LOG_DIR    moves the log somewhere this loop will not find to report it
+    #
+    # CHECKED AFTER THE eval, ON THE PARSED ARRAY, and that is the whole point.
+    # An earlier version matched ` TRANSPORT=` against the raw line, and
+    # quoting walked straight through it: `FOO=1 "TRANSPORT=relay"` and
+    # `T"RANSPORT"=relay` both fail that test and both come out of the eval as a
+    # plain TRANSPORT assignment. A guard applied before the parser is a guard
+    # against the spelling rather than against the meaning.
+    for _assign in ${ENVARR[@]+"${ENVARR[@]}"}; do
+      case "${_assign%%=*}" in
+        TRANSPORT|PUSH|REDACT|LOG_DIR)
+          say "REFUSED: the env line sets ${_assign%%=*}, which the request may not choose"
+          say "  env: $ENVLINE"
+          say "  TRANSPORT, PUSH, REDACT and LOG_DIR control delivery and redaction."
+          say "  They are settled when the station is started, not per request."
+          publish_status "refused" "$ID" "$STEP" \
+            "reason:   the env line sets ${_assign%%=*}, which controls delivery or redaction and is settled at station start, not per request"
+          LAST_ID="$ID"; echo "$ID" > "$STATE_FILE"
+          [ "$ONCE" = "1" ] && cleanup
+          continue 2 ;;
+      esac
+    done
     run_detached env "${ENVARR[@]}" ./run.sh "$STEP"
   else
     run_detached ./run.sh "$STEP"
@@ -698,14 +723,32 @@ while :; do
     # interface dropped it along with the delivery it reported.
     DELIVERED="$(sed -n 's/^delivered:[[:space:]]*//p' "$REPO_ROOT/.station-delivery" 2>/dev/null | head -1)"
     say "step '$STEP' finished exit=$RC${LOGFILE:+  ($LOGFILE)}"
-    if [ "$DELIVERED" = "no" ]; then
-      say "the log was captured and could NOT be delivered over '$TRANSPORT'"
-      publish_status "undelivered" "$ID" "$STEP" "$(printf 'started:  %s\nfinished: %s\nexit:     %s\nlog:      %s\nnote:     the run completed and the log is on the station, but the transport would not take it' \
-          "$START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "${LOGFILE:-<none>}")"
-    else
-      publish_status "idle" "$ID" "$STEP" "$(printf 'started:  %s\nfinished: %s\nexit:     %s\nlog:      %s' \
-          "$START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "${LOGFILE:-<none>}")"
-    fi
+    # `idle` MEANS THE LOG ARRIVED. Only `yes` earns it, and everything else is
+    # published as `undelivered` with the reason.
+    #
+    # This was inverted - anything that was not literally `no` became `idle` -
+    # and the hole was not small. An absent marker means the runner exited
+    # before it ever reached delivery (refused as root, an unknown step, a sudo
+    # pre-cache that failed, killed), and that was reported as a clean run with
+    # a log nobody would ever receive. `unknown` says cap_push ran as a fallback
+    # and its result was not established. Both are the failure this whole change
+    # exists to remove, reinstated by a default.
+    case "$DELIVERED" in
+      yes)
+        publish_status "idle" "$ID" "$STEP" "$(printf 'started:  %s\nfinished: %s\nexit:     %s\nlog:      %s' \
+            "$START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "${LOGFILE:-<none>}")" ;;
+      *)
+        case "$DELIVERED" in
+          no)      WHY="the transport would not take it" ;;
+          skipped) WHY="delivery was skipped (PUSH=0), so the log is on the station only" ;;
+          unknown) WHY="delivery fell back to a direct push and its result was not established" ;;
+          "")      WHY="the runner exited before it reached delivery, so no log was sent" ;;
+          *)       WHY="the runner reported delivery state '$DELIVERED', which this loop does not know" ;;
+        esac
+        say "NOT DELIVERED over '$TRANSPORT': $WHY"
+        publish_status "undelivered" "$ID" "$STEP" "$(printf 'started:  %s\nfinished: %s\nexit:     %s\nlog:      %s\nnote:     %s' \
+            "$START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "${LOGFILE:-<none>}" "$WHY")" ;;
+    esac
   fi
 
   [ "$ONCE" = "1" ] && cleanup
