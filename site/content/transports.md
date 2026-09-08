@@ -46,6 +46,79 @@ a request, the station pushes back a status and a log.
 heliograph init payments --dir ~/transport/payments
 ```
 
+### The credential
+
+This is where a git station actually fails, so it is worth settling before the
+operator walks away rather than an hour into the first run.
+
+**An ssh remote with an agent key needs nothing from heliograph.** Plain
+`git push` works, and it is the setup to prefer. The catch is that a forwarded
+agent key **dies with the session**, which is exactly when an unattended loop
+needs it. A key on disk or a deploy key is what survives a logout.
+
+For an `https://` remote, the station looks for a token in this order and stops
+at the first one it finds:
+
+| | |
+|---|---|
+| `GIT_AUTH_HEADER` | the full header value, used verbatim |
+| `GIT_TOKEN` | a token, sent as HTTP Basic |
+| `GIT_TOKEN_FILE` | a file whose **first line** is that token |
+| `./.git-token` | in the transport repo |
+| `~/.git-token` | the one a detached service can read |
+
+`GIT_TOKEN_USER` is the Basic username. It defaults to empty, which is what
+Azure DevOps wants. **GitHub needs `x-access-token` and GitLab needs `oauth2`**,
+and getting it wrong reports a *missing* username rather than a wrong one,
+which sends you looking at the token.
+
+Why a token at all, when the URL can carry one: several hosts reject the
+`https://user:token@host` form outright, so the push fails as a bare
+authentication error while the token is perfectly valid.
+
+### It is passed through the environment, not the command line
+
+`git -c http.extraHeader=...` puts the value in this process's argv, and
+`/proc/<pid>/cmdline` is world-readable - any other user on the box can read
+the token straight out of `ps`. The station passes it through
+`GIT_CONFIG_COUNT` instead, and `/proc/<pid>/environ` is owner-only.
+
+A reduction in exposure, not a guarantee: root reads either, and a core dump
+sees the value whichever route it took. A heliograph station is often a shared
+jump host in somebody else's estate, and this token is frequently the only
+credential the tool is trusted with.
+
+It needs git 2.31 or newer. Older git ignores `GIT_CONFIG_COUNT` **silently**,
+so the station checks the version rather than hoping, and falls back to `-c`.
+
+### Prove it before you need it
+
+```bash
+./start.sh --check
+```
+
+It reports which credential is in force - by mechanism and length, never by
+value - and then **proves the push**, because read access is not write access
+and the expensive failure is an hour-long step that captures a perfect log and
+cannot deliver it.
+
+The write check dry-runs against `refs/heads/heliograph-write-check`, a ref
+that does not exist. That is deliberate: dry-running against the current branch
+is refused locally as a non-fast-forward the moment origin holds a commit the
+checkout lacks, which is the ordinary state every time, and the credential gets
+blamed for it.
+
+Two things it cannot see, said plainly: a local filesystem remote whose
+directory is not writable, and a pre-receive hook or branch ruleset. A dry run
+sends no pack, so those hooks never execute.
+
+### Scoping it
+
+Read and write on that one repository, and nothing else. A deploy key or a
+fine-grained token is the right shape. A read-only deploy key and a token
+missing the write scope both look exactly like a failed write check, which is
+what the message says.
+
 **Two writers, one branch.** The station pushes far more often than you do: a
 status commit on every transition, a progress snapshot every 60 seconds, and the
 log itself. So the remote moves while you are writing the next request and a
