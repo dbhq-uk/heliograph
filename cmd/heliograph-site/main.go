@@ -20,7 +20,13 @@ import (
 
 // order fixes the navigation. Alphabetical would put the CLI reference before
 // the quick start, which is the wrong way round for somebody arriving.
-var order = []string{"index", "install", "quickstart", "claude-code", "mcp", "transports", "cli", "method"}
+var order = []string{
+	"index", "install", "quickstart",
+	"claude-code", "mcp",
+	"station", "bootstrap", "steps", "runner", "conformance",
+	"hosts", "containers", "service", "azure", "pipelines", "windows",
+	"transports", "relay", "intercom", "cli", "secrets", "security", "method",
+}
 
 const baseURL = "https://heliograph.dbhq.uk"
 
@@ -207,7 +213,9 @@ var groups = []struct {
 }{
 	{"Start here", []string{"index", "install", "quickstart"}},
 	{"Drive it from an agent", []string{"claude-code", "mcp"}},
-	{"Reference", []string{"transports", "cli", "method"}},
+	{"The far side", []string{"station", "bootstrap", "steps", "runner", "conformance"}},
+	{"Where it runs", []string{"hosts", "containers", "service", "azure", "pipelines", "windows"}},
+	{"Reference", []string{"transports", "relay", "intercom", "cli", "secrets", "security", "method"}},
 }
 
 func label(o site.Page) string {
@@ -365,6 +373,22 @@ var titles = map[string]string{
 	"transports":  "Transports - git, relay, file share and bundle",
 	"cli":         "CLI reference - send, watch, logs --gaps, plant, doctor",
 	"method":      "The method - how to debug across a gap you cannot cross",
+	"mcp":         "MCP server - heliograph as typed tools for any agent",
+	"station":     "The station - what heliograph runs on the far side",
+	"bootstrap":   "Planting a station - with the CLI, or without it",
+	"steps":       "Writing a step - one file, one question, and the traps",
+	"runner":      "Runner reference - start.sh, station.sh, run.sh and every knob",
+	"conformance": "The capture contract - nine properties every implementation must pass",
+	"hosts":       "Where a station can run - the host contract, and what is proven",
+	"containers":  "Docker and Kubernetes - running a station in a container",
+	"service":     "Survive a logout - systemd, launchd and Windows scheduled tasks",
+	"azure":       "Azure - five templates, and what deploying them taught us",
+	"pipelines":   "Pipelines - running a station on a GitHub or Azure DevOps agent",
+	"windows":     "Windows - hosting the loop, and steps written in PowerShell",
+	"relay":       "The relay - zero-infrastructure heliograph over ordinary HTTPS",
+	"secrets":     "Secrets - redaction, and getting a value to the far side",
+	"security":    "Security - the gates, the blast radius, and what this refuses to do",
+	"intercom":    "Intercom - submitting a step over HTTPS, when you can reach the station",
 }
 
 // heroHTML is the index's opening: the signal crossing the valley, then a real
