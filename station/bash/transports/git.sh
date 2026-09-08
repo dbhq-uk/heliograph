@@ -16,6 +16,24 @@
 #   tp_fetch_self              bring a newer payload, if this transport can
 #   tp_put_status              publish a status document, plus an optional file
 #   tp_put_progress            publish a partial-log snapshot
+#   tp_put_log                 publish the FINISHED log
+#
+# WHY tp_put_log IS A CONTRACT VERB AND NOT run.sh's BUSINESS
+#
+# It was run.sh's business, and only git worked. `cap_push` is git
+# unconditionally, and it was the sole delivery path there had ever been, so a
+# station on the relay or the blob transport captured a perfect log and
+# delivered nothing: no footer, no exit code, no RESULT line, and with
+# PROGRESS_EVERY=0 not a single byte. AGENTS.md constraint 2 says a failed run
+# still ships and a failed push never loses a log; two of three transports were
+# quietly failing the first half of that.
+#
+# It is a regression rather than an omission, which is the part worth
+# remembering. pigeonhole.sh delivered the finished log correctly before this
+# interface existed. Porting the loop onto the interface deleted the duplicated
+# 500 lines and this behaviour with them, and nothing noticed, because the log
+# is written correctly to local disk every single time and the defect is only
+# visible from the side of the gap nobody here can reach.
 #
 # WHY tp_fetch_request_live IS SEPARATE
 #
@@ -153,3 +171,14 @@ tp_put_progress() {
   cap_git push --quiet >/dev/null 2>&1 || return 1
   return 0
 }
+
+# Deliver the finished log.
+#
+# This is cap_push, unchanged and still in caplib, because its behaviour was
+# argued for line by line: it stages only that file, rebases so the push cannot
+# be rejected for being behind, aborts a half-applied rebase rather than leaving
+# the operator mid-rebase on a machine nobody can investigate, sets an upstream
+# on a new branch, and on total failure prints the local path and the credential
+# hints instead of exiting. None of that is re-litigated here; the verb just
+# names git's implementation of it so that the other transports can have one too.
+tp_put_log() { cap_push "$1" "$2"; }

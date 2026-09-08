@@ -15,7 +15,7 @@ drv_name() { printf 'bash toolkit (caplib.sh, run.sh)'; }
 
 drv_supports() {
   case "$1" in
-    capture|gates|cancel) return 0 ;;
+    capture|gates|cancel|deliver) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -34,6 +34,13 @@ drv_capture() {
   ) >/dev/null 2>&1
 }
 
+# Bootstrap a transport repo, WITH somewhere for a delivery to land.
+#
+# The bare remote is not scenery. Property 9 asks whether a finished log reached
+# the far side, and the only honest way to answer that is to read it back from
+# the other end rather than from the working tree that wrote it. A checkout with
+# no remote would let a delivery that never happened look identical to one that
+# did, which is precisely the defect p9 exists to catch.
 drv_bootstrap() {
   local dir="$1"
   "$_D_BOOTSTRAP" "$dir" >/dev/null 2>&1 || return 1
@@ -42,12 +49,36 @@ drv_bootstrap() {
     git init -q .
     git -c user.email=ci@example.invalid -c user.name=ci add -A
     git -c user.email=ci@example.invalid -c user.name=ci commit -qm init
+    git init -q --bare "$dir.remote.git"
+    git remote add origin "$dir.remote.git"
+    git push -q -u origin HEAD
   ) >/dev/null 2>&1
 }
 
 drv_step() {
   local dir="$1" step="$2"
   ( cd "$dir" && PUSH=0 ./run.sh "$step" ) >/dev/null 2>&1
+}
+
+# Run a step and let it DELIVER. No PUSH=0 here, deliberately: the delivery is
+# the thing under test.
+drv_deliver() {
+  local dir="$1" step="$2"
+  ( cd "$dir" && ./run.sh "$step" ) >/dev/null 2>&1
+}
+
+# Read back what the far side actually received.
+#
+# From the BARE REMOTE, never from the working tree. The tree holds the log
+# whether or not it was ever delivered, so reading it there would assert
+# nothing at all.
+drv_delivered() {
+  local dir="$1" remote="$1.remote.git" branch name
+  branch="$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)" || return 1
+  name="$(git -C "$remote" ls-tree -r --name-only "$branch" 2>/dev/null \
+            | grep '^ops-logs/.*\.txt$' | tail -1)"
+  [ -n "$name" ] || return 1
+  git -C "$remote" show "$branch:$name" 2>/dev/null
 }
 
 # Start a capture in its own process group, so a cancel can signal the whole

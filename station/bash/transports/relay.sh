@@ -45,10 +45,12 @@ tp_init() {
     echo "station: the relay transport needs curl, which is not on PATH." >&2
     return 1
   }
-  : "${RELAY_URL:?the relay transport needs RELAY_URL}"
-  : "${RELAY_ESTATE:?the relay transport needs RELAY_ESTATE}"
-  : "${RELAY_STATION:?the relay transport needs RELAY_STATION, which is what a run is bound to}"
-  : "${RELAY_TOKEN:?the relay transport needs RELAY_TOKEN}"
+  # cap_need rather than `${VAR:?}`, which exits the SHELL rather than failing
+  # this function. See cap_need in caplib.sh for what that cost.
+  cap_need RELAY_URL     "the base URL of the relay both sides dial out to" || return 1
+  cap_need RELAY_ESTATE  "which estate this station belongs to" || return 1
+  cap_need RELAY_STATION "the station name, which is what a run is bound to" || return 1
+  cap_need RELAY_TOKEN   "the station-scoped token; without it every request is refused and it reads like a fault at the far end" || return 1
 
   if [ ! -x "$RELAY_SEAL" ]; then
     echo "station: heliograph-seal is not at $RELAY_SEAL." >&2
@@ -75,8 +77,8 @@ tp_init() {
 
   # Identity and peer. Without both there is nothing to verify against, and a
   # station that cannot verify must not start rather than start and accept.
-  : "${RELAY_IDENTITY:?the relay transport needs RELAY_IDENTITY, this station key file}"
-  : "${RELAY_PEER:?the relay transport needs RELAY_PEER, the control public identity}"
+  cap_need RELAY_IDENTITY "this station's key file" || return 1
+  cap_need RELAY_PEER     "the control side's public identity, which is what a request is verified against" || return 1
   [ -r "$RELAY_IDENTITY" ] || { echo "station: cannot read $RELAY_IDENTITY" >&2; return 1; }
 
   RELAY_BASE="${RELAY_URL%/}"
@@ -204,4 +206,21 @@ tp_put_progress() {
   rm -f "$tmp"
   [ "$rc" = "0" ] || return "$rc"
   _relay_put progress "$logfile"
+}
+
+# Deliver the finished log.
+#
+# A DISTINCT KIND from `progress`, and not a tidiness point. The kind travels
+# inside the sealed envelope as a signed field, so the control side can tell a
+# completed log from a mid-run snapshot without trusting the relay to label it.
+# Sending the final log as `progress` would leave the reader unable to know it
+# had the whole thing, which is the one question a log with a footer exists to
+# answer.
+#
+# The message is ignored: it is a git commit subject, and there is no history
+# here to carry it.
+tp_put_log() {
+  local logfile="$1"
+  [ -f "$logfile" ] || return 1
+  _relay_put log "$logfile"
 }

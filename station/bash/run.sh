@@ -277,6 +277,16 @@ STEP_LABEL="${STEP_LABEL%.sh}"
 STEP_LABEL="${STEP_LABEL%.ps1}"
 OUT="$OUT_DIR/${STEP_LABEL}-${STAMP}.txt"
 
+# Load the transport NOW rather than at delivery time, so a channel that will
+# not work is reported before an hour-long step captures evidence it then cannot
+# ship. Idempotent, so cap_deliver below re-using it costs nothing.
+#
+# HERE, AFTER THE GATES, deliberately: `--mode` and `--file` exit above having
+# touched nothing and must keep doing so, because station.sh asks `run.sh
+# --mode` about EVERY request it considers. A transport initialised up there
+# would turn a misconfigured channel into a loop that goes deaf.
+[ "${PUSH:-1}" = "0" ] || cap_transport_load
+
 cap_banner "STEP: $STEP"
 cap_header "$OUT" "STEP: $STEP" "command: ${CMD[*]}"
 
@@ -287,13 +297,18 @@ fi
 
 cap_run "$OUT" "${CMD[@]}"; RC=$?
 cap_footer "$OUT" "$RC"
-# ***NO_CI*** is not decoration. When the runner is a build agent, this push is
-# a commit to the same repo the pipeline watches, so without a marker the log
-# push re-triggers the pipeline, which pushes a log, which re-triggers it.
-# GitHub Actions refuses to trigger on a GITHUB_TOKEN push and needs no help;
-# Azure DevOps has no equivalent, so this is the only guard that travels with
-# the commit rather than living in one host's trigger configuration.
-cap_push "$OUT" "step: $STEP ($STAMP) exit=$RC ***NO_CI***"
+# ***NO_CI*** is not decoration. When the runner is a build agent, a git
+# delivery is a commit to the same repo the pipeline watches, so without a
+# marker the log push re-triggers the pipeline, which pushes a log, which
+# re-triggers it. GitHub Actions refuses to trigger on a GITHUB_TOKEN push and
+# needs no help; Azure DevOps has no equivalent, so this is the only guard that
+# travels with the commit rather than living in one host's trigger
+# configuration. Transports with no history ignore the message.
+#
+# THE FOOTER IS WRITTEN FIRST, and always has been. Delivery ships a complete
+# log or it ships nothing; a reader must never have to wonder whether the file
+# they are holding is the whole run.
+cap_deliver "$OUT" "step: $STEP ($STAMP) exit=$RC ***NO_CI***"
 
 cap_result "step $STEP" "$RC" "$OUT"
 exit "$RC"

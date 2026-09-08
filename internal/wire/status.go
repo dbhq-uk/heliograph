@@ -80,16 +80,31 @@ func ParseStatus(b []byte) (Status, error) {
 // as still-working would leave a caller waiting for a log that is never
 // coming, and it would wait quietly, which is worse.
 //
+// `undelivered` is terminal for the same reason and is the sharpest case of
+// it: the run finished, the log is complete, and the transport would not take
+// it. Waiting is precisely the wrong response, because nothing further is
+// going to arrive.
+//
 // An unknown state is deliberately NOT terminal. A newer station may publish
 // something this build has not heard of, and guessing that an unrecognised
 // state means "finished" would abandon a run that is still going.
 func (s Status) Done() bool {
 	switch s.State {
-	case "idle", "cancelled", "refused", "stopped":
+	case "idle", "cancelled", "refused", "stopped", "undelivered":
 		return true
 	}
 	return false
 }
+
+// Undelivered separates "the log could not be shipped" from "the step failed"
+// and from "nothing has happened yet".
+//
+// All three look the same to somebody watching for a log that does not come,
+// and the reader's next move differs completely: a failed step is read in the
+// log, a silent station is chased, and an undelivered log is fetched by the
+// one person who can reach the machine. Saying which it is costs a sentence
+// and saves a round trip through them.
+func (s Status) Undelivered() bool { return s.State == "undelivered" }
 
 // Refused separates "the station would not do this" from "the step failed".
 //
@@ -100,3 +115,13 @@ func (s Status) Refused() bool { return s.State == "refused" }
 
 // Running is true while a step is in flight.
 func (s Status) Running() bool { return s.State == "running" }
+
+// Alive is true when the station has published something that means "I am
+// here", whether or not a step is in flight.
+//
+// `starting` is published once, before any request, by a station proving its
+// credential and its network reach. It is the difference between "nobody has
+// ever started this" and "it is up and has been asked nothing", and those need
+// different next moves: the first is chased with the operator, the second is
+// answered by sending a step.
+func (s Status) Alive() bool { return s.State == "running" || s.State == "starting" }

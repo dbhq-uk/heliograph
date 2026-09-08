@@ -33,6 +33,36 @@
 # calls these functions; a STEP SCRIPT just prints to stdout and knows nothing
 # about logging. Keep it that way - it's what makes steps runnable standalone.
 #
+# --- a timestamped line on the operator's terminal ----------------------------
+# station.sh has always had this, and defines its own identical copy after
+# sourcing us, which is harmless. It moved here because the TRANSPORTS call it -
+# blob.sh's _blob_put reports an unexpected HTTP code through `say` - and
+# run.sh now sources a transport too. Without a definition in scope, a failed
+# blob PUT reported "say: command not found" instead of the status code, which
+# is the one fact the operator needed.
+say() { printf '%s  %s\n' "$(date -u +%H:%M:%SZ)" "$*"; }
+
+# --- a required variable, reported rather than fatal --------------------------
+# cap_need <NAME> <what it is for> - returns 1 and names the remedy.
+#
+# The transports used `: "${RELAY_URL:?the relay transport needs RELAY_URL}"`,
+# and that construct does NOT fail the function it is written in: in a
+# non-interactive shell `${VAR:?}` exits the SHELL, taking the caller with it.
+#
+# That was survivable while station.sh was the only caller of tp_init, because
+# it treats any failure as fatal anyway. It stopped being survivable the moment
+# run.sh began loading a transport in order to deliver its log, because run.sh
+# is also what answers `--mode` for every request the station considers - so a
+# station on the relay transport would have died at the first question it asked
+# itself, and presented as a loop that went deaf.
+cap_need() {
+  local name="$1" purpose="$2" val
+  eval "val=\${$name:-}"
+  [ -n "$val" ] && return 0
+  printf 'station: %s is not set - %s\n' "$name" "$purpose" >&2
+  return 1
+}
+
 # --- a visible progress banner to the terminal (not the log) -----------------
 cap_banner() {
   if [ -n "${NO_COLOUR:-}" ]; then printf '\n==> %s\n' "$*"
@@ -604,5 +634,132 @@ cap_push() {
     echo "  'ssh-add -l' can list; an https remote needs GIT_TOKEN, or"
     echo "  GIT_TOKEN_FILE naming a file whose first line is the token."
     echo "  './start.sh --check' reports which credential is in force here."
+    # REPORTS the failure, still without exiting. The rule this function is
+    # built on is "a failed push must never lose the log", and that is about not
+    # dying and not discarding - it was never about lying to the caller.
+    #
+    # It returned 0 here, because an `echo` was the last command in the branch.
+    # Nothing noticed while the only callers ignored the result. cap_deliver
+    # does not: it is what tells the loop to publish `undelivered` rather than
+    # `idle`, so with a 0 here a git station would have gone on reporting every
+    # stranded log as delivered - the same defect this whole change exists to
+    # remove, surviving on the one transport that was supposed to work.
+    return 1
   fi
+}
+
+# --- deliver the finished log, over whatever transport this station uses ------
+#
+# THE RUNNER OWNS THE LOG, and delivering it is part of owning it. Which CHANNEL
+# it goes down is the transport's business, and it used to be git's alone:
+# cap_push is git unconditionally, and it was the only delivery there had ever
+# been. A station on the relay or the blob transport therefore captured a
+# perfect log and delivered nothing - no footer, no exit code, no RESULT line -
+# and with PROGRESS_EVERY=0 not a single byte reached the far side.
+#
+# That is AGENTS.md constraint 2 quietly untrue wherever git was not the
+# channel, and it is a regression rather than an omission: pigeonhole.sh
+# delivered the finished log correctly before the transport interface existed,
+# and porting the loop onto that interface deleted the behaviour along with the
+# duplicated lines around it.
+#
+# IT LIVES HERE, BESIDE cap_run, for the reason cap_run lives here: there is one
+# capture and there is now one delivery. run.sh and caprun.sh both call it, and
+# a fix to either would otherwise have to be made twice - which is exactly how
+# this went wrong the first time.
+
+# Load the transport, once. Idempotent, so an early call to report problems
+# while somebody is still listening costs nothing at delivery time.
+#
+# CALLED LATE, NEVER AT SOURCE TIME. run.sh answers `--mode` for every request
+# the station considers, and those queries promise to touch nothing. A transport
+# initialised up there would turn a misconfigured channel into a loop that goes
+# deaf, rather than into one warning on one delivery.
+_CAP_TP_STATE=""   # "" = not tried, "ready", "unusable", "none"
+cap_transport_load() {
+  [ -n "$_CAP_TP_STATE" ] && return 0
+  CAP_TRANSPORT="${TRANSPORT:-git}"
+
+  # THE NAME IS A FILENAME, so it is validated before it becomes one.
+  #
+  # It is interpolated straight into a path that is then SOURCED, and it arrives
+  # from the environment. `TRANSPORT=../station` resolves to
+  # $REPO_ROOT/station.sh and would source the loop into the middle of the
+  # runner. Lowercase, digits and hyphens only - which is every transport that
+  # exists and every one anybody would write - so a name that is not one is a
+  # mistake or an attempt, and both get refused rather than resolved.
+  #
+  # This is the same posture station.sh takes towards the request's env line:
+  # the request is a trusted control channel because it names the step to run,
+  # and "trusted" is still not a reason to hand it a path.
+  case "$CAP_TRANSPORT" in
+    ''|*[!a-z0-9-]*)
+      _CAP_TP_STATE="unusable"
+      echo "refusing transport name '$CAP_TRANSPORT': it becomes a filename that gets sourced," >&2
+      echo "  so only lowercase letters, digits and hyphens are accepted." >&2
+      return 0 ;;
+  esac
+
+  local f="${REPO_ROOT:-.}/transports/${CAP_TRANSPORT}.sh"
+  if [ ! -f "$f" ]; then
+    # No transports directory at all: an older payload, or a checkout somebody
+    # is running by hand. cap_push is what that has always done.
+    _CAP_TP_STATE="none"
+    return 0
+  fi
+  # shellcheck disable=SC1090
+  . "$f"
+  if tp_init; then
+    _CAP_TP_STATE="ready"
+  else
+    _CAP_TP_STATE="unusable"
+    echo "the '$CAP_TRANSPORT' transport will not initialise here." >&2
+    echo "  The step still runs and the log is still captured. It will be left" >&2
+    echo "  on local disk and its path printed at the end." >&2
+  fi
+  return 0
+}
+
+# Record whether the log got out, so the LOOP can publish `idle` or
+# `undelivered`. The loop cannot work this out for itself: delivery happens in
+# the runner's process, and the exit code belongs to the STEP and may not be
+# borrowed to report on the transport.
+#
+# The distinction is the whole point. "The log exists and could not be shipped"
+# and "the step is still running" are indistinguishable from the far side
+# otherwise, and only one of them is worth waiting on.
+cap_record_delivery() {
+  printf 'delivered: %s\nlog:       %s\ntransport: %s\n' \
+    "$1" "$2" "${CAP_TRANSPORT:-git}" > "${REPO_ROOT:-.}/.station-delivery" 2>/dev/null || true
+}
+
+# cap_deliver <outfile> <message> - ship a FINISHED log. Returns 1 if it could
+# not be shipped, having lost nothing.
+cap_deliver() {
+  local out="$1" msg="$2"
+  if [ "${PUSH:-1}" = "0" ]; then
+    echo "PUSH=0 - captured locally, not delivered:"
+    echo "  $out"
+    cap_record_delivery skipped "$out"
+    return 0
+  fi
+  cap_transport_load
+  if [ "$_CAP_TP_STATE" != "ready" ] || ! declare -F tp_put_log >/dev/null 2>&1; then
+    # cap_push stays the fallback so `./run.sh env` in an ordinary transport
+    # repo behaves exactly as it always has, including all of its own recovery.
+    cap_push "$out" "$msg"
+    cap_record_delivery unknown "$out"
+    return 0
+  fi
+  if tp_put_log "$out" "$msg"; then
+    cap_record_delivery yes "$out"
+    return 0
+  fi
+  # A failed delivery must never look like a failed run, and must never lose the
+  # log. Name the file and the channel: somebody with access can still fetch it,
+  # and the status the loop publishes will say the same thing.
+  echo "DELIVERY FAILED over '${CAP_TRANSPORT:-git}'. The log is complete and is here:" >&2
+  echo "  $out" >&2
+  cap_record_delivery no "$out"
+  return 1
 }

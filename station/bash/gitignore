@@ -86,3 +86,11 @@ Thumbs.db
 # service.sh's runtime state when it falls back to setsid + nohup.
 .agent-service.pid
 .station-service.log
+# How run.sh tells station.sh whether the finished log actually got out, so the
+# loop can publish `idle` or `undelivered`. Local: it describes this machine's
+# last delivery attempt and means nothing to anybody else.
+.station-delivery
+# The relay transport's sequence numbers. Freshness rests on these, so they are
+# never shared and never committed: a copy restored elsewhere would let the
+# relay replay everything it has ever seen.
+.station-relay-state
