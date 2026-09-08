@@ -261,6 +261,34 @@ func open(name string) (opened, error) {
 		if err != nil {
 			return opened{}, err
 		}
+		// A PINNED estate is checked against the checkout, and this is hazard 1.
+		//
+		// Both sides read the branch from whatever is checked out, and nothing
+		// consulted what was recorded, so a stray `git checkout` silently
+		// retargeted which MACHINE the next send reached.
+		//
+		// PINNED MEANS Scope, NOT Branch, and the distinction is the difference
+		// between a fix and a regression. `init` records the branch it found in
+		// Branch and leaves Scope empty; `station add` sets Scope deliberately.
+		// So Scope means "this estate names a machine and routing matters",
+		// while Branch alone means "this is a working clone, follow it".
+		//
+		// That second case is not hypothetical, it is the documented workflow:
+		// SKILL.md tells you to `git checkout -b task/<slug>` in the transport
+		// repo and then send. Pinning on Branch would have broken every
+		// existing user on their next task branch, which is a far worse defect
+		// than the one being fixed.
+		//
+		// Fails closed and names both, because the recovery differs: check the
+		// branch back out, or re-create the station if it is genuinely meant to
+		// live somewhere else now.
+		if want := e.Scope; want != "" && want != g.Branch() {
+			return opened{}, fmt.Errorf(
+				"estate %q is recorded against branch %q and %s is on %q.\n"+
+					"  A request sent now would reach a different machine.\n"+
+					"  Check that branch back out with `git -C %s checkout %s`",
+				e.Name, want, g.Dir(), g.Branch(), g.Dir(), want)
+		}
 		url, _ := g.RemoteURL()
 		return opened{Estate: e, Transport: g, Dir: g.Dir(), Scope: g.Branch(), Origin: url}, nil
 	case "share":
@@ -477,7 +505,14 @@ func cmdEstates() error {
 			fmt.Printf("%-16s (unreadable: %v)\n", n, err)
 			continue
 		}
-		fmt.Printf("%-16s %-7s %s\n", e.Name, e.Transport, e.Dir)
+		// The scope is printed because it is what decides which machine the
+		// name reaches, and it was previously visible only by inspecting the
+		// checkout.
+		if r := e.Routing(); r != "" {
+			fmt.Printf("%-16s %-7s %-28s %s\n", e.Name, e.Transport, r, e.Dir)
+		} else {
+			fmt.Printf("%-16s %-7s %-28s %s\n", e.Name, e.Transport, "-", e.Dir)
+		}
 	}
 	return nil
 }
@@ -552,6 +587,10 @@ func cmdStatus(args []string) error {
 	printIf("id:      ", s.ID)
 	printIf("step:    ", s.Step)
 	printIf("host:    ", s.Host)
+	// Which payload answered. Two stations on the same branch report different
+	// hosts; two stations that have drifted report different payloads, and
+	// nothing else on this page would say so.
+	printIf("payload: ", s.Payload)
 	printIf("started: ", s.Started)
 	printIf("progress:", s.Progress)
 	printIf("last:    ", s.Last)

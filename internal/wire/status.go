@@ -23,6 +23,7 @@ type Status struct {
 	Finished string
 	Exit     string
 	Log      string // path to the captured log, once there is one
+	Payload  string // digest of the station payload that is running
 	Progress string // "412 lines", while a step runs
 	Last     string // the last real line of the log. Usually the probe in flight
 	Reason   string // why, when the state is refused
@@ -63,6 +64,8 @@ func ParseStatus(b []byte) (Status, error) {
 			s.Exit = v
 		case "log":
 			s.Log = v
+		case "payload":
+			s.Payload = v
 		case "progress":
 			s.Progress = v
 		case "last":

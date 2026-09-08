@@ -255,6 +255,23 @@ preflight() {
     report FAIL branch "detached HEAD, and station.sh refuses to start on one. Check out the task branch first"
   fi
 
+  # --check --branch x asks a question the checkout cannot answer, because
+  # --check exits before anything is checked out. So the REMOTE is asked
+  # instead. Without this, `--check --branch station/db-a` reported on whatever
+  # happened to be checked out and said nothing at all about db-a - which is
+  # the one thing the operator was asking about.
+  if [ -n "$WANT_BRANCH" ]; then
+    if [ "$br" = "$WANT_BRANCH" ]; then
+      report ok "branch wanted" "$WANT_BRANCH, already checked out"
+    elif cap_git ls-remote --exit-code --heads origin "refs/heads/$WANT_BRANCH" >/dev/null 2>&1; then
+      report ok "branch wanted" "$WANT_BRANCH exists on origin and would be checked out"
+    elif git rev-parse --verify --quiet "refs/heads/$WANT_BRANCH" >/dev/null 2>&1; then
+      report warn "branch wanted" "$WANT_BRANCH is here but NOT on origin, so this station would publish where nobody is reading. Push it with 'git push -u origin $WANT_BRANCH'"
+    else
+      report FAIL "branch wanted" "$WANT_BRANCH is neither here nor on origin. Create it on the control side with 'heliograph station add <name>', or check the name"
+    fi
+  fi
+
   if [ -d ops-logs ] && [ -w ops-logs ]; then
     report ok ops-logs "writable"
   else
@@ -485,6 +502,18 @@ fi
 if [ -n "$WANT_BRANCH" ]; then
   cap_git fetch --quiet origin >/dev/null 2>&1
   if git checkout --quiet "$WANT_BRANCH" 2>/dev/null; then
+    # VERIFIED, not assumed. `git checkout` succeeds in shapes that do not
+    # leave you on the branch you named - a detached checkout of a tag or a
+    # commit that shares the name being the obvious one - and the branch is now
+    # which MACHINE this station answers for. Landing on the wrong one quietly
+    # is the failure this whole design exists to prevent.
+    got="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+    if [ "$got" != "$WANT_BRANCH" ]; then
+      report FAIL checkout "asked for '$WANT_BRANCH' and landed on '$got'. Not starting: the branch decides which requests this station answers"
+      echo
+      echo "preflight: 1 blocking problem above. Not starting the station."
+      exit 1
+    fi
     report ok checkout "$WANT_BRANCH"
   else
     report FAIL checkout "cannot check out '$WANT_BRANCH'. It may not exist here yet, or the working tree may be dirty"
