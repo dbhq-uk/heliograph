@@ -1,7 +1,9 @@
 # Running the station in Azure
 
-Five places the station can run. Each ships as bicep and as Terraform, because
-estates are split on which they accept.
+Five places the station can run. Four ship as bicep and as Terraform, because
+estates are split on which they accept; the Function App ships Terraform only,
+because it deploys a Python function package rather than only compute, and
+that packaging step has no bicep equivalent worth maintaining twice.
 
 All of them are bring-your-own. You pass in a VNet, a subnet, a plan or an
 environment that already exists. The template creates the compute and nothing

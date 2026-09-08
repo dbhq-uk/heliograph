@@ -15,13 +15,24 @@ One request format, one set of gates, one log. Only the channel changes.
 image pull succeeding proves nothing: a container platform pulls on its own
 side, so a container can start cleanly on a host with no network at all.
 
-| transport | reach for it when | status |
-|---|---|---|
-| **git** | the far side can reach a git host | works |
-| **file share** | both machines mount the same directory | works |
-| **bundle** | nothing crosses the gap but a person | works |
-| **relay** | there is no git host, no storage, no share | works |
-| **object store** | S3-compatible storage is permitted where git is not | works |
+**A transport needs both halves.** The control side publishes a request and reads
+a log; the station side picks the request up and sends the log back. One half on
+its own moves nothing, so the status column below names both.
+
+| transport | reach for it when | control side | station side |
+|---|---|---|---|
+| **git** | the far side can reach a git host | works | works |
+| **relay** | there is no git host, no storage, no share | written, not selectable | written |
+| **file share** | both machines mount the same directory | works | none yet |
+| **object store** | S3-compatible storage is permitted where git is not | works | none yet |
+| **bundle** | nothing crosses the gap but a person | works | none yet |
+| **Azure Blob** | a VNet-local private endpoint is the only reachable thing | `drop.sh`, in the station payload | works |
+
+**Git is the one that works end to end today.** The others are at the stage the
+table says and no further; what each still needs is in
+[the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
+This page describes each one as designed, so that the design can be reviewed -
+not as though you could reach for it this afternoon.
 
 ## git
 
@@ -81,10 +92,11 @@ identical to every other transport, so the method survives the walk.
 The only transport that needs no estate infrastructure at all. Both sides dial
 **out** over ordinary HTTPS and meet at a server neither of them trusts.
 
-```bash
-heliograph init payments --transport relay \
-  --url https://heliograph-relay.dbhq.uk --estate payments
-```
+**Not selectable yet.** `heliograph init` knows `git`, `share`, `bundle` and
+`objstore`. The relay implementation exists on both sides of the gap and
+nothing wires it to a command. Earlier revisions of this page showed an `init`
+invocation for it, with two flags that have never existed - the sort of thing
+that costs somebody an afternoon before they conclude the tool is broken.
 
 **The relay cannot read your logs, and cannot make a station run anything.** The
 second half is the one that matters: a relay able to forge a request would have

@@ -133,18 +133,26 @@ timestamp is reported as an **error**, not as "no gaps".
 | control CLI over git | works, tested end to end against a stock station |
 | `heliograph bootstrap` | works: the binary plants the station it was built with |
 | `--gaps` | works |
-| file share, bundle | work |
 | MCP server (`heliograph mcp`) | works |
-| relay | works: [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay), deployed to the Cloudflare edge |
-| object store (S3-compatible) | works |
-| bash station | complete and in use: git, blob and relay transports, Azure hosts, Kubernetes, Windows launcher |
-| PowerShell station | planned - a pure PowerShell far side, as its own piece of work |
-| documentation site | [heliograph.dbhq.uk](https://heliograph.dbhq.uk) |
+| bash station | in use over git: the loop, the gates, the capture, Azure hosts, Kubernetes, the Windows launcher |
+| relay | **half a transport.** The station side is written (`station/bash/transports/relay.sh`) and the [relay server](https://github.com/dbhq-uk/heliograph-relay) is deployed, but no CLI command can select it, and the finished log does not ship |
+| file share, bundle, object store | **control side only.** The CLI implements all three; the station has no transport for any of them |
+| PowerShell station | planned: [A8](docs/specs/2026-09-08-powershell-station-and-full-documentation-design.md) |
+| documentation site | [heliograph.dbhq.uk](https://heliograph.dbhq.uk), and it covers the near side only. The far side is documented in `skills/heliograph/references/` |
+
+A transport that works on one side of the gap is not a transport, so this
+table names both sides. Git is the one that works end to end today; what the
+others still need, and in what order, is
+[the roadmap](docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
 
 ## The relay
 
 Both sides dial out over ordinary HTTPS, so an estate needs no git host, no
 storage account and no VNet. Hosted, and self-hostable from the same binary.
+
+**Not yet usable end to end**, and the status table above says which half is
+missing. The design below is settled and the server is deployed; the wiring is
+not done.
 
 **The relay cannot read your logs, and cannot make a station run anything.**
 That second half is the one that matters: a relay able to forge a request
