@@ -11,6 +11,24 @@ the machine it will run on.
 The operator starts it once. Everything after that is the transport.
 ```
 
+## There is one station, and one launcher
+
+| | what it is |
+|---|---|
+| **`station/bash/`** | the station. Bash 4+, and what every host runs |
+| **`station.ps1`** | a **launcher**, not a port. It finds the bash that Git for Windows installed and hands over to `start.sh`. It re-implements nothing |
+
+**One implementation of the capture, and it must not be forked.** A PowerShell
+copy would be a second one, drifting in the least visible way possible: a
+buffered port gives every line the same timestamp, which reads like a working
+log while destroying the only property the log is for.
+
+A native PowerShell station is
+[designed](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-08-powershell-station-and-full-documentation-design.md)
+and not built. That design also proposes relaxing the rule above - a second
+implementation permitted **only** while it passes [the capture
+contract](/conformance) - and that relaxation is a draft, not current policy.
+
 ## What it depends on
 
 Bash 4+ and GNU coreutils, plus whatever the transport needs: `git` for the git

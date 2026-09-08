@@ -27,9 +27,14 @@ type Page struct {
 }
 
 var (
-	reHeading  = regexp.MustCompile(`^(#{1,4})\s+(.*)$`)
-	reFence    = regexp.MustCompile("^```")
-	reBullet   = regexp.MustCompile(`^[-*]\s+(.*)$`)
+	reHeading = regexp.MustCompile(`^(#{1,4})\s+(.*)$`)
+	reFence   = regexp.MustCompile("^```")
+	reBullet  = regexp.MustCompile(`^[-*]\s+(.*)$`)
+	// A numbered list. It had no rule at all, so "1. a process" and the eight
+	// lines under it ran together into one paragraph reading "1. a process that
+	// can run bash 2. reach to one transport". Four pages use them, including
+	// mcp.md, which predates any of this.
+	reOrdered  = regexp.MustCompile(`^[0-9]{1,3}\. +(.*)$`)
 	reTableRow = regexp.MustCompile(`^\|(.*)\|$`)
 	reTableSep = regexp.MustCompile(`^\|[\s:|-]+\|$`)
 	reBold     = regexp.MustCompile(`\*\*([^*]+)\*\*`)
@@ -100,13 +105,14 @@ func RenderBody(md string) string {
 	lines := strings.Split(md, "\n")
 
 	inCode, inList, inTable := false, false, false
+	listTag := "ul"
 	closeBlocks := func() {
 		if inList {
-			out.WriteString("</ul>\n")
+			fmt.Fprintf(&out, "</%s>\n", listTag)
 			inList = false
 		}
 		if inTable {
-			out.WriteString("</tbody></table>\n")
+			out.WriteString("</tbody></table></div>\n")
 			inTable = false
 		}
 	}
@@ -175,7 +181,7 @@ func RenderBody(md string) string {
 			cells := strings.Split(m[1], "|")
 			if !inTable {
 				closeBlocks()
-				out.WriteString("<table><thead><tr>")
+				out.WriteString("<div class=\"tw\"><table><thead><tr>")
 				for _, c := range cells {
 					fmt.Fprintf(&out, "<th>%s</th>", inline(strings.TrimSpace(c)))
 				}
@@ -196,9 +202,27 @@ func RenderBody(md string) string {
 		}
 
 		if m := reBullet.FindStringSubmatch(l); m != nil {
+			if inList && listTag != "ul" {
+				closeBlocks()
+			}
 			if !inList {
 				closeBlocks()
+				listTag = "ul"
 				out.WriteString("<ul>\n")
+				inList = true
+			}
+			fmt.Fprintf(&out, "<li>%s</li>\n", inline(m[1]))
+			continue
+		}
+
+		if m := reOrdered.FindStringSubmatch(l); m != nil {
+			if inList && listTag != "ol" {
+				closeBlocks()
+			}
+			if !inList {
+				closeBlocks()
+				listTag = "ol"
+				out.WriteString("<ol>\n")
 				inList = true
 			}
 			fmt.Fprintf(&out, "<li>%s</li>\n", inline(m[1]))

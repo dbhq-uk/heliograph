@@ -21,25 +21,59 @@ checkout is transient everywhere.
 
 Anything meeting those five is a viable host, whether or not it appears below.
 
-## Proven, versus written
+## Every host, and what it runs
 
-The distinction is kept deliberately, because shipping twenty untested
-templates would spend the credibility of the ones that work.
+The distinction between proven and written is kept deliberately. Shipping
+twenty untested templates would spend the credibility of the ones that work.
 
-| host | status |
-|---|---|
-| Docker | proven - the image is built and published by CI |
-| Kubernetes | proven - CI applies the manifest to a real cluster |
-| systemd (`--user` + lingering) | proven |
-| setsid + nohup fallback | proven |
-| Windows scheduled task | proven on a real Windows runner in CI |
-| launchd (macOS) | proven - CI loads a real LaunchAgent on a macOS runner |
-| Azure Container Instances | **deployed for real**, then torn down |
-| Azure Web App for Containers | **deployed for real**, then torn down |
-| Azure Container Apps Job | **deployed for real**, then torn down |
-| Azure VM + cloud-init | **deployed for real** on `Standard_D2s_v3` in westeurope: booted, cloned, ran a step, log came back |
-| Azure Function App (Flex) | written and validated; **never deployed** |
-| ECS Fargate, Cloud Run, everything else | recipes against the contract, not owned as templates |
+| host | what starts the loop | status |
+|---|---|---|
+| operator's terminal | `./start.sh` | **proven** - 94 assertions, every CI run |
+| Docker | `entrypoint.sh`, then `exec ./start.sh` | **proven** - CI builds the image and runs a loop in it |
+| Kubernetes | the same image, one replica | **proven** - CI applies the manifest to a real cluster |
+| systemd `--user` + lingering | `service.sh install` | **proven** - CI installs a unit and finds a running loop |
+| launchd | `service.sh install` | **proven** - CI loads a real LaunchAgent on macOS |
+| setsid + nohup | `service.sh install`, where neither exists | **proven** |
+| Windows scheduled task | `service.ps1 install`, then `station.ps1` | **proven** - CI registers and reads back the task |
+| GitHub Actions | `./start.sh -- --once` | written |
+| Azure Pipelines | `./start.sh -- --once` | written |
+| Azure Container Instances | the image | **deployed live**, then torn down |
+| Azure Web App for Containers | the image | **deployed live**, then torn down |
+| Azure Container Apps Job | the image, on a schedule | **deployed live**, then torn down |
+| Azure VM | `cloud-init.sh`, then a systemd unit | **deployed live** on `Standard_D2s_v3` in westeurope |
+| Azure Function App | `pigeonhole.sh`, on a timer | written and validated, **never deployed** |
+| ECS Fargate, Cloud Run, anything else | your own, against the contract above | recipes, not templates |
+
+## Which transport works on which host
+
+**Git, everywhere, and almost nothing else yet.** The reason is one line: every
+host above except the Azure Function App starts the loop through `start.sh`,
+and `start.sh` refuses to continue without a git `origin` remote.
+
+| host | git | Azure Blob | relay | share, bundle, object store |
+|---|---|---|---|---|
+| operator's terminal | yes | by hand | by hand | no station side |
+| Docker, Kubernetes | yes | no | no | no station side |
+| systemd, launchd, setsid | yes | not as a service | not as a service | no station side |
+| Windows scheduled task | yes | not as a service | not as a service | no station side |
+| pipelines | yes | no | no | no station side |
+| Azure ACI, Web App, Apps Job, VM | yes | no | no | no station side |
+| Azure Function App | no `git` in the image | **yes** | no | no station side |
+
+**"by hand"** means: skip `start.sh`, set `TRANSPORT` and the transport's
+variables yourself, and run `./station.sh` directly. Nothing configures it for
+you, and the relay also needs `heliograph-seal` planted.
+
+**"not as a service"** is the same thing with a sting. `service.sh` and
+`service.ps1` both start the loop through `start.sh`, so running a non-git
+transport under them means bypassing the very mechanism you installed - and
+with it the restart policy, which is the reason to use a service at all.
+
+**"no station side"** means the CLI implements the transport and the station
+has no code to read it, so the combination cannot work at all.
+
+What each still needs is in
+[the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
 
 ## Picking one
 
