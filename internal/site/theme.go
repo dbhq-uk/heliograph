@@ -422,6 +422,11 @@ footer{border-top:1px solid var(--ridge);background:var(--dusk);
 footer .inner{max-width:min(76rem,92vw);margin:0 auto;display:flex;gap:1.6rem;
   flex-wrap:wrap;align-items:center;justify-content:space-between}
 footer p{margin:0}
+footer .also{display:block;margin:1.7rem auto 0;padding-top:1.7rem;border-top:1px solid var(--ridge)}
+footer .also-label{margin:0 0 .6rem;color:var(--ink-3);font-size:.78rem;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase}
+footer .also-list{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.4rem 2rem}
+footer .also-list li{margin:0}
 
 /* ---------------------------------------------------------------- motion */
 @media (prefers-reduced-motion:reduce){

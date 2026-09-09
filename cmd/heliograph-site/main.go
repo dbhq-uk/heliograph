@@ -581,7 +581,8 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 <footer><div class="inner">
 <p>A free, open-source tool by <a href="https://dbhq.uk">DBHQ</a>.</p>
 <p><a href="https://github.com/dbhq-uk/heliograph">`+site.GitHubMark+`Source</a>%[8]s</p>
-</div></footer>
+</div>
+%[16]s</footer>
 %[9]s
 <script>%[10]s
 %[11]s
@@ -589,8 +590,23 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 %[15]s</script>
 %[12]s
 `, header, hero, shellOpen, wide, site.RenderBody(body), shellClose, railHTML,
-		mirror, consentHTML, site.HeroJS, consentJS, navJS, crumbs, site.CopyJS, site.RailJS)
+		mirror, consentHTML, site.HeroJS, consentJS, navJS, crumbs, site.CopyJS, site.RailJS,
+		alsoFromDBHQ)
 }
+
+// alsoFromDBHQ cross-links the other DBHQ web properties, and omits this one.
+// A second block within the same footer rather than a fourth <p> in .inner:
+// that row is a two-item space-between strip, and three more links crammed
+// into it would wrap into the same line as "Source" with no relation shown
+// between them.
+const alsoFromDBHQ = `<div class="inner also">
+<p class="also-label" id="footer-also-label">Also from DBHQ</p>
+<ul class="also-list" aria-labelledby="footer-also-label">
+<li><a href="https://dbhq.uk">DBHQ</a> - the practice behind these experiments.</li>
+<li><a href="https://bbs.dbhq.uk">BBS</a> - explore a bulletin board system.</li>
+<li><a href="https://modem.dbhq.uk">modem</a> - hear a real dial-up handshake, and run one.</li>
+</ul>
+</div>`
 
 // head is everything before the body: the words a search result and a shared
 // link are built from, the fonts, and the analytics tag held behind consent.
