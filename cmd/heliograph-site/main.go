@@ -433,6 +433,12 @@ func sidebarItems(p site.Page, all []site.Page, prefix string) string {
 // nothing on the page showed. The markdown controls were a <link> in the head
 // and one line in the footer, which is where an agent finds them and a person
 // driving one never scrolls to.
+//
+// The crumb is the navigation's label rather than the H1, for the reason the
+// labels exist at all: /compared's H1 begins with the product's name, so the
+// H1 version read "heliograph / heliograph compared with AWS SSM Run Command
+// and Azure Run Command" - the site's name twice, and a crumb longer than
+// the title beneath it.
 func pageHead(p site.Page) string {
 	return fmt.Sprintf(`<nav class="crumbs" aria-label="Breadcrumb">`+
 		`<a href="/">heliograph</a><span aria-hidden="true">/</span>`+
@@ -441,7 +447,15 @@ func pageHead(p site.Page) string {
 		`<button type="button" data-copy-markdown="/%[2]s.md" `+
 		`aria-label="Copy this page as markdown">%[3]s<span>Copy as markdown</span></button>`+
 		`<a href="/%[2]s.md">%[4]s<span>View as markdown</span></a>`+
-		`</div>`, escAttr(p.Title), p.Slug, iconCopy, iconDoc)
+		`</div>`, escAttr(crumbName(p)), p.Slug, iconCopy, iconDoc)
+}
+
+// crumbName is what the breadcrumb and its JSON-LD both call a page.
+func crumbName(p site.Page) string {
+	if l := labels[p.Slug]; l != "" {
+		return l
+	}
+	return p.Title
 }
 
 // The two icons for those controls. Inline for the same reason as the brand:
@@ -693,7 +707,7 @@ func structuredData(p site.Page) string {
 			"@type":    "BreadcrumbList",
 			"itemListElement": []map[string]any{
 				{"@type": "ListItem", "position": 1, "name": "heliograph", "item": baseURL + "/"},
-				{"@type": "ListItem", "position": 2, "name": p.Title, "item": canonical},
+				{"@type": "ListItem", "position": 2, "name": crumbName(p), "item": canonical},
 			},
 		})
 	}
