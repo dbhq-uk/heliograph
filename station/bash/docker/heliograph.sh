@@ -621,7 +621,16 @@ ensure_image() {
   for a in ${build_args[@]+"${build_args[@]}"}; do
     build_cmd+=(--build-arg "$a")
   done
-  build_cmd+=("$(dirname "$DOCKERFILE")")
+  # THE CONTEXT IS station/, TWO LEVELS ABOVE THE DOCKERFILE, which looks wrong
+  # and is not. The image plants the station payload with bootstrap.sh so that a
+  # transport with nothing to clone - the file share, the blob - has one, and
+  # the Dockerfile therefore COPYs both `bootstrap.sh` and `bash/`, which live
+  # in station/ while the Dockerfile is in station/bash/docker.
+  #
+  # One `..` was the first attempt and it resolved to station/bash: the build
+  # then failed at `COPY bash ...` with "/bash: not found", which this wrapper
+  # reports to the operator as "the image would not build".
+  build_cmd+=("$(cd "$(dirname "$DOCKERFILE")/../.." && pwd)")
 
   local exists=1
   # `--` before the tag, and before the image in RUN_ARGS below, for the same

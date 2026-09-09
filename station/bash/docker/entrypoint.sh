@@ -480,9 +480,9 @@ plant_payload() {
   if payload_here "$WORKDIR"; then
     here_id="$(payload_id "$WORKDIR")"
     if [ "$here_id" = "$image_id" ]; then
-      say "reusing the payload at $WORKDIR ($here_id), which is this image's"
+      echo "$(stamp) entrypoint: reusing the payload at $WORKDIR ($here_id), which is this image's"
     elif [ "${HELIOGRAPH_REPLANT:-0}" = "1" ]; then
-      say "replanting: $WORKDIR held $here_id, this image carries $image_id"
+      echo "$(stamp) entrypoint: replanting: $WORKDIR held $here_id, this image carries $image_id"
       # Overwrites only what the image carries, and deletes nothing: ops-logs
       # may hold a captured log that was never delivered, which is the one copy
       # of the evidence this toolkit exists to carry off an unreachable machine.
@@ -491,12 +491,12 @@ plant_payload() {
         exit 1
       }
     else
-      say "warn: $WORKDIR holds payload $here_id and this image carries $image_id."
-      say "      That volume was planted by a DIFFERENT image and is what will run."
-      say "      Upgrading the image tag alone changes nothing here."
-      say "      Set HELIOGRAPH_REPLANT=1 to overwrite it with this image's, or"
-      say "      point HELIOGRAPH_WORKDIR somewhere empty. Nothing is deleted"
-      say "      either way: ops-logs may hold a log that never got delivered."
+      echo "$(stamp) entrypoint: warn: $WORKDIR holds payload $here_id and this image carries $image_id."
+      echo "$(stamp) entrypoint:       That volume was planted by a DIFFERENT image and is what will run."
+      echo "$(stamp) entrypoint:       Upgrading the image tag alone changes nothing here."
+      echo "$(stamp) entrypoint:       Set HELIOGRAPH_REPLANT=1 to overwrite it with this image's, or"
+      echo "$(stamp) entrypoint:       point HELIOGRAPH_WORKDIR somewhere empty. Nothing is deleted"
+      echo "$(stamp) entrypoint:       either way: ops-logs may hold a log that never got delivered."
     fi
     return 0
   fi
@@ -527,7 +527,7 @@ plant_payload() {
     echo "  payload and point HELIOGRAPH_WORKDIR at it." >&2
     exit 1
   fi
-  say "planting the station payload $image_id from $PAYLOAD_DIR into $WORKDIR"
+  echo "$(stamp) entrypoint: planting the station payload $image_id from $PAYLOAD_DIR into $WORKDIR"
   # cp -R rather than a move: the image's copy is read-only and shared across
   # restarts, and the station writes into its own payload directory - ops-logs,
   # the delivery record, the relay's sequence state. A container that consumed
@@ -578,7 +578,7 @@ main() {
     plant_payload
     cd "$WORKDIR" || { echo "entrypoint: cannot enter $WORKDIR" >&2; exit 1; }
     start_status_server
-    say "handing over to start.sh with TRANSPORT=$TRANSPORT"
+    echo "$(stamp) entrypoint: handing over to start.sh with TRANSPORT=$TRANSPORT"
     exec ./start.sh "$@"
   fi
 

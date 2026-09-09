@@ -207,6 +207,12 @@ shellcheck -S warning $(find . -name '*.sh' -not -path './.git/*')
 go run ./cmd/heliograph-site site/content /tmp/site                      # 24 pages
 ```
 
-`docker` and macOS are absent locally, so the container, Kubernetes and launchd
-suites skip. **CI runs them and CI has caught real defects those skips hid** -
-do not read a local green as complete.
+macOS is absent locally, so the launchd suite skips. **CI runs it and CI has
+caught real defects that skip hid** - do not read a local green as complete.
+
+**Docker may only need starting.** `sudo systemctl start docker` was all it
+took, and it turns the container and Kubernetes suites from skipped into 271
+assertions that run in about ten minutes - including a whole station run in a
+container. They found four defects in one afternoon that CI would have taken
+four pushes to surface one at a time. Try it before pushing anything that
+touches `station/bash/docker/`.
