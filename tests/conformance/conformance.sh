@@ -26,7 +26,15 @@ DRIVER="${1:?usage: conformance.sh <driver.sh>}"
 . "$DRIVER"
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+# The driver may have started a far side that is a PROCESS - the relay's is -
+# and several properties bootstrap, so several get started. Torn down from the
+# trap rather than after the last property, because a suite that fails at p5
+# would otherwise leave every one of them running with its port held.
+_conf_cleanup() {
+  if declare -F drv_teardown >/dev/null 2>&1; then drv_teardown; fi
+  rm -rf "$WORK"
+}
+trap _conf_cleanup EXIT
 
 printf '\n--- conformance: %s ---\n' "$(drv_name)"
 
@@ -64,6 +72,32 @@ EOS
   assert_eq "p1: three captured lines" "3" "$p1_all"
   assert_eq "p1: three DISTINCT timestamps, so the capture is unbuffered" \
     "3" "$p1_uniq"
+
+  # DISTINCT IS NOT ENOUGH, and the property says "timestamp" for a reason.
+  # `foo`, `bar` and `baz` are three distinct prefixes and would have passed
+  # both assertions above. The column has to be a clock, and it has to be one
+  # a reader can compare with their own: a log stamped in local time is read
+  # against the wrong hour by everybody who did not run it.
+  p1_shape="$(stamps_of "$WORK/p1.log" | grep -cE '^[0-2][0-9]:[0-5][0-9]:[0-5][0-9]$')"
+  assert_eq "p1: and all three are HH:MM:SS, not merely three different strings" \
+    "3" "$p1_shape"
+
+  # UTC, asked by running the capture in a timezone that is NOT UTC and
+  # checking the hour against one taken here. Anything reading local time comes
+  # out hours away and fails; a capture that ignores TZ agrees.
+  TZ="Pacific/Kiritimati" drv_capture "$WORK/p1tz.log" "$WORK/three-slow.sh" >/dev/null 2>&1
+  p1_hour="$(stamps_of "$WORK/p1tz.log" | head -1 | cut -d: -f1)"
+  p1_utc_hour="$(date -u +%H)"
+  if [ "$p1_hour" = "$p1_utc_hour" ]; then
+    t_ok "p1: the stamps are UTC even when TZ says otherwise"
+  else
+    # An hour boundary crossed between the capture and this line is the only
+    # innocent way the two differ, and it is worth one retry rather than a
+    # flake somebody re-runs.
+    p1_utc_hour="$(date -u +%H)"
+    assert_eq "p1: the stamps are UTC even when TZ says otherwise" \
+      "$p1_utc_hour" "$p1_hour"
+  fi
 else
   t_skip "p1: driver does not support capture"
 fi
@@ -176,10 +210,16 @@ if drv_supports gates; then
 #!/usr/bin/env bash
 echo this step declares nothing
 EOS
-    cat > "$P5/steps/declared.sh" <<'EOS'
+    # A MARKER, because an exit code is not evidence that anything ran. Both
+    # gates are asserted by their exit status alone, and a runner that returned
+    # 0 without executing the step - or one that executed it and THEN refused
+    # with 5 - would satisfy every assertion below while violating the property
+    # outright. The marker is what tells those apart.
+    cat > "$P5/steps/declared.sh" <<EOS
 #!/usr/bin/env bash
 # heliograph-mode: read-only
 echo this step declares itself and measures nothing
+: > "$WORK/p5-declared-ran"
 EOS
     chmod +x "$P5/steps/undeclared.sh" "$P5/steps/declared.sh"
 
@@ -193,9 +233,15 @@ EOS
     # The control: the same runner, the same path form, a step that DOES
     # declare itself. Without this, p5 would pass just as well if the runner
     # refused everything.
+    rm -f "$WORK/p5-declared-ran"
     drv_step "$P5" steps/declared.sh
     assert_eq "p5: a declared step runs, so the gate is not refusing everything" \
       "0" "$?"
+    if [ -f "$WORK/p5-declared-ran" ]; then
+      t_ok "p5: and it actually EXECUTED, rather than exiting 0 without running"
+    else
+      t_no "p5: exit 0, but the step never ran - the gate is passing without executing"
+    fi
 
     # A fake `id` answering 0 to `id -u`, deferring to the real one otherwise.
     # caplib's cap_refuse_root calls `id -u` rather than reading $EUID
@@ -209,10 +255,19 @@ exec "$p6_real_id" "\$@"
 EOF
     chmod +x "$WORK/fakebin/id"
 
+    rm -f "$WORK/p5-declared-ran"
     ( cd "$P5" && PATH="$WORK/fakebin:$PATH" PUSH=0 ./run.sh steps/declared.sh \
     ) >/dev/null 2>&1
     assert_eq "p6: the same step refuses with 5 when the account is root" \
       "5" "$?"
+    # THE REFUSAL HAS TO PRECEDE THE STEP. Exit 5 after running it is the whole
+    # defect wearing the right exit code: the destructive thing has already
+    # happened as root by the time anybody reads the number.
+    if [ -f "$WORK/p5-declared-ran" ]; then
+      t_no "p6: it exited 5, but the step RAN AS ROOT first - the refusal is too late"
+    else
+      t_ok "p6: and the step did not run at all, so the refusal precedes it"
+    fi
   else
     t_skip "p5/p6: could not bootstrap a transport repo"
   fi
@@ -356,10 +411,6 @@ EOS
       "exit code    : 7" "$p9_body"
     assert_contains "p9: a failed run is delivered too, and says so" \
       "RESULT       : FAILED" "$p9_body"
-    # A far side can be a live process - the relay's is - and the trap above
-    # only removes a directory. Optional, because a driver is not obliged to
-    # have anything to tear down.
-    if declare -F drv_teardown >/dev/null 2>&1; then drv_teardown "$P9"; fi
   else
     t_skip "p9: could not bootstrap a transport repo"
   fi

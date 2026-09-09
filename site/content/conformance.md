@@ -102,11 +102,18 @@ The whole suite now runs once per transport:
 | **share** | a directory, and the log is read back from the share rather than the working tree |
 | **relay** | a stub relay in memory, two keypairs, and the log is **unsealed with the control side's identity** - so a log sealed for somebody else, or signed by nobody, is not counted as delivered |
 
-The relay stub is a queue with an HTTP interface and a bearer token, which is
-the entire contract the station side depends on. It is deliberately ignorant of
-the payload: every body is an opaque sealed envelope, stored and handed back
-byte for byte. A stub that could read the messages would be one that could
-accept an envelope the real relay would mangle.
+The relay stub is a queue with an HTTP interface and the relay's token rules,
+which is the entire contract the station side depends on. It is deliberately
+ignorant of the payload: every body is an opaque sealed envelope, stored and
+handed back byte for byte. A stub that could read the messages would be one
+that could accept an envelope the real relay would mangle.
+
+Its **token scopes are asymmetric**, because the real ones are: a station token
+may collect a request and publish status and logs, and may not queue a request
+even for itself. One token for everything would let a station that used the
+wrong credential pass here and be refused by a real relay. The suite asserts
+that boundary against the stub rather than assuming it - a double more
+permissive than the thing it stands in for is worse than no double.
 
 And running it three times only proves three passes, so each transport is also
 checked for **teeth**: `tp_put_log` is replaced with `return 0` - a delivery
@@ -129,6 +136,12 @@ skipped checksum.
 **Nothing here exercises a capture against a real remote machine.** The
 behaviour that matters is what a log looks like after a round trip through
 someone else's terminal, and no test asserts that.
+
+**Property 2 has an upper bound, and an overloaded runner can exceed it.** A 3
+second gap in the source must appear as a 3 to 8 second gap in the log. The
+lower bound is the property; the upper one guards against stamps applied at
+flush rather than at read, and a badly stalled CI worker could produce a
+legitimate gap larger than 8 seconds. It has not yet.
 
 ## Adding an implementation
 

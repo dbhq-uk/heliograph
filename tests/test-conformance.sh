@@ -83,6 +83,68 @@ for t in $EXCLUDED; do
     "$t" "$(sed -n '/not conformance-tested/,/^$/p' "$HERE/../site/content/conformance.md" 2>/dev/null)"
 done
 
+# --- the stub enforces the relay's own rules ---------------------------------
+# There are two doubles of this relay in the repository - this one, and the Go
+# one in cmd/heliograph/e2e_relay_test.go that the CLI tests use. That is
+# deliberate: the Go tests can start an httptest server in-process and the bash
+# suite cannot. But two doubles is two chances to drift, and a double that is
+# more permissive than the thing it stands in for is worse than none: it turns
+# a station-side regression into a green run.
+#
+# So the rules are ASSERTED against the stub, behaviourally, rather than
+# assumed from having written it. The token scopes are asymmetric on purpose -
+# a station may collect a request and publish a log, and may not queue a
+# request even for itself - and getting that backwards in a client is exactly
+# the mistake worth catching.
+if command -v python3 >/dev/null 2>&1; then
+  STUB_DIR="$(mktemp -d)"
+  python3 "$HERE/conformance/relay-stub.py" ctl stn est 0 > "$STUB_DIR/port" 2>/dev/null &
+  STUB_PID=$!
+  for _ in $(seq 1 100); do
+    STUB_PORT="$(cat "$STUB_DIR/port" 2>/dev/null)"
+    case "$STUB_PORT" in
+      '' | *[!0-9]*) ;;
+      *) curl -sS -o /dev/null -m 2 "http://127.0.0.1:$STUB_PORT/health" 2>/dev/null && break ;;
+    esac
+    kill -0 "$STUB_PID" 2>/dev/null || break
+    sleep 0.1
+  done
+
+  code() {  # code <method> <token> <path>
+    curl -sS -o /dev/null -w '%{http_code}' -m 5 -X "$1" \
+      ${3:+-H "Authorization: Bearer $2"} \
+      ${4:+--data-binary "$4"} \
+      "http://127.0.0.1:$STUB_PORT$3" 2>/dev/null
+  }
+  U=/v1/est/s
+
+  assert_eq "the stub lets the station publish a log" "202" \
+    "$(code POST stn "$U/s2c" '{"seq":1,"body":"x"}')"
+  assert_eq "and REFUSES the control token publishing one, which is the station's move" \
+    "401" "$(code POST ctl "$U/s2c" '{"seq":1,"body":"x"}')"
+  assert_eq "the stub lets control queue a request" "202" \
+    "$(code POST ctl "$U/c2s" '{"seq":1,"body":"x"}')"
+  assert_eq "and REFUSES the station queueing one, even for itself" "401" \
+    "$(code POST stn "$U/c2s" '{"seq":1,"body":"x"}')"
+  assert_eq "the stub lets control collect a log" "200" "$(code GET ctl "$U/s2c")"
+  assert_eq "and REFUSES the station collecting its own s2c" "401" \
+    "$(code GET stn "$U/s2c")"
+  assert_eq "an unknown estate is 404, not a queue of its own" "404" \
+    "$(code GET ctl "/v1/other/s/s2c")"
+  assert_eq "a direction that is neither c2s nor s2c is 404" "404" \
+    "$(code GET ctl "$U/sideways")"
+  # A client regression from GET to DELETE would collect-and-delete against a
+  # stub that treated "not POST" as a read, and be refused by the real relay.
+  assert_eq "DELETE is 405: only the two methods the API has" "405" \
+    "$(code DELETE ctl "$U/s2c")"
+
+  kill "$STUB_PID" 2>/dev/null
+  wait "$STUB_PID" 2>/dev/null
+  rm -rf "$STUB_DIR"
+else
+  t_no "python3 is absent, so the relay stub's rules were not checked"
+fi
+
 if "$HERE/conformance/mutant-check.sh"; then
   t_ok "the mutant driver fails the suite, so the suite has teeth"
 else

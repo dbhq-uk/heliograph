@@ -116,6 +116,15 @@ Stated on the site rather than hidden, so nobody plans around a promise.
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour
+- **The conformance suite's cancel property cannot prove the process died.**
+  `drv_capture_bg` is called through command substitution, so it starts in a
+  subshell and the suite cannot `wait` for it. Both kill attempts may fail and
+  the suite carries on after a fixed sleep, so an implementation that ignored
+  cancellation could outlive the test. p8 still asserts the run did not reach
+  its end, which is the property; what is missing is proof of the corpse. The
+  fix is to start it in the current shell and return the pid through a pidfile.
+  Found by an adversarial read on 2026-09-09, not fixed here because it changes
+  the driver contract and every driver with it
 - **The ACI templates are not twins.** `aci/main.tf` declares an `ip_address`
   block with TCP 65000 and `aci/main.bicep` omits `ipAddress` entirely, so the
   two produce different resources from the same inputs - network policy and
@@ -175,6 +184,23 @@ Break every new assertion deliberately and watch it fail before keeping it.
 pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
+
+**An exit code is not evidence that anything ran.** The conformance suite's two
+gate properties were asserted by exit status alone, so a runner that returned 0
+without executing the step satisfied *"a declared step runs"*, and one that ran
+the step and THEN refused with 5 satisfied *"nothing runs as root"* - which is
+the whole defect wearing the right exit code. Both now write a marker. Three
+distinct strings also satisfied *"three distinct timestamps"*; the column is now
+checked for being a clock, and for being UTC, by capturing under `TZ` fourteen
+hours away.
+
+**A test double more permissive than the real thing is worse than none.** The
+relay stub was written with one token; the relay's scopes are asymmetric, so a
+station using the control credential would have passed here and been refused in
+an estate. There are two doubles of that relay in this repository - this one and
+the Go one the CLI tests use - which is two chances to drift, so the rules are
+now asserted against the stub behaviourally rather than assumed from having
+written it.
 
 **A re-run that goes green is a diagnosis nobody made.** The launchd assertion
 failed four times and was re-run clean four times, and the fourth failure - the

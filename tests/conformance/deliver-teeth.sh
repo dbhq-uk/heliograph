@@ -35,7 +35,7 @@ drv_supports deliver || {
 
 WORK="$(mktemp -d)"
 cleanup() {
-  if declare -F drv_teardown >/dev/null 2>&1; then drv_teardown "$WORK/d"; fi
+  if declare -F drv_teardown >/dev/null 2>&1; then drv_teardown; fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -55,15 +55,36 @@ cat >> "$TP" <<'EOS'
 tp_put_log() { return 0; }
 EOS
 
-cat > "$WORK/d/steps/ships.sh" <<'EOS'
+# THE MUTATION IS CONFIRMED PRESENT. A `cat >>` into a read-only file, or into a
+# path that turned out not to be the one the station loads, fails silently and
+# would leave this whole check asserting that a WORKING transport delivered
+# nothing - which it would then blame on the transport.
+grep -q '^tp_put_log() { return 0; }$' "$TP" || {
+  echo "deliver-teeth: the mutation did not reach $TP"
+  exit 3
+}
+
+# A MARKER, because "nothing arrived" has two causes and only one of them is
+# the one under test. If the step never ran at all - a bootstrap that planted a
+# broken payload, a runner that refused the step, a gate that fired - the far
+# side is empty for a reason that has nothing to do with tp_put_log, and this
+# check would report a pass it did not earn. So the step proves it ran.
+MARKER="$WORK/the-step-ran"
+cat > "$WORK/d/steps/ships.sh" <<EOS
 #!/usr/bin/env bash
 # heliograph-mode: read-only
 echo the evidence
+: > "$MARKER"
 exit 7
 EOS
 chmod +x "$WORK/d/steps/ships.sh"
 
 drv_deliver "$WORK/d" steps/ships.sh
+[ -f "$MARKER" ] || {
+  printf 'deliver-teeth: %s - the step never ran, so an empty far side proves nothing.\n' "$T"
+  exit 3
+}
+
 body="$(drv_delivered "$WORK/d")"
 
 case "$body" in
@@ -74,5 +95,5 @@ case "$body" in
     exit 1
     ;;
 esac
-printf 'deliver-teeth: %s - a neutered tp_put_log delivers nothing, as it must\n' "$T"
+printf 'deliver-teeth: %s - the step ran, and a neutered tp_put_log delivered nothing\n' "$T"
 exit 0

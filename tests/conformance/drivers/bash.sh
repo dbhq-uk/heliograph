@@ -26,6 +26,13 @@ _D_STUB="$_D_HERE/../relay-stub.py"
 
 CONF_TRANSPORT="${CONF_TRANSPORT:-git}"
 
+# The relay's constants, in one place because the stub, the station's env and
+# the control-side read all have to agree on them.
+_D_RELAY_ESTATE=conformance
+_D_RELAY_CTL=control-token
+_D_RELAY_STN=station-token
+_D_RELAY_BASES=""
+
 drv_name() { printf 'bash toolkit (caplib.sh, run.sh) over %s' "$CONF_TRANSPORT"; }
 
 drv_supports() {
@@ -188,7 +195,7 @@ _drv_read() {
 # here, in memory, so this suite needs no Cloudflare account and no network -
 # see relay-stub.py for what that stub does and, more importantly, does not do.
 _drv_relay_farside() {
-  local dir="$1" base="$1.relay" port
+  local dir="$1" base="$1.relay" port pid waited=0
   mkdir -p "$base" || return 1
 
   # Built from THIS tree, not downloaded. The seal format and the station side
@@ -207,15 +214,37 @@ _drv_relay_farside() {
 
   # Port 0: the OS picks, the stub prints what it got. A fixed port makes a
   # test that cannot run twice at once, and CI runs these in parallel.
-  python3 "$_D_STUB" conformance-token 0 > "$base/port" 2>"$base/stub.err" &
-  echo $! > "$base/pid"
-  local waited=0
+  #
+  # TWO TOKENS. The relay's scopes are asymmetric - a station may collect a
+  # request and publish a log, and may not queue a request even for itself - so
+  # the station gets the station token and the reader below gets the control
+  # one. A single token would let a station-side regression that used the wrong
+  # credential pass here and be refused by a real relay.
+  python3 "$_D_STUB" "$_D_RELAY_CTL" "$_D_RELAY_STN" "$_D_RELAY_ESTATE" 0 \
+    > "$base/port" 2>"$base/stub.err" &
+  pid=$!
+  echo "$pid" > "$base/pid"
+  # Registered NOW, before the readiness wait. Every property that bootstraps
+  # starts one of these, and a bootstrap that fails half way through would
+  # otherwise leave a server holding a port for the rest of the run.
+  _D_RELAY_BASES="$_D_RELAY_BASES $base"
+
+  # HEALTH, not a number in a file. A port that parses proves the stub printed
+  # something, not that it is listening - and a partially written value parses
+  # as a different port entirely. So the port is read, then dialled, and the
+  # process is checked for still being alive on every turn: a stub that died
+  # on startup would otherwise be waited for until the timeout.
   while :; do
     port="$(cat "$base/port" 2>/dev/null)"
     case "$port" in
       '' | *[!0-9]*) ;;
-      *) break ;;
+      *)
+        if curl -sS -o /dev/null -m 2 "http://127.0.0.1:$port/health" 2>/dev/null; then
+          break
+        fi
+        ;;
     esac
+    kill -0 "$pid" 2>/dev/null || { echo "relay stub died:" >&2; cat "$base/stub.err" >&2; return 1; }
     waited=$((waited + 1))
     [ "$waited" -gt 100 ] && return 1
     sleep 0.1
@@ -224,9 +253,9 @@ _drv_relay_farside() {
   cat > "$base/env" <<EOF
 export TRANSPORT=relay
 export RELAY_URL=http://127.0.0.1:$port
-export RELAY_ESTATE=conformance
+export RELAY_ESTATE=$_D_RELAY_ESTATE
 export RELAY_STATION=station
-export RELAY_TOKEN=conformance-token
+export RELAY_TOKEN=$_D_RELAY_STN
 export RELAY_SEAL=$base/heliograph-seal
 export RELAY_IDENTITY=$base/station.key
 export RELAY_PEER=$base/control.pub
@@ -244,8 +273,11 @@ EOF
 _drv_relay_read() {
   local dir="$1" base="$1.relay" tmp out rc
   tmp="$(mktemp)" || return 1
-  curl -sS -m 10 -H "Authorization: Bearer conformance-token" \
-    "$(sed -n 's/^export RELAY_URL=//p' "$base/env")/v1/conformance/station/s2c" \
+  # THE CONTROL TOKEN, because collecting from s2c is the control side's move.
+  # Using the station's here would be a reader that only works against a stub
+  # with one token, which is how the asymmetry stops being tested.
+  curl -sS -m 10 -H "Authorization: Bearer $_D_RELAY_CTL" \
+    "$(_drv_relay_url "$base")/v1/$_D_RELAY_ESTATE/station/s2c" \
     > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
 
   # The WHOLE array, handed over as it came. `open` sorts by sequence, applies
@@ -255,7 +287,7 @@ _drv_relay_read() {
   # the replay defence, in the language least suited to it.
   out="$("$base/heliograph-seal" open \
           --identity "$base/control.key" --peer "$base/station.pub" \
-          --estate conformance --station station \
+          --estate "$_D_RELAY_ESTATE" --station station \
           --dir s2c --kind log --min-seq 0 --in "$tmp" 2>/dev/null)"
   rc=$?
   rm -f "$tmp"
@@ -265,12 +297,34 @@ _drv_relay_read() {
   printf '%s\n' "$out" | tail -n +2
 }
 
-# The stub is a background process and the suite's own trap only removes the
-# work directory, which would leave it running and the port held.
+# The base URL of a station's stub, for anything that has to dial it directly.
+_drv_relay_url() { sed -n 's/^export RELAY_URL=//p' "$1/env"; }
+
+# The stubs are background processes and the suite's own trap only removes the
+# work directory, which would leave them running and their ports held.
+#
+# EVERY ONE, not the last. Several properties bootstrap, so several stubs get
+# started, and tearing down only the one p9 used leaked the rest for the life
+# of the shell. Takes no argument for that reason: the driver knows what it
+# started and the suite does not have to.
 drv_teardown() {
-  local dir="$1" pid
-  [ "$CONF_TRANSPORT" = relay ] || return 0
-  pid="$(cat "$dir.relay/pid" 2>/dev/null)" || return 0
-  [ -n "$pid" ] && kill "$pid" 2>/dev/null
+  local base pid waited
+  for base in $_D_RELAY_BASES; do
+    pid="$(cat "$base/pid" 2>/dev/null)" || continue
+    [ -n "$pid" ] || continue
+    kill "$pid" 2>/dev/null
+    # TERM, then wait for it, then insist. A kill that is merely sent proves
+    # nothing: the port stays held until the process actually goes, and the
+    # next property binding port 0 would be racing a corpse.
+    waited=0
+    while kill -0 "$pid" 2>/dev/null; do
+      waited=$((waited + 1))
+      [ "$waited" -gt 50 ] && { kill -9 "$pid" 2>/dev/null; break; }
+      sleep 0.1
+    done
+    # Reaped, so it does not sit as a zombie for the rest of the run.
+    wait "$pid" 2>/dev/null
+  done
+  _D_RELAY_BASES=""
   return 0
 }

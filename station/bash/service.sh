@@ -123,23 +123,34 @@ launchd_ok() {
 # path in the plist is not a style choice: it is the only part of the environment
 # launchd cannot take away.
 pick_bash() {
-  local c v
+  local c v abs
   # The running shell first. Whoever ran service.sh reached it somehow, and it
   # is by definition the one their PATH resolves - so it is the least
   # surprising answer when it qualifies.
   for c in "${BASH:-}" "$(command -v bash 2>/dev/null)" \
     /opt/homebrew/bin/bash /usr/local/bin/bash /opt/local/bin/bash /bin/bash; do
     [ -n "$c" ] && [ -x "$c" ] || continue
-    v="$("$c" -c 'printf %s "${BASH_VERSINFO[0]}"' 2>/dev/null)"
+    # MADE ABSOLUTE FIRST, and the version asked of the absolute path.
+    #
+    # `$BASH` is whatever argv[0] was, `command -v` echoes a relative path back
+    # unchanged, and a PATH entry may itself be relative - so `./bin/bash` and
+    # `bash` both reach here looking usable. launchd resolves ProgramArguments
+    # against its own context, not the installing shell's, so a relative path
+    # in the plist names a different file or none at all. `cd -P` also resolves
+    # the symlink, which is what makes /usr/local/bin/bash on a Mac come out as
+    # the Cellar path it actually is.
+    abs="$(cd -P "$(dirname "$c")" 2>/dev/null && printf '%s/%s' "$(pwd)" "$(basename "$c")")"
+    case "$abs" in
+    /*) ;;
+    *) continue ;;
+    esac
+    [ -x "$abs" ] || continue
+    v="$("$abs" -c 'printf %s "${BASH_VERSINFO[0]}"' 2>/dev/null)"
     case "$v" in
     '' | *[!0-9]*) continue ;;
     esac
     if [ "$v" -ge 4 ]; then
-      # Absolute, because ProgramArguments is not resolved against a PATH.
-      case "$c" in
-      /*) printf '%s' "$c" ;;
-      *) command -v "$c" ;;
-      esac
+      printf '%s' "$abs"
       return 0
     fi
   done
