@@ -221,8 +221,37 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The relay is the one transport whose far side is a program, and the
+      # conformance suite builds heliograph-seal from this tree to talk to a
+      # stub relay. Without a toolchain the driver skips the relay - correct on
+      # a machine that has no Go, and exactly the wrong thing to let pass here.
+      # Pinned to go.mod so the seal under test is built the way it ships.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Assertions under tests/
         run: ./tests/run-tests.sh
+
+      # Run again, alone, and refuse a skip. A skip inside run-tests.sh is a
+      # line in a thousand and nobody reads it; here it is the finding. This is
+      # what stops "the conformance suite passes over every transport" quietly
+      # becoming "over the two that need nothing installed".
+      - name: The conformance suite ran over every transport, unskipped
+        run: |
+          set +e
+          ./tests/test-conformance.sh 2>&1 | tee /tmp/conformance.out
+          rc="${PIPESTATUS[0]}"
+          set -e
+          [ "$rc" -eq 0 ] || { echo "::error::tests/test-conformance.sh failed"; exit 1; }
+          if grep -q '^SKIP' /tmp/conformance.out; then
+            echo "::error::the conformance suite skipped a transport instead of running it."
+            exit 1
+          fi
+          for t in git share relay; do
+            grep -q "passes the conformance suite over $t" /tmp/conformance.out || {
+              echo "::error::the suite did not run over $t"; exit 1; }
+          done
 
   # tests/test-container.sh builds the image from station/bash/docker/Dockerfile
   # as its own first step, and it is already part of the sweep the `tests` job

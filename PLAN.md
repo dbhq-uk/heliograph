@@ -62,20 +62,17 @@ in CI. The site documents the far side. There is no PowerShell station.
 | - | **the breadcrumb says the nav label, not the H1** - `/compared` read "heliograph / heliograph compared with AWS SSM Run Command and Azure Run Command", found by driving the deployed page rather than by a test |
 | - | **the docs affordances, measured against paseo.sh** - a copy button on every code block, Copy/View as markdown above the title, a visible breadcrumb, a rail that marks where you are, `favicon.ico` and `apple-touch-icon.png`, and the GitHub mark on the site's own links to the repository. Spec: [`docs/specs/2026-09-09-site-affordances-design.md`](docs/specs/2026-09-09-site-affordances-design.md) |
 | - | **the content the research asked for** - `/air-gapped`, `/compared` (AWS SSM and Azure Run Command), and a permissions section on `/security`. Also: `heliograph send` on a bundle told people to run `./station.sh --bundle`, which has never existed; it now says the honest thing |
-| #49 | **the Azure templates carry a transport**, and CI validates them at all |
+| #49 | **the Azure templates carry a transport**, and CI validates them at all - which found that a sensitive value cannot drive `for_each`, so the Container Apps job had never parsed under the pinned terraform. Also: **no station had ever run under launchd**, because a LaunchAgent's PATH holds only macOS's bash 3.2 |
+| #50 | **conformance over every transport**, with a stub relay so it needs no Cloudflare account - and a teeth check per transport, because running the suite three times only proves three passes |
 
 ## Next, in order
 
-1. **Conformance across every transport in CI** (roadmap A/PR 7). Property 9
-   only exercises git today, so a no-op `tp_put_log` on another transport would
-   pass. Every transport now has both halves and a host that can run it, which
-   is what makes this the next thing worth doing
-2. **Track B: the PowerShell station**, seven PRs. Windows PowerShell 5.1,
+1. **Track B: the PowerShell station**, seven PRs. Windows PowerShell 5.1,
    carrying git, share and relay. The conformance driver is the deliverable,
-   not the code Windows
-   PowerShell 5.1, carrying git, share and relay. The conformance driver is the
-   deliverable, not the code
-4. **The bundle's station side.** `/air-gapped` now says plainly that the
+   not the code - and the suite it has to pass now runs over three transports,
+   so a PowerShell station that captures perfectly and delivers nothing cannot
+   be called done
+2. **The bundle's station side.** `/air-gapped` now says plainly that the
    bundle cannot be read by a station, and the CLI says the same. That page is
    the first thing to update when it lands
 
@@ -119,6 +116,15 @@ Stated on the site rather than hidden, so nobody plans around a promise.
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour
+- **The conformance suite's cancel property cannot prove the process died.**
+  `drv_capture_bg` is called through command substitution, so it starts in a
+  subshell and the suite cannot `wait` for it. Both kill attempts may fail and
+  the suite carries on after a fixed sleep, so an implementation that ignored
+  cancellation could outlive the test. p8 still asserts the run did not reach
+  its end, which is the property; what is missing is proof of the corpse. The
+  fix is to start it in the current shell and return the pid through a pidfile.
+  Found by an adversarial read on 2026-09-09, not fixed here because it changes
+  the driver contract and every driver with it
 - **The ACI templates are not twins.** `aci/main.tf` declares an `ip_address`
   block with TCP 65000 and `aci/main.bicep` omits `ipAddress` entirely, so the
   two produce different resources from the same inputs - network policy and
@@ -178,6 +184,23 @@ Break every new assertion deliberately and watch it fail before keeping it.
 pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
+
+**An exit code is not evidence that anything ran.** The conformance suite's two
+gate properties were asserted by exit status alone, so a runner that returned 0
+without executing the step satisfied *"a declared step runs"*, and one that ran
+the step and THEN refused with 5 satisfied *"nothing runs as root"* - which is
+the whole defect wearing the right exit code. Both now write a marker. Three
+distinct strings also satisfied *"three distinct timestamps"*; the column is now
+checked for being a clock, and for being UTC, by capturing under `TZ` fourteen
+hours away.
+
+**A test double more permissive than the real thing is worse than none.** The
+relay stub was written with one token; the relay's scopes are asymmetric, so a
+station using the control credential would have passed here and been refused in
+an estate. There are two doubles of that relay in this repository - this one and
+the Go one the CLI tests use - which is two chances to drift, so the rules are
+now asserted against the stub behaviourally rather than assumed from having
+written it.
 
 **A re-run that goes green is a diagnosis nobody made.** The launchd assertion
 failed four times and was re-run clean four times, and the fourth failure - the
