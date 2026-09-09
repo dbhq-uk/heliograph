@@ -22,3 +22,22 @@ available at its own URL plus `.md`.
 those: one log study found 408 requests to `llms.txt` out of more than 500
 million AI bot visits in ninety days, so they are shipped because IDE agents
 fetch them and it costs half a day, not because they will win citations.
+
+## Analytics, and what a search result sees
+
+The site reports into the **dbhq.uk GA4 property**, on the same web stream
+(`G-3H3NFGSX85`), because Google's guidance is one stream per site including
+its subdomains. Separate the docs in reports by the Hostname dimension. The tag
+loads only after the consent banner is accepted and only on
+`heliograph.dbhq.uk`, which is the promise the dbhq.uk privacy policy makes.
+Without JavaScript there is no banner and no tag.
+
+Titles and descriptions are hand-written in `cmd/heliograph-site/main.go`
+(`titles`, `descriptions`), and a test holds every description to 70 to 160
+characters. The sitemap's `lastmod` is the last commit that touched each page,
+so the build refuses a shallow clone. The Open Graph image is rendered from
+`site/og/og.html` by `site/og/render.sh` and committed as `assets/og.png`;
+re-run the script after changing the template.
+
+Why each of these exists, and what it cost:
+[`docs/specs/2026-09-09-analytics-and-seo-design.md`](../docs/specs/2026-09-09-analytics-and-seo-design.md).
