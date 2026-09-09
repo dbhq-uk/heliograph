@@ -113,14 +113,14 @@ launchd_ok() {
 #
 # launchd does NOT inherit that PATH. A LaunchAgent gets the bare
 # /usr/bin:/bin:/usr/sbin:/sbin, where the only bash is 3.2. So the install
-# reported success, launchd started the agent, preflight found bash 3.2,
+# reported success, launchd started the LaunchAgent, preflight found bash 3.2,
 # refused to start, and exited 1 - which under KeepAlive/SuccessfulExit=false
 # is a restart, correctly. The station never ran a single step, and the plist
 # was blameless.
 #
 # So the bash is resolved HERE, at install time, to an absolute path, and both
-# written into ProgramArguments and put on the agent's PATH. An absolute path
-# in the plist is not a style choice: it is the only part of the environment
+# written into ProgramArguments and put on the LaunchAgent's PATH. An absolute
+# path in the plist is not a style choice: it is the only part of the environment
 # launchd cannot take away.
 pick_bash() {
   local c v
