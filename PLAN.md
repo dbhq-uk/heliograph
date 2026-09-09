@@ -24,7 +24,7 @@ in CI. The site documents the far side. There is no PowerShell station.
 | file share | **works end to end**, proved by a CLI round trip in CI |
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
-| PowerShell station | `station.ps1` is a launcher. No native station |
+| PowerShell station | **the capture exists** - `caplib.psm1` passes the conformance properties it claims. No runner, no gates, no transports yet |
 | site | 26 pages, near and far side. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
 
 ## Landed 2026-09-08
@@ -65,13 +65,17 @@ in CI. The site documents the far side. There is no PowerShell station.
 | #49 | **the Azure templates carry a transport**, and CI validates them at all - which found that a sensitive value cannot drive `for_each`, so the Container Apps job had never parsed under the pinned terraform. Also: **no station had ever run under launchd**, because a LaunchAgent's PATH holds only macOS's bash 3.2 |
 | #50 | **conformance over every transport**, with a stub relay so it needs no Cloudflare account - and a teeth check per transport, because running the suite three times only proves three passes |
 | #51 | **the conformance harness stops being Unix** (Track B/PR 8) - p6's privileged account and p8's cancel move into the driver, p8 proves the cancel by watching the log stop growing, and the redaction corpus lands with a test that every rule is load-bearing |
+| #52 | **`caplib.psm1`** (Track B/PR 9) - the capture in PowerShell, passing properties 1-4, 7 and 8, skipping the gates and delivery by name. The step fixtures moved into the driver too, which was the last Unix left in the suite |
 
 ## Next, in order
 
-1. **Track B: the PowerShell station**, PR 9 onwards. `caplib.psm1` first - the
-   capture and nothing else, passing properties 1-4, 7 and 9. The harness is
-   ready for it: nothing platform-specific is left in the suite, and the
-   redaction corpus is the one file both implementations are measured against
+1. **Track B: the PowerShell station**, PR 10 onwards. `run.ps1` next - the
+   runner and all four gates, which is what turns properties 5 and 6 from a
+   named skip into an answer. The privileged check is
+   `WindowsPrincipal.IsInRole(Administrator)` plus an explicit `S-1-5-18`, and
+   keeps the name `ALLOW_ROOT` rather than gaining a Windows synonym.
+   Then `station.ps1`/`start.ps1` (PR 11), the three transports (PR 12),
+   bootstrap (PR 13) and Windows CI (PR 14)
 2. **The bundle's station side.** `/air-gapped` now says plainly that the
    bundle cannot be read by a station, and the CLI says the same. That page is
    the first thing to update when it lands

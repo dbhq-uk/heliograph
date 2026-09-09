@@ -71,9 +71,76 @@ _drv_deliverable() {
   esac
 }
 
+# --- the step fixtures --------------------------------------------------------
+# THE SUITE DOES NOT WRITE STEPS ANY MORE, and this was the last piece of Unix
+# left in it. Every fixture was a heredoc beginning `#!/usr/bin/env bash`, so a
+# PowerShell driver could not have run a single property: the specification was
+# describing behaviour in one implementation's language.
+#
+# The suite names a step by KIND and the driver writes it. Nine kinds, each
+# doing exactly what its name says, and a driver that cannot express one of
+# them has no business claiming to implement the capture.
+#
+#   three-slow  three lines, a second apart
+#   gap         two lines, three seconds apart
+#   rc42        one line, then exit 42
+#   rc0         one line, exit 0
+#   slow        ten lines a second apart, so a cancel lands mid-run
+#   leaky       written by the suite from the redaction corpus, not here
+#   undeclared  declares no mode - the gate must refuse it
+#   declared    declares read-only, and TOUCHES A MARKER given as $3
+#   ships       declares read-only, prints evidence, exits 7
+drv_step_name() { printf 'steps/%s.sh' "$1"; }
+
+# drv_step_echo <path-without-extension> <file-of-lines> - a step that prints
+# each line of the file verbatim and nothing else.
+#
+# `printf %s` with the line as an ARGUMENT, never as the format: the redaction
+# corpus contains % and \ by design, and putting it in a format string would
+# let the fixture rewrite itself on the way through.
+drv_step_echo() {
+  local path="$1.sh" lines="$2" l
+  {
+    printf '#!/usr/bin/env bash\n'
+    while IFS= read -r l; do
+      printf 'printf "%%s\\n" %s\n' "$(printf "'%s'" "$(printf '%s' "$l" | sed "s/'/'\\\\''/g")")"
+    done < "$lines"
+  } > "$path"
+  chmod +x "$path"
+}
+
+drv_step_file() {  # drv_step_file <kind> <path-without-extension> [marker]
+  local kind="$1" path="$2.sh" marker="${3:-}"
+  case "$kind" in
+    three-slow)
+      printf '#!/usr/bin/env bash\necho first; sleep 1.1; echo second; sleep 1.1; echo third\n' > "$path" ;;
+    gap)
+      printf '#!/usr/bin/env bash\necho before; sleep 3; echo after\n' > "$path" ;;
+    rc42)
+      printf '#!/usr/bin/env bash\necho working\nexit 42\n' > "$path" ;;
+    rc0)
+      printf '#!/usr/bin/env bash\necho working\n' > "$path" ;;
+    slow)
+      printf '#!/usr/bin/env bash\necho starting the long probe\nfor i in 1 2 3 4 5 6 7 8 9 10; do echo "probe $i"; sleep 1; done\necho finished\n' > "$path" ;;
+    undeclared)
+      printf '#!/usr/bin/env bash\necho this step declares nothing\n' > "$path" ;;
+    declared)
+      {
+        printf '#!/usr/bin/env bash\n'
+        printf '# heliograph-mode: read-only\n'
+        printf 'echo this step declares itself and measures nothing\n'
+        [ -n "$marker" ] && printf ': > %s\n' "$(printf "'%s'" "$marker")"
+      } > "$path" ;;
+    ships)
+      printf '#!/usr/bin/env bash\n# heliograph-mode: read-only\necho the evidence\nexit 7\n' > "$path" ;;
+    *) return 1 ;;
+  esac
+  chmod +x "$path"
+}
+
 # Capture in a subshell so caplib's globals never leak between properties.
 drv_capture() {
-  local out="$1" script="$2"
+  local out="$1" script="$2.sh"
   (
     # shellcheck disable=SC1091
     . "$_D_TOOLKIT/caplib.sh"
@@ -125,7 +192,7 @@ drv_delivered() { _drv_read "$1"; }
 # The process group id is what is written, negated at kill time by drv_cancel.
 # setsid makes the child a group leader, so its pid IS the group.
 drv_capture_bg() {
-  local out="$1" script="$2" handle="$3"
+  local out="$1" script="$2.sh" handle="$3"
   setsid bash -c '
     # shellcheck disable=SC1091
     . "$1/caplib.sh"

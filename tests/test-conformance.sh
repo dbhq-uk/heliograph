@@ -83,6 +83,80 @@ for t in $EXCLUDED; do
     "$t" "$(sed -n '/not conformance-tested/,/^$/p' "$HERE/../site/content/conformance.md" 2>/dev/null)"
 done
 
+# --- the SECOND implementation ------------------------------------------------
+# AGENTS.md permits one only while it passes this suite. caplib.psm1 is the
+# capture and nothing else today, so properties 5, 6 and 9 - the gates and
+# delivery - have nothing to answer them yet and SKIP by name.
+#
+# The skips are counted rather than tolerated. "2 skipped" is the honest state
+# of a half-built implementation; three would mean something stopped being
+# checked without anybody deciding to stop checking it.
+PS_DRIVER="$HERE/conformance/drivers/powershell.sh"
+ps_out="$(CONF_TRANSPORT=git "$HERE/conformance/conformance.sh" "$PS_DRIVER" 2>&1)"
+ps_rc=$?
+# INDENTED, because CI refuses a line starting with SKIP in this file's output
+# and these two are legitimate - they are the ones the assertion below counts.
+# Left at the margin they would fail the build for being honest, and the fix
+# somebody would reach for is to stop printing them.
+printf '%s\n' "$ps_out" | sed 's/^/  /'
+
+if printf '%s' "$ps_out" | grep -q 'no PowerShell here'; then
+  t_no "no PowerShell interpreter, so the second implementation was NOT exercised"
+elif [ "$ps_rc" = "0" ]; then
+  t_ok "caplib.psm1 passes every property it claims to implement"
+else
+  t_no "caplib.psm1 FAILS the conformance suite"
+fi
+
+ps_skips="$(printf '%s' "$ps_out" | grep -c '^SKIP')"
+if [ "$ps_skips" = "2" ]; then
+  t_ok "and skips exactly the two it does not: the gates, and delivery"
+else
+  t_no "caplib.psm1 skipped $ps_skips properties, not the 2 expected"
+  printf '     A third skip means a property stopped being checked without\n'
+  printf '     anybody deciding to stop checking it.\n'
+fi
+
+# --- the two implementations write the SAME log -------------------------------
+# The control side parses these logs, and it parses one format. Two capture
+# implementations that each pass every property can still disagree about the
+# shape of a header, and nothing above would notice: the properties assert what
+# a log MEANS, and this asserts what it LOOKS LIKE.
+if [ -n "$(command -v pwsh || command -v powershell)" ]; then
+  SHAPE="$(mktemp -d)"
+  shape_of() {  # the log's structure, with every value that legitimately differs removed
+    sed -E \
+      -e 's/^[0-9]{2}:[0-9]{2}:[0-9]{2} \| /TIME | /' \
+      -e 's/^( started UTC : ).*/\1TIME/' \
+      -e 's/^( finished UTC : ).*/\1TIME/' \
+      -e 's/^( control node: ).*/\1HOST/' \
+      -e 's/^( user        : ).*/\1USER/' \
+      -e 's/^( git branch  : ).*/\1BRANCH/' \
+      -e 's/^( git commit  : ).*/\1COMMIT/' \
+      "$1"
+  }
+  (
+    # shellcheck disable=SC1091
+    . "$HERE/conformance/drivers/bash.sh"
+    drv_step_file rc42 "$SHAPE/step"
+    drv_capture "$SHAPE/bash.log" "$SHAPE/step"
+  ) >/dev/null 2>&1
+  (
+    # shellcheck disable=SC1090,SC1091
+    . "$PS_DRIVER"
+    drv_step_file rc42 "$SHAPE/step"
+    drv_capture "$SHAPE/ps.log" "$SHAPE/step"
+  ) >/dev/null 2>&1
+
+  if diff -u <(shape_of "$SHAPE/bash.log") <(shape_of "$SHAPE/ps.log") > "$SHAPE/diff" 2>&1; then
+    t_ok "both implementations write a log of exactly the same shape"
+  else
+    t_no "the two implementations write DIFFERENT logs:"
+    sed 's/^/     /' "$SHAPE/diff" | head -20
+  fi
+  rm -rf "$SHAPE"
+fi
+
 # --- the stub enforces the relay's own rules ---------------------------------
 # There are two doubles of this relay in the repository - this one, and the Go
 # one in cmd/heliograph/e2e_relay_test.go that the CLI tests use. That is
