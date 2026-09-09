@@ -87,7 +87,9 @@ have to notice; it can measure.
 **Gates it cannot talk its way past.** A step declares itself read-only or an
 action in its own file, and one that declares neither does not run. A
 state-changing step needs `CONFIRM=yes` and a station started with
-`--allow-actions`. The agent can ask; the station decides.
+`--allow-actions`. The agent can ask; the station decides. None of this is
+Claude Code's own permission system, and skipping that changes nothing here:
+[where the gates sit](/security#claude-code-permissions-sandboxes-and-where-the-gates-sit).
 
 ## The pieces
 

@@ -261,3 +261,78 @@ func TestSharedLinksCarryAnImage(t *testing.T) {
 		}
 	}
 }
+
+// The sitemap is the list Google works from. Every page in the build is in
+// it exactly once, and nothing that is not a page is. The markdown mirrors
+// are deliberately absent: they are announced as alternates from each page,
+// and listing them would ask Google to index every page twice.
+func TestSitemapListsEveryPageOnceAndNothingElse(t *testing.T) {
+	out := buildSite(t)
+	sm, err := os.ReadFile(filepath.Join(out, "sitemap.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	for _, m := range regexp.MustCompile(`<loc>([^<]+)</loc>`).FindAllStringSubmatch(string(sm), -1) {
+		seen[m[1]]++
+	}
+	for name := range htmlPages(t, out) {
+		if name == "404.html" {
+			continue
+		}
+		want := baseURL + "/" + strings.TrimSuffix(name, ".html")
+		if name == "index.html" {
+			want = baseURL + "/"
+		}
+		if seen[want] != 1 {
+			t.Errorf("%s is in the sitemap %d times, want once", want, seen[want])
+		}
+		delete(seen, want)
+	}
+	for extra := range seen {
+		t.Errorf("the sitemap lists %s, which is not a page", extra)
+	}
+}
+
+// A link to a page that does not exist is the defect a content edit
+// introduces most easily and the one a crawler scores hardest. Anchors are
+// checked too: a heading rename silently breaks every link to it.
+func TestInternalLinksResolve(t *testing.T) {
+	out := buildSite(t)
+	re := regexp.MustCompile(`href="(/[^"#]*)(#[^"]*)?"`)
+	for name, h := range htmlPages(t, out) {
+		for _, m := range re.FindAllStringSubmatch(h, -1) {
+			path, frag := m[1], m[2]
+			target := path
+			if target == "/" {
+				target = "/index"
+			}
+			file := filepath.Join(out, target)
+			if _, err := os.Stat(file); err != nil {
+				if _, err := os.Stat(file + ".html"); err != nil {
+					t.Errorf("%s links to %s, which is not in the build", name, path)
+					continue
+				}
+				file += ".html"
+			}
+			if frag == "" || !strings.HasSuffix(file, ".html") {
+				continue
+			}
+			b, _ := os.ReadFile(file)
+			if !strings.Contains(string(b), `id="`+frag[1:]+`"`) {
+				t.Errorf("%s links to %s%s, and that anchor is not on the page", name, path, frag)
+			}
+		}
+	}
+}
+
+// One H1 per page. The home page had two: the hero's, and the source's
+// "# heliograph" rendered underneath it.
+func TestOneH1PerPage(t *testing.T) {
+	out := buildSite(t)
+	for name, h := range htmlPages(t, out) {
+		if n := strings.Count(h, "<h1"); n != 1 {
+			t.Errorf("%s has %d h1 elements", name, n)
+		}
+	}
+}

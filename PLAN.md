@@ -24,7 +24,7 @@ in CI. The site documents the far side. There is no PowerShell station.
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
 | PowerShell station | `station.ps1` is a launcher. No native station |
-| site | 24 pages, near and far side. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
+| site | 26 pages, near and far side. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
 
 ## Landed 2026-09-08
 
@@ -58,6 +58,7 @@ in CI. The site documents the far side. There is no PowerShell station.
 |---|---|
 | #43 | **analytics and search on the site** - GA4 behind consent, `lastmod`, descriptions, JSON-LD, `og.png`, a 404 page, and the two font preloads that 404ed on every page view. Spec: [`docs/specs/2026-09-09-analytics-and-seo-design.md`](docs/specs/2026-09-09-analytics-and-seo-design.md). Keyword research: [`docs/seo/2026-09-09-keyword-research.md`](docs/seo/2026-09-09-keyword-research.md) |
 | #44 | **Windows and the pipelines** - the scheduled task carries a transport |
+| - | **the content the research asked for** - `/air-gapped`, `/compared` (AWS SSM and Azure Run Command), and a permissions section on `/security`. Also: `heliograph send` on a bundle told people to run `./station.sh --bundle`, which has never existed; it now says the honest thing |
 
 ## Next, in order
 
@@ -72,12 +73,9 @@ in CI. The site documents the far side. There is no PowerShell station.
 3. **Track B: the PowerShell station**, seven PRs, gated on 1. Windows
    PowerShell 5.1, carrying git, share and relay. The conformance driver is the
    deliverable, not the code
-4. **The site's content gaps**, from the keyword research: a section on the
-   security page for "claude code permissions" and sandboxing (5,400 to 2,900
-   worldwide searches a month, soft SERPs), an air-gapped page once the bundle
-   has a station side, and a comparison with AWS SSM and Azure Run Command.
-   Which query each targets, and what it must not claim:
-   [`docs/seo/2026-09-09-keyword-research.md`](docs/seo/2026-09-09-keyword-research.md) section 5
+4. **The bundle's station side.** `/air-gapped` now says plainly that the
+   bundle cannot be read by a station, and the CLI says the same. That page is
+   the first thing to update when it lands
 
 ## Operational notes
 
@@ -278,7 +276,7 @@ shellcheck -S warning $(find . -name '*.sh' -not -path './.git/*')
 ./tests/run-tests.sh
 ./tests/conformance/conformance.sh tests/conformance/drivers/bash.sh
 ./tests/conformance/conformance.sh tests/conformance/drivers/mutant.sh   # must FAIL
-go run ./cmd/heliograph-site site/content /tmp/site                      # 24 pages
+go run ./cmd/heliograph-site site/content /tmp/site                      # 26 pages
 ```
 
 macOS is absent locally, so the launchd suite skips. **CI runs it and CI has

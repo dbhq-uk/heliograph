@@ -24,10 +24,10 @@ import (
 // order fixes the navigation. Alphabetical would put the CLI reference before
 // the quick start, which is the wrong way round for somebody arriving.
 var order = []string{
-	"index", "install", "quickstart",
+	"index", "install", "quickstart", "compared",
 	"claude-code", "codex", "mcp",
 	"station", "bootstrap", "steps", "runner", "conformance",
-	"hosts", "containers", "service", "azure", "pipelines", "windows",
+	"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped",
 	"transports", "relay", "intercom", "cli", "secrets", "security", "method",
 }
 
@@ -284,10 +284,10 @@ var groups = []struct {
 	name  string
 	slugs []string
 }{
-	{"Start here", []string{"index", "install", "quickstart"}},
+	{"Start here", []string{"index", "install", "quickstart", "compared"}},
 	{"Drive it from an agent", []string{"claude-code", "codex", "mcp"}},
 	{"The far side", []string{"station", "bootstrap", "steps", "runner", "conformance"}},
-	{"Where it runs", []string{"hosts", "containers", "service", "azure", "pipelines", "windows"}},
+	{"Where it runs", []string{"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped"}},
 	{"Reference", []string{"transports", "relay", "intercom", "cli", "secrets", "security", "method"}},
 }
 
@@ -307,6 +307,7 @@ var labels = map[string]string{
 	"index":       "Overview",
 	"install":     "Install",
 	"quickstart":  "Quick start",
+	"compared":    "Versus Run Command",
 	"claude-code": "Claude Code",
 	"codex":       "Codex",
 	"mcp":         "MCP server",
@@ -321,6 +322,7 @@ var labels = map[string]string{
 	"azure":       "Azure",
 	"pipelines":   "Pipelines",
 	"windows":     "Windows",
+	"air-gapped":  "Air-gapped",
 	"transports":  "Transports",
 	"relay":       "Relay",
 	"intercom":    "Intercom",
@@ -509,6 +511,13 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 		mirror = fmt.Sprintf(` &middot; <a href="/%s.md">This page as markdown</a>`, p.Slug)
 	}
 
+	body := p.Body
+	if p.Slug == "index" {
+		// The hero carries the page's H1. The source keeps its own for the
+		// markdown mirror and llms.txt, and it is dropped here rather than
+		// demoted: an H2 reading "heliograph" under a hero is furniture.
+		body = site.WithoutH1(body)
+	}
 	return head(p, o) + fmt.Sprintf(`<a class="skip-link" href="#main-content">Skip to content</a>
 %[1]s
 %[2]s
@@ -526,7 +535,7 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 <script>%[10]s
 %[11]s</script>
 %[12]s
-`, header, hero, shellOpen, wide, site.RenderBody(p.Body), shellClose, railHTML,
+`, header, hero, shellOpen, wide, site.RenderBody(body), shellClose, railHTML,
 		mirror, consentHTML, site.HeroJS, consentJS, navJS)
 }
 
@@ -790,6 +799,8 @@ var titles = map[string]string{
 	"index":       "heliograph - run commands on a server without SSH",
 	"install":     "Install heliograph - a single binary, and nothing on the far side",
 	"quickstart":  "Quick start - from nothing to a captured log in five steps",
+	"compared":    "heliograph vs AWS SSM Run Command and Azure Run Command",
+	"air-gapped":  "Air-gapped servers - run heliograph with no network path at all",
 	"claude-code": "heliograph Claude Code skill - drive a machine it cannot reach",
 	"transports":  "Transports - git, relay, share, and a bundle for air gaps",
 	"cli":         "CLI reference - send, watch, logs --gaps, plant, doctor",
@@ -818,6 +829,8 @@ var descriptions = map[string]string{
 	"index":       "Run a command on a machine you cannot SSH into and get back a log with every line timestamped in UTC. Free and open source: CLI, MCP server, Claude Code skill.",
 	"install":     "Install the heliograph CLI on Linux, macOS or Windows from a single static binary, or as a Claude Code plugin. Nothing is ever installed on the far side.",
 	"quickstart":  "From nothing to a captured, timestamped log in five steps: plant a station on the far side, push a step, and read the whole run back, passed or failed.",
+	"compared":    "How heliograph differs from AWS SSM Run Command and Azure Run Command: nothing installed on the target, no cloud account over it, and the whole log back.",
+	"air-gapped":  "heliograph on an air-gapped server: which transports work with an internal git host or a file share, and the by-hand route when nothing crosses but a person.",
 	"claude-code": "Give Claude Code a way to run commands on a machine it cannot reach. Install the heliograph skill and it publishes steps and reads back timestamped logs.",
 	"codex":       "Use heliograph from Codex as a skill or through its MCP server, so Codex can drive a machine it cannot log into and read every run back as a timestamped log.",
 	"mcp":         "heliograph mcp exposes send, watch and logs as typed tools, so any MCP-capable agent can run steps on a machine it cannot reach and read the captured log back.",
