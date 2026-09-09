@@ -336,4 +336,100 @@ else
   t_no "the slow step produced no log"
 fi
 
+# EVERY FUNCTION MUST ALSO PARSE ON ITS OWN, which is not the same check.
+#
+# A single quote inside a PowerShell single-quoted string is written by
+# DOUBLING it; a backslash does not escape it. That produced a function whose
+# body was unbalanced, and the whole-file parse still reported it - at a line
+# number the eye slides over, in a file nothing else on Linux ever executes.
+# Asking per function names the one that is broken.
+#
+# -File, NOT -Command. `pwsh -Command '<script>' arg` does not bind arg into
+# $args, so the first version scanned the CURRENT directory instead of the
+# bootstrapped payload and would have passed with the payload empty.
+PS_PARSE="$TR/.parsecheck.ps1"
+cat > "$PS_PARSE" <<'PSPARSE'
+$bad = 0; $n = 0
+Get-ChildItem -Path $args[0] -Filter *.ps1 -Recurse -File | ForEach-Object {
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$null)
+  foreach ($d in $ast.FindAll({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+    $n++
+    $e = $null
+    [void][System.Management.Automation.Language.Parser]::ParseInput($d.Extent.Text, [ref]$null, [ref]$e)
+    if ($e -and $e.Count -gt 0) { $bad++; Write-Output "BAD $($_.Name)/$($d.Name): $($e[0].Message)" }
+  }
+}
+Write-Output "functions=$n bad=$bad"
+PSPARSE
+funcs_out="$("$PS_BIN" -NoProfile -File "$PS_PARSE" "$TR" 2>&1)"
+assert_contains "and every function in them parses on its own" "bad=0" "$funcs_out"
+if printf '%s' "$funcs_out" | grep -q 'functions=0'; then
+  t_no "no functions were found, so the assertion above checked nothing"
+else
+  t_ok "there were functions to check"
+fi
+
+# =============================================================================
+#  A Windows station that is not git
+# =============================================================================
+# A SCHEDULED TASK INHERITS NOTHING from the shell that registered it, and on
+# Windows that bites hardest: there is no systemd EnvironmentFile and no
+# ~/.git-token equivalent for a relay. So .station-env is the ONLY way a
+# detached Windows station can be given a RELAY_TOKEN.
+#
+# ONE IMPLEMENTATION OF THE RULES, and it is bash, because the file is bash.
+# service.ps1 used to carry its own in PowerShell, and an adversarial read found
+# six ways the two classified the same file differently. The rules themselves
+# have their own file - tests/test-station-env.sh - so what is left here is the
+# WINDOWS half: that service.ps1 delegates, and that station.ps1 exports.
+
+# --- service.ps1 asks that script, rather than carrying its own copy ---------
+assert_eq "service.ps1 no longer parses the env file itself" "0" \
+  "$(grep -c 'Test-StationEnvFormat\|Get-TransportNeeds' "$TR/service.ps1")"
+assert_contains "it calls station-env.sh" "station-env.sh" "$(cat "$TR/service.ps1")"
+assert_contains "through the bash station.ps1 already knows how to find" \
+  "Find-GitBash" "$(cat "$TR/service.ps1")"
+assert_eq "and that discovery is defined once, not twice" "1" \
+  "$(grep -c 'function Find-GitBash' "$TR/lib/Find-GitBash.ps1")"
+assert_eq "station.ps1 dot-sources it rather than defining its own" "0" \
+  "$(grep -c 'function Find-GitBash' "$TR/station.ps1")"
+
+# --- station.ps1 itself, run end to end --------------------------------------
+#
+# station.ps1 must EXPORT what it sources, or start.sh - a new process - sees
+# none of it. That omission made the launchd and setsid paths read the file and
+# discard every value, and Windows has no EnvironmentFile to fall back on.
+#
+# RUN, NOT READ, AND THE REAL SCRIPT. The first version grepped for "set -a" and
+# passed on the COMMENT explaining why "set -a" is there. The second extracted
+# the prefix and ran that alone, which stays green if the prefix is removed from
+# the command or moved after the exec. station.ps1 honours $env:HELIOGRAPH_BASH,
+# so on Linux it can be pointed at the bash that is already here and driven.
+cat > "$TR/start.sh" <<'STARTSH'
+#!/usr/bin/env bash
+echo "TRANSPORT=[${TRANSPORT:-}]"
+echo "RELAY_URL=[${RELAY_URL:-}]"
+echo "ARGS=[$*]"
+exit 7
+STARTSH
+chmod +x "$TR/start.sh"
+printf "TRANSPORT='relay'\nRELAY_URL='https://r.invalid'\n" > "$TR/.station-env"
+
+RC=0
+OUT="$(HELIOGRAPH_BASH="$(command -v bash)" "$PS_BIN" -NoProfile -File "$TR/station.ps1" --once 2>&1)" || RC=$?
+assert_contains "station.ps1 hands the env file's values to start.sh, a NEW process" \
+  "TRANSPORT=[relay]" "$OUT"
+assert_contains "including the transport's own variables" \
+  "RELAY_URL=[https://r.invalid]" "$OUT"
+assert_contains "and the arguments still arrive alongside them" "ARGS=[--once]" "$OUT"
+# exec, so the station's exit code is the one Windows sees. A scheduled task
+# that always reported success would hide every failed start.
+assert_eq "and start.sh's own exit code comes back through station.ps1" "7" "$RC"
+
+rm -f "$TR/.station-env"
+RC=0
+OUT="$(HELIOGRAPH_BASH="$(command -v bash)" "$PS_BIN" -NoProfile -File "$TR/station.ps1" --once 2>&1)" || RC=$?
+assert_contains "with no env file at all it still hands over" "ARGS=[--once]" "$OUT"
+assert_contains "with nothing set, which is right" "TRANSPORT=[]" "$OUT"
+
 t_summary

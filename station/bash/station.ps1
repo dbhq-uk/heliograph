@@ -38,50 +38,10 @@ $ErrorActionPreference = 'Stop'
 # bash: it launches a Linux distribution, or fails with an install prompt if
 # none exists. If a lookup found that first, the failure would be a confusing
 # WSL message rather than anything about heliograph.
-function Find-GitBash {
-    if ($env:HELIOGRAPH_BASH) {
-        if (Test-Path $env:HELIOGRAPH_BASH) { return $env:HELIOGRAPH_BASH }
-        throw "HELIOGRAPH_BASH is set to '$($env:HELIOGRAPH_BASH)' but nothing is there."
-    }
+# Dot-sourced, not defined here, because service.ps1 needs the same answer and a
+# second copy would be a second answer - see lib/Find-GitBash.ps1.
+. (Join-Path (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'lib') 'Find-GitBash.ps1')
 
-    foreach ($key in @(
-        'HKLM:\SOFTWARE\GitForWindows',
-        'HKLM:\SOFTWARE\WOW6432Node\GitForWindows',
-        'HKCU:\SOFTWARE\GitForWindows'
-    )) {
-        try {
-            $install = (Get-ItemProperty -Path $key -Name InstallPath -ErrorAction Stop).InstallPath
-            $candidate = Join-Path $install 'bin\bash.exe'
-            if (Test-Path $candidate) { return $candidate }
-        } catch { }
-    }
-
-    foreach ($p in @(
-        "$env:ProgramFiles\Git\bin\bash.exe",
-        "${env:ProgramFiles(x86)}\Git\bin\bash.exe",
-        "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe"
-    )) {
-        if ($p -and (Test-Path $p)) { return $p }
-    }
-
-    $onPath = Get-Command bash.exe -ErrorAction SilentlyContinue
-    if ($onPath -and $onPath.Source -notmatch '\\System32\\') { return $onPath.Source }
-
-    throw @"
-station.ps1: cannot find the bash that Git for Windows installs.
-
-heliograph runs its steps in bash, and git is its transport, so a control node
-needs Git for Windows either way. Install it from https://git-scm.com/download/win
-and run this again.
-
-If git is installed somewhere unusual, point at it directly:
-    `$env:HELIOGRAPH_BASH = 'D:\tools\Git\bin\bash.exe'
-
-A bash.exe in System32 is deliberately ignored. That one is WSL, which launches
-a Linux distribution rather than Git bash, and using it would fail in a way that
-says nothing about heliograph.
-"@
-}
 
 $bash = Find-GitBash
 Write-Host "station.ps1: using $bash"
@@ -106,5 +66,24 @@ station/bootstrap.sh.
 $repoUnix = $repoRoot -replace '\\', '/' -replace '^([A-Za-z]):', '/$1'
 $argline = ($args | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
 
-& $bash -lc "cd '$repoUnix' && ./start.sh $argline"
+# .station-env, if there is one, and `set -a` so it is EXPORTED.
+#
+# A relay, share or blob station is configured entirely by variables, and a
+# scheduled task inherits nothing from the shell that registered it - the same
+# fact service.ps1 has warned about for GIT_TOKEN since it was written. Windows
+# has no systemd EnvironmentFile to reach for, so the file is sourced here, in
+# the one place every Windows start goes through.
+#
+# `set -a` is the load-bearing half. Sourcing alone sets SHELL variables, and
+# start.sh execs station.sh, which execs run.sh - each one a new process, which
+# inherits environment variables and not shell ones. That exact omission made
+# the launchd and setsid paths read the file and discard every value.
+#
+# LOADED FOR A MANUAL RUN TOO, deliberately. On Windows there is no habit of
+# exporting variables in a profile before running something, so a station
+# behaving differently by hand than under its task would be the surprise, not
+# the consistency. It is the operator's own file, in their own payload.
+$env_prefix = "set -a; [ -r ./.station-env ] && . ./.station-env; set +a; "
+
+& $bash -lc "cd '$repoUnix' && $env_prefix exec ./start.sh $argline"
 exit $LASTEXITCODE

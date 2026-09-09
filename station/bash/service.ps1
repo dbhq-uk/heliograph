@@ -74,7 +74,75 @@ function Invoke-GitQuiet {
     }
 }
 
+# --- the env file, checked by the ONE thing that owns those rules -------------
+#
+# station-env.sh is bash, and that is the point: the file is bash. systemd reads
+# it with EnvironmentFile, and launchd, the setsid fallback and station.ps1 all
+# SOURCE it, so the authority on what a shell will do with a line is a shell.
+#
+# THIS FILE USED TO REIMPLEMENT THOSE RULES IN POWERSHELL, and an adversarial
+# read found six ways the two classified the same file differently: PowerShell
+# regexes are case-insensitive by default, so `transport=relay` passed here and
+# set nothing in bash; Get-Content silently eats a UTF-8 BOM that bash does not
+# skip when sourcing; an empty file passed one and failed the other. A station
+# that installs on Windows and is refused on Linux, from one file, is worse than
+# either answer on its own.
+#
+# IT DOES NOT DISCOVER BASH ITSELF. That is station.ps1's job and this file has
+# never duplicated it - it dot-sources lib/Find-GitBash.ps1, which station.ps1
+# uses too, so there is one answer to "which bash" as well.
+$StationEnv = Join-Path $RepoRoot '.station-env'
+
+function Invoke-StationEnvCheck {
+    param([string[]]$CheckArgs = @())
+    $script = Join-Path $RepoRoot 'station-env.sh'
+    if (-not (Test-Path $script)) { return $null }
+    $finder = Join-Path (Join-Path $RepoRoot 'lib') 'Find-GitBash.ps1'
+    if (-not (Test-Path $finder)) { return $null }
+    . $finder
+    $bash = $null
+    try { $bash = Find-GitBash } catch { return $null }
+    if (-not $bash) { return $null }
+
+    # The path in the form bash understands, exactly as station.ps1 converts it.
+    $unix = ($RepoRoot -replace '\\', '/') -replace '^([A-Za-z]):', '/$1'
+    $argline = ($CheckArgs | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    try {
+        $out = (& $bash -lc "cd '$unix' && ./station-env.sh $argline" 2>&1 | Out-String)
+        return [pscustomobject]@{ Output = $out.TrimEnd(); Code = $LASTEXITCODE }
+    } finally {
+        $ErrorActionPreference = $old
+    }
+}
+
 function Test-Credential {
+    # CHECKED BEFORE THE TRANSPORT IS DECIDED, whenever the file exists at all.
+    # station.ps1 sources it for a git station too, and reading the transport
+    # out of a malformed file first is circular: `export TRANSPORT='relay'` is
+    # exactly the bad line somebody writes, it parses as no transport, runs the
+    # git checks, and reports a missing origin remote to somebody whose real
+    # problem is one word.
+    $transport = 'git'
+    $check = Invoke-StationEnvCheck
+    if ($null -eq $check) {
+        if (Test-Path $StationEnv) {
+            Write-Warning "there is a $StationEnv but no bash to check it with."
+            Write-Warning "  station.ps1 needs Git for Windows anyway - install it, then run this again."
+            return $false
+        }
+    } else {
+        if ($check.Output) { Write-Host $check.Output }
+        if ($check.Code -ne 0) { return $false }
+        $t = Invoke-StationEnvCheck @('--transport')
+        if ($t -and $t.Output) { $transport = $t.Output.Trim() }
+    }
+    # A non-git transport is settled entirely by station-env.sh: its credential
+    # IS those variables, and it has just proved the transport initialises from
+    # them. Everything below is git's credential chain.
+    if ($transport -ne 'git') { return $true }
+
     $url = Invoke-GitQuiet @('-C', $RepoRoot, 'remote', 'get-url', 'origin')
     if (-not $url) {
         Write-Warning "there is no origin remote. Git is the transport, so there is nowhere to push a log."

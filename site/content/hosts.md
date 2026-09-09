@@ -60,8 +60,8 @@ the shell that installed it.
 | operator's terminal | yes | **yes** | **yes** | **yes** | no station side |
 | Docker, Kubernetes | yes | **yes** | **yes** | **yes** | no station side |
 | systemd, launchd, setsid | yes | **yes** | **yes** | **yes** | no station side |
-| Windows scheduled task | yes | not plumbed | not plumbed | not plumbed | no station side |
-| pipelines | yes | not plumbed | not plumbed | not plumbed | no station side |
+| Windows scheduled task | yes | **yes** | **yes** | **yes** | no station side |
+| pipelines | yes | not shipped | not shipped | not shipped | no station side |
 | Azure ACI, Web App, Apps Job, VM | yes | not plumbed | not plumbed | not plumbed | no station side |
 | Azure Function App | no `git` in the image | **yes** | not plumbed | not plumbed | no station side |
 
@@ -76,11 +76,21 @@ the image carries it, built from the same commit as the payload. The entrypoint
 points the station at it and says which checksum it used. Only the two key files
 have to be mounted, because those are yours.
 
+**A pipeline is git-only by design.** There, the **git push is the trigger** -
+that is what makes the latency *however long an agent takes to start* instead of
+*however long until the next cron tick*. A relay or a share has no push to fire
+on, so a non-git station in a pipeline would be a cron job costing a wait per
+step, every step.
+
+Both definitions say what such a job would need - a schedule with `trigger:
+none` on Azure, secret variables mapped explicitly into the environment, the
+relay's two key files materialised on disk, and `heliograph-seal` installed -
+and neither ships one, because nothing here has ever run it.
+
 **"not plumbed"** means the station can do it and the host recipe cannot carry
-it there. The Azure templates, the pipeline definitions and `service.ps1` still
-set up a git checkout and pass no `TRANSPORT` through, so selecting another
-transport there means editing the recipe. Nothing refuses it - it just is not
-wired yet.
+it there. The five Azure templates still set up a git checkout and pass no
+`TRANSPORT` through, so selecting another transport there means editing the
+template. Nothing refuses it - it just is not wired yet.
 
 **"no station side"** means the CLI implements the transport and the station
 has no code to read it, so the combination cannot work at all.
@@ -133,6 +143,24 @@ if it is missing, and says so if the file is readable by anyone else. systemd
 gets an `EnvironmentFile`; launchd and the `setsid` fallback source it before
 `exec`, because a LaunchAgent plist is world-readable and a token has no
 business being in one.
+
+**Windows works the same way, and needs it more.** There is no
+`EnvironmentFile` to reach for and no `~/.git-token` equivalent for a relay, so
+`.station-env` is the *only* way a scheduled task can be given a `RELAY_TOKEN`.
+`station.ps1` sources it on every start - by hand as well as under the task,
+because a station behaving differently in the two would be the surprise.
+**The rules for that file are written once**, in `station-env.sh`, and both
+installers call it. They were written twice - once in bash, once in PowerShell -
+and the two disagreed six ways about the same file: PowerShell's regexes are
+case-insensitive, so `transport=relay` passed there and set nothing in bash;
+`Get-Content` eats a UTF-8 BOM that bash does not skip when sourcing; an empty
+file passed one and failed the other. A station that installs on Windows and is
+refused on Linux, from one file, is worse than either answer alone.
+
+**And it asks the transport, rather than checking a list.** `station-env.sh`
+loads the file and runs that transport's own `tp_init`, which is local by
+contract and touches no network. A list of variable names cannot express that
+Azure Blob needs a SAS *or* a managed identity; `tp_init` already does.
 
 ## Picking one
 

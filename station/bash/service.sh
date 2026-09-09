@@ -163,197 +163,50 @@ systemd_user_ok() {
 # putting the secret in the unit itself would put it in `systemctl cat`.
 STATION_ENV="$REPO_ROOT/.station-env"
 
-# --- reading the env file ------------------------------------------------------
+# --- the env file, checked in ONE place ---------------------------------------
 #
-# ONE FILE, TWO PARSERS, and that is the constraint everything here is shaped by.
+# station-env.sh owns every rule about $STATION_ENV: the format both systemd and
+# a shell have to agree on, the transport name, and whether that transport will
+# initialise from what is in there. This file calls it and reports.
 #
-# systemd reads it with EnvironmentFile, which is its own format: no expansion,
-# no command substitution, quotes honoured. launchd and the setsid fallback have
-# no such mechanism, so they SOURCE it in a shell - where `$`, backticks, `&`,
-# `;` and `|` all mean something.
-#
-# A plain `PIGEONHOLE_SAS=?sv=x&ss=y&sig=z` - an ordinary Azure SAS, exactly what
-# an operator pastes - is fine to systemd and, to a shell, three background jobs
-# and a lost credential. So the file is VALIDATED at install time against the
-# intersection of the two languages, and a line outside it is refused with the
-# line quoted back.
-#
-# The intersection is small and easy to state: KEY=value, where the value is
-# either single-quoted or contains nothing either parser treats specially.
-env_file_lines() {
-  # Comments and blanks dropped; CR stripped, because a file edited on Windows
-  # otherwise carries one into the value and `relay\r` names no transport.
-  sed -e 's/\r$//' -e 's/^[[:space:]]*//' -e '/^#/d' -e '/^$/d' "$STATION_ENV" 2>/dev/null
-}
+# IT USED TO BE HERE, AND ALSO IN service.ps1, and that was the mistake. An
+# adversarial read of the two found six ways they classified the same file
+# differently - PowerShell regexes are case-insensitive, so `transport=relay`
+# passed there and set nothing in bash; Get-Content eats a UTF-8 BOM that bash
+# does not; an empty file passed one and failed the other. A station that
+# installs on Windows and is refused on Linux, from one file, is worse than
+# either answer alone.
+STATION_ENV="$REPO_ROOT/.station-env"
+STATION_ENV_CHECK="$REPO_ROOT/station-env.sh"
 
-validate_env_file() {
-  local line key value bad=0 n=0
-  while IFS= read -r line; do
-    n=$((n + 1))
-    case "$line" in
-      *=*) ;;
-      *)
-        warn "$STATION_ENV line $n is not a KEY=value assignment: $line"
-        bad=1; continue ;;
-    esac
-    key="${line%%=*}"
-    value="${line#*=}"
-    # `export FOO=x` is valid shell and invalid to systemd. `FOO = x` is valid
-    # to neither, and a parser that merely looked for `TRANSPORT` would have
-    # accepted it and then not set it.
-    case "$key" in
-      [A-Za-z_]*) ;;
-      *) warn "$STATION_ENV line $n has no usable variable name: $line"; bad=1; continue ;;
-    esac
-    case "$key" in
-      *[!A-Za-z0-9_]*)
-        warn "$STATION_ENV line $n: '$key' is not a variable name. systemd's"
-        warn "  EnvironmentFile takes no 'export' and no spaces around the '='."
-        bad=1; continue ;;
-    esac
-    case "$value" in
-      \'*\')
-        # Single-quoted. Neither parser expands anything inside, which is what
-        # makes this the form to recommend. A second quote inside it would end
-        # the string in the shell and not in systemd, so it is refused.
-        case "${value#\'}" in
-          *\'*\'*) warn "$STATION_ENV line $n: nested single quote in $key"; bad=1 ;;
-        esac ;;
-      *[\$\`\&\;\|\<\>\(\)\"\\]*|*\'*)
-        warn "$STATION_ENV line $n: $key holds a character a shell would act on."
-        warn "  launchd and the setsid fallback SOURCE this file, so an unquoted"
-        warn "  '&' backgrounds a job and loses the rest of the value. Wrap it:"
-        warn "      $key='...'"
-        bad=1 ;;
-    esac
-  done < <(env_file_lines)
-  [ "$n" -gt 0 ] || { warn "$STATION_ENV is empty"; return 1; }
-  return "$bad"
-}
-
-env_file_value() {  # env_file_value <KEY>
-  local v
-  v="$(env_file_lines | sed -n "s/^$1=//p" | tail -1)"
-  # Strip one layer of matching quotes, which is what both parsers do.
-  case "$v" in
-    \'*\') v="${v#\'}"; v="${v%\'}" ;;
-    \"*\") v="${v#\"}"; v="${v%\"}" ;;
-  esac
-  printf '%s' "$v"
-}
-
-# The transport this station will actually use, which is not necessarily git.
-#
-# READ FROM THE ENV FILE FIRST, then this shell. The env file is what the
-# service will see, so it is what the checks below have to reason about - an
-# operator who wrote TRANSPORT=relay into it and then ran `./service.sh install`
-# from a plain shell would otherwise get the git credential check, fail it, and
-# be told to configure a git remote for a station that will never use one.
 station_transport() {
-  local t=""
-  [ -r "$STATION_ENV" ] && t="$(env_file_value TRANSPORT)"
-  printf '%s' "${t:-${TRANSPORT:-git}}"
-}
-
-# For a transport that is not git, the credential is a set of variables, and the
-# question is whether the DETACHED service will be given them.
-#
-# IT ASKS THE TRANSPORT WHAT IT NEEDS rather than carrying a list. Every
-# transport declares its own requirements with cap_need, one per line, so the
-# names come out of transports/<name>.sh and stay right when a transport
-# changes. This file has never duplicated a check start.sh owns and does not
-# start now: start.sh asks whether the VALUES work, which needs the far side.
-# This asks the one thing start.sh cannot - whether they arrive at all.
-transport_needs() {  # transport_needs <transport> - the variables it requires
-  sed -n 's/^[[:space:]]*cap_need[[:space:]]\{1,\}\([A-Z_][A-Z0-9_]*\).*/\1/p' \
-    "$REPO_ROOT/transports/$1.sh" 2>/dev/null | sort -u
-}
-
-transport_env_check() {
-  local t="$1" missing="" v
-  if [ ! -f "$REPO_ROOT/transports/$t.sh" ]; then
-    warn "TRANSPORT is '$t' and there is no $REPO_ROOT/transports/$t.sh."
-    local shipped="" f
-    for f in "$REPO_ROOT"/transports/*.sh; do
-      [ -f "$f" ] || continue
-      f="$(basename "$f" .sh)"
-      shipped="${shipped:+$shipped, }$f"
-    done
-    warn "  This payload ships: ${shipped:-none}"
-    warn "  A typo here installs a service that cannot start and retries for ever."
-    return 1
+  if [ -x "$STATION_ENV_CHECK" ]; then
+    STATION_ENV="$STATION_ENV" bash "$STATION_ENV_CHECK" --transport 2>/dev/null
+    return
   fi
-  if [ ! -r "$STATION_ENV" ]; then
-    warn "TRANSPORT is '$t', and a detached service inherits nothing from this shell."
-    warn "  Its variables have to be somewhere the service can read. Write them to"
-    warn "  $STATION_ENV, one KEY='value' per line, mode 600:"
-    warn ""
-    warn "      TRANSPORT='$t'"
-    for v in $(transport_needs "$t"); do warn "      $v='...'"; done
-    warn ""
-    warn "  SINGLE QUOTES ARE NOT DECORATION. systemd reads this file and so does"
-    warn "  a shell, and an unquoted '&' - an Azure SAS is full of them - means"
-    warn "  something to one of them and not the other."
-    warn "  Then re-run this. './start.sh --check' proves the values themselves."
-    return 1
-  fi
-  # EVERY VARIABLE THE TRANSPORT ASKS FOR. Checking only that the file exists
-  # was fail-open in the worst available way: a file holding TRANSPORT=relay
-  # and nothing else installed cleanly and produced a service that could not
-  # start, restarting on a timer, on a machine nobody is watching.
-  for v in $(transport_needs "$t"); do
-    [ -n "$(env_file_value "$v")" ] || missing="$missing $v"
-  done
-  if [ -n "$missing" ]; then
-    warn "$STATION_ENV does not set:$missing"
-    warn "  transports/$t.sh requires each of those - it says so with cap_need -"
-    warn "  and a detached service sees only this file. It would start, fail its"
-    warn "  own preflight, and be restarted on a timer for ever."
-    return 1
-  fi
-  # A file anybody can read is a token anybody can read.
-  #
-  # `-rw-------` and stricter, and nothing else. Ten characters: the type, then
-  # owner, group and other. Positions five to ten are group and other, so a
-  # file only its owner can touch has six dashes there.
-  #
-  # Written as "what is acceptable" rather than as a list of bits to catch,
-  # because the list is where this kind of check goes wrong - an earlier version
-  # tested two positions, both off by one, and reported a 644 file as fine.
-  local mode
-  mode="$(ls -ld -- "$STATION_ENV" 2>/dev/null | cut -c1-10)"
-  case "$mode" in
-    ????------) : ;;
-    "")         warn "cannot read the permissions of $STATION_ENV" ;;
-    *)
-      warn "$STATION_ENV is readable or writable beyond its owner ($mode)."
-      warn "  It holds this station's transport credential. chmod 600 it." ;;
-  esac
-  say "transport  : $t, configured in $STATION_ENV"
-  return 0
+  printf '%s' "${TRANSPORT:-git}"
 }
 
 credential_check() {
-  local src url scheme t
-  # VALIDATED BEFORE THE TRANSPORT IS DECIDED, whenever the file exists at all.
+  local src url scheme t out rc
+  # CHECKED BEFORE THE TRANSPORT IS DECIDED, whenever the file exists at all.
   #
   # A malformed line is not a non-git problem: launchd and the setsid fallback
   # source this file for a git station too. And it is circular the other way -
   # `export TRANSPORT='relay'` is exactly the malformed line an operator writes,
-  # and reading the transport out of it FIRST gives 'git', runs the git checks,
+  # and reading the transport out of it first gives 'git', runs the git checks,
   # and reports a missing origin remote to somebody whose real problem is one
   # word at the start of one line.
-  if [ -e "$STATION_ENV" ]; then
-    validate_env_file || {
-      warn "  Fix those lines and re-run. Nothing has been installed."
-      return 1
-    }
+  if [ -x "$STATION_ENV_CHECK" ]; then
+    out="$(STATION_ENV="$STATION_ENV" bash "$STATION_ENV_CHECK" 2>&1)"; rc=$?
+    [ -n "$out" ] && printf '%s\n' "$out" | while IFS= read -r _l; do say "$_l"; done
+    [ "$rc" = "0" ] || return 1
   fi
   t="$(station_transport)"
-  if [ "$t" != "git" ]; then
-    transport_env_check "$t"
-    return $?
-  fi
+  # A non-git transport is settled entirely by station-env.sh above: its
+  # credential IS those variables, and it just proved the transport initialises
+  # from them. Everything below is git's credential chain.
+  [ "$t" = "git" ] || return 0
   # shellcheck source=caplib.sh disable=SC1091
   . "$REPO_ROOT/caplib.sh" 2>/dev/null || { warn "could not read caplib.sh, skipping the credential check"; return 0; }
   src="$(_cap_token_source 2>/dev/null)"
