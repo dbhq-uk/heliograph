@@ -779,19 +779,23 @@ const consentJS = `(function () {
 // in a search result, a browser tab, a shared link. "Transports - heliograph"
 // says nothing to somebody who has never heard of either word.
 //
-// They also carry the words people actually search. heliograph ships as a
-// Claude Code skill, and that is what a reader is looking for when they find
-// this - not a category name nobody types.
+// They also carry the words people actually search, measured rather than
+// guessed: docs/seo/2026-09-09-keyword-research.md. Nobody searches for the
+// problem in the words this site uses ("without SSH access", "audit log").
+// They search for the agent they already use ("claude code skills", "codex
+// cli mcp"), for "ssh alternative", and for "air gapped". So those are the
+// words in the titles, and "remote command execution" never is: to Google
+// that phrase means the vulnerability.
 var titles = map[string]string{
-	"index":       "heliograph - run commands on a machine you cannot log into",
+	"index":       "heliograph - run commands on a server without SSH",
 	"install":     "Install heliograph - a single binary, and nothing on the far side",
 	"quickstart":  "Quick start - from nothing to a captured log in five steps",
-	"claude-code": "heliograph for Claude Code - drive a machine the agent cannot reach",
-	"transports":  "Transports - git, relay, file share and bundle",
+	"claude-code": "heliograph Claude Code skill - drive a machine it cannot reach",
+	"transports":  "Transports - git, relay, share, and a bundle for air gaps",
 	"cli":         "CLI reference - send, watch, logs --gaps, plant, doctor",
-	"method":      "The method - how to debug across a gap you cannot cross",
-	"mcp":         "MCP server - heliograph as typed tools for any agent",
-	"codex":       "heliograph for Codex - drive a machine the agent cannot reach",
+	"method":      "The method - debugging a server you cannot log into",
+	"mcp":         "heliograph MCP server for Claude Code, Codex and any agent",
+	"codex":       "heliograph Codex CLI skill - drive a machine it cannot reach",
 	"station":     "The station - what heliograph runs on the far side",
 	"bootstrap":   "Planting a station - with the CLI, or without it",
 	"steps":       "Writing a step - one file, one question, and the traps",

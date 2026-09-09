@@ -1,10 +1,14 @@
 # MCP server
 
 `heliograph mcp` turns the CLI into a set of tools any MCP-capable agent can
-call. Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Zed - anything that
-speaks the Model Context Protocol.
+call. Claude Code, Codex CLI, Claude Desktop, Cursor, Windsurf, Cline, Zed -
+anything that speaks the Model Context Protocol.
 
 It is the same binary. There is nothing extra to install.
+
+If you were looking for an MCP server that runs commands over SSH, this is the
+one for when there is no SSH. A tool call publishes a request; a station on the
+far side, started by somebody with legitimate access, decides whether to run it.
 
 ## Configure it
 
@@ -12,6 +16,12 @@ Claude Code, one command:
 
 ```bash
 claude mcp add heliograph -- heliograph mcp
+```
+
+Codex CLI, the same shape:
+
+```bash
+codex mcp add heliograph -- heliograph mcp
 ```
 
 Anything that takes a JSON config:

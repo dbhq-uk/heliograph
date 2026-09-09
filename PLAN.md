@@ -69,6 +69,12 @@ in CI. The site documents the far side. There is no PowerShell station.
 3. **Track B: the PowerShell station**, seven PRs, gated on 1. Windows
    PowerShell 5.1, carrying git, share and relay. The conformance driver is the
    deliverable, not the code
+4. **The site's content gaps**, from the keyword research: a section on the
+   security page for "claude code permissions" and sandboxing (5,400 to 2,900
+   worldwide searches a month, soft SERPs), an air-gapped page once the bundle
+   has a station side, and a comparison with AWS SSM and Azure Run Command.
+   Which query each targets, and what it must not claim:
+   [`docs/seo/2026-09-09-keyword-research.md`](docs/seo/2026-09-09-keyword-research.md) section 5
 
 ## Operational notes
 
