@@ -426,6 +426,21 @@ func TestDocsPagesShowTheBreadcrumbTheyClaim(t *testing.T) {
 		}
 		if !strings.Contains(h, `<nav class="crumbs" aria-label="Breadcrumb">`) {
 			t.Errorf("%s claims a BreadcrumbList in JSON-LD and shows no breadcrumb", name)
+			continue
+		}
+		// The crumb is the navigation's label, not the H1. /compared's H1
+		// begins with the product's name, so the H1 version read
+		// "heliograph / heliograph compared with AWS SSM Run Command and
+		// Azure Run Command" - the site's name twice, and a crumb longer
+		// than the title it sits above.
+		crumb := regexp.MustCompile(`<span class="here">([^<]*)</span>`).FindStringSubmatch(h)
+		want := labels[strings.TrimSuffix(name, ".html")]
+		if crumb == nil || crumb[1] != want {
+			t.Errorf("%s: crumb is %v, want the nav label %q", name, crumb, want)
+		}
+		// And the JSON-LD says what the reader sees.
+		if !strings.Contains(h, `"name":"`+want+`"`) {
+			t.Errorf("%s: the BreadcrumbList does not name %q", name, want)
 		}
 	}
 }
