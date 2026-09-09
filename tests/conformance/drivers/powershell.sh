@@ -58,11 +58,16 @@ drv_supports() {
   [ -n "$_P_SHELL" ] || return 1
   case "$1" in
     capture) return 0 ;;
-    # A cancel keeps its partial log here, unconditionally. The bash side has
-    # to ask whether `sed -u` exists because redaction is a sed stage that
-    # buffers on busybox; caplib.psm1 redacts in-process, line by line, inside
-    # the read loop, so there is no buffer to lose.
-    cancel) return 0 ;;
+    # A cancel loses nothing here - caplib.psm1 redacts in-process, line by
+    # line, inside the read loop, so there is no buffer to lose the way busybox
+    # `sed` does. What it needs is a way to SIGNAL the whole tree.
+    #
+    # On Unix that is `setsid` and a negative pid. Git-Bash on Windows has
+    # neither, and a Windows station will use a Job Object with
+    # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE - which is PR 11. Until then this says
+    # so and p8 SKIPS on Windows, rather than starting nothing and letting the
+    # property report on a log that does not exist.
+    cancel) command -v setsid >/dev/null 2>&1 ;;
     # NOT YET, and said out loud. run.ps1 and the transports are PR 10 and 12.
     gates | deliver) return 1 ;;
     *) return 1 ;;

@@ -108,14 +108,31 @@ else
   t_no "caplib.psm1 FAILS the conformance suite"
 fi
 
-ps_skips="$(printf '%s' "$ps_out" | grep -c '^SKIP')"
-if [ "$ps_skips" = "2" ]; then
-  t_ok "and skips exactly the two it does not: the gates, and delivery"
+# WHICH properties skipped, not how many.
+#
+# A count was the first version and it was wrong on Windows, where Git-Bash has
+# no `setsid` so the cancel property legitimately skips too - three, not two.
+# Loosening the count to "2 or 3" would have accepted a THIRD skip anywhere,
+# including a capture property quietly dropping out. So the skippable ones are
+# named, and everything else must be answered.
+PS_MAY_SKIP='p5/p6|p8|p9'
+ps_bad_skip="$(printf '%s' "$ps_out" | grep '^SKIP' | grep -vE "SKIP (${PS_MAY_SKIP}):" || true)"
+if [ -z "$ps_bad_skip" ]; then
+  t_ok "and every property it skipped is one it is allowed to: the gates, delivery, cancel"
 else
-  t_no "caplib.psm1 skipped $ps_skips properties, not the 2 expected"
-  printf '     A third skip means a property stopped being checked without\n'
-  printf '     anybody deciding to stop checking it.\n'
+  t_no "caplib.psm1 skipped a property that is not on the allowed list:"
+  printf '%s\n' "$ps_bad_skip" | sed 's/^/     /'
 fi
+
+# And the capture properties are ANSWERED. This is the half a name-based check
+# needs: without it, a driver that skipped everything would have no disallowed
+# skip either.
+for prop in p1 p2 p3 p4 p7 p10; do
+  if printf '%s' "$ps_out" | grep -qE "^ok +${prop}:"; then :; else
+    t_no "caplib.psm1 did not answer $prop, which is a capture property it claims"
+  fi
+done
+t_ok "and every capture property it claims - p1 to p4, p7, p10 - was answered"
 
 # --- the two implementations write the SAME log -------------------------------
 # The control side parses these logs, and it parses one format. Two capture

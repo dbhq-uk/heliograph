@@ -378,6 +378,17 @@ if drv_supports cancel; then
   drv_cancel "$P8_HANDLE"
   p8_reported=$?
 
+  # THERE HAS TO BE A LOG BEFORE ANY OF THIS MEANS ANYTHING.
+  #
+  # A capture that never started leaves no file, and a missing file has size 0
+  # both times - so "the log stopped growing" passed, and so did "the driver
+  # reported the cancel delivered". Two absences agreeing is not agreement.
+  # Found on a Windows runner, where the driver had no `setsid` and started
+  # nothing at all, and this property reported two of its four assertions green.
+  if [ ! -s "$WORK/p8.log" ]; then
+    t_no "p8: no log exists, so the capture never started - nothing below is meaningful"
+  fi
+
   # THE LOG MUST STOP GROWING, and this is asked of the FILE rather than of the
   # driver. A driver that returns 0 without cancelling anything passes every
   # other assertion here: three seconds into a ten-second step the log is

@@ -175,11 +175,23 @@ a bash station but no station. A Windows box that *does* have Git for Windows
 should keep running the bash station: one implementation is better than two
 wherever there is a choice.
 
-It passes properties 1-4, 7 and 8 today, and **skips 5, 6 and 9 by name** - the
+It passes properties 1-4, 7 and 10 today, and **skips 5, 6 and 9 by name** - the
 gates live in `run.ps1` and delivery in the transports, neither of which exists
-yet. The suite counts those skips: a third one fails the build, because a
-property that stops being checked without anybody deciding to stop checking it
-is the thing this whole suite is built against.
+yet. On Windows it skips 8 as well: Git-Bash has no `setsid`, and a Windows
+cancel needs a Job Object, which is a later PR.
+
+The suite checks **which** properties skipped, not how many. A count was the
+first version and it was wrong on Windows; loosening it to "two or three" would
+have accepted a third skip anywhere, including a capture property quietly
+dropping out. So the skippable ones are named, and every capture property the
+implementation claims must be *answered*.
+
+**It is tested on Windows PowerShell 5.1, not only on 7.** That matters more
+than it sounds: the driver used to prefer `pwsh`, so on a runner with both
+editions the 5.1 path was never taken - and that is exactly how a first version
+shipped using `ProcessStartInfo.ArgumentList`, which .NET Framework does not
+have and which would have thrown on every real 5.1 station. Windows CI now runs
+the suite once per edition.
 
 Two more things are asserted that no property covers:
 
@@ -211,9 +223,17 @@ PowerShell that reads a process:
   free rather than when the line arrived. That is the buffering defect exactly,
   just relocated.
 
-What works: one `ReadLineAsync` per pipe, `Task.WaitAny` for whichever completes
-first, and the stamp taken in that thread immediately. No handlers, no extra
-runspaces, and nothing between the read and the clock.
+Neither is that the answer, and the second attempt was wrong too. **One
+`ReadLineAsync` per pipe with `Task.WaitAny`** looks correct and is not: a line
+that arrives while the loop is busy with the other stream sits in a *completed*
+task, unstamped, until the loop comes back for it. Under steady output on one
+stream the other starves - its stamp drifts from its arrival, and the child can
+block writing to it.
+
+What works is what bash does: **the child merges the two streams**, and the
+parent reads one pipe with a blocking `ReadLine`. `cmd /d /s /c` on Windows,
+`sh -c` elsewhere. The ordering is the child's own, and nothing gets between the
+read and the clock.
 
 ## Adding an implementation
 
