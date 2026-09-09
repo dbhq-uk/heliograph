@@ -59,6 +59,9 @@ __pycache__/
 .station-approved
 .station-delivery
 .station-relay-state
+# The transport's variables for a detached service - see service.sh. Mode 600,
+# and it holds a token: never committed.
+.station-env
 .station-tp-init
 .station-service.log
 

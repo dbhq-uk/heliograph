@@ -50,15 +50,16 @@ twenty untested templates would spend the credibility of the ones that work.
 transport's variables and the preflight checks *that* channel - so a relay or
 blob station now starts with the same command, and gets the same table.
 
-What is still git-only is how a host **passes those variables in**. That is the
-next thing on [the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md),
-not a property of the station.
+Most hosts now carry those variables too. The container image plants the station
+payload itself, so a transport with nothing to clone has one; the service
+installers read an env file, because a detached process inherits nothing from
+the shell that installed it.
 
 | host | git | Azure Blob | relay | file share | bundle, object store |
 |---|---|---|---|---|---|
 | operator's terminal | yes | **yes** | **yes** | **yes** | no station side |
-| Docker, Kubernetes | yes | not plumbed | not plumbed | not plumbed | no station side |
-| systemd, launchd, setsid | yes | not plumbed | not plumbed | not plumbed | no station side |
+| Docker, Kubernetes | yes | **yes** | no `heliograph-seal` in the image | **yes** | no station side |
+| systemd, launchd, setsid | yes | **yes** | **yes** | **yes** | no station side |
 | Windows scheduled task | yes | not plumbed | not plumbed | not plumbed | no station side |
 | pipelines | yes | not plumbed | not plumbed | not plumbed | no station side |
 | Azure ACI, Web App, Apps Job, VM | yes | not plumbed | not plumbed | not plumbed | no station side |
@@ -69,17 +70,69 @@ not a property of the station.
 `heliograph-seal` present and a key exchange completed, and `./start.sh --check`
 says so if either is missing.
 
+**The relay in a container is the one gap left here.** `transports/relay.sh`
+refuses to start without `heliograph-seal` - the crypto helper it is the one
+transport to need - and the published image does not carry it. Everything else
+about a relay station works in a container; that binary has to be added to the
+image or mounted, and until it is, the honest answer is no.
+
 **"not plumbed"** means the station can do it and the host recipe cannot carry
-it there. `entrypoint.sh`, the Kubernetes manifest, the service units and the
-Azure templates all set up a git checkout and pass no `TRANSPORT` through, so
-selecting another transport means editing the recipe. Nothing refuses it - it
-just is not wired.
+it there. The Azure templates, the pipeline definitions and `service.ps1` still
+set up a git checkout and pass no `TRANSPORT` through, so selecting another
+transport there means editing the recipe. Nothing refuses it - it just is not
+wired yet.
 
 **"no station side"** means the CLI implements the transport and the station
 has no code to read it, so the combination cannot work at all.
 
 What each still needs is in
 [the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
+
+### In a container
+
+The image carries the station payload, planted at build time by the same
+`bootstrap.sh` that plants a transport repo. So there is nothing to clone and
+nothing to mount:
+
+```bash
+docker run --rm \
+  -e TRANSPORT=share -e SHARE_DIR=/mnt/ops -e SHARE_SCOPE=dns-timeouts \
+  -v /mnt/ops:/mnt/ops \
+  ghcr.io/dbhq-uk/heliograph-toolkit:latest
+```
+
+`REPO_URL` alongside a non-git `TRANSPORT` is **refused**, not ignored: it means
+somebody believes the container is going to clone something, and it is not.
+
+The git path is untouched. It still clones, and that clone is the one
+authoritative copy of `start.sh` - the payload in the image is a fallback for
+the transports that have no repository, not a second opinion about the ones
+that do.
+
+### As a service
+
+A detached process inherits nothing from the shell that installed it. That has
+always been true of `GIT_TOKEN`, and `service.sh` has warned about it for as
+long as it has existed; for a relay or a share it is worse, because those have
+no fallback file the way caplib reads `~/.git-token`.
+
+So write the variables to `.station-env` beside the payload, mode 600:
+
+```
+TRANSPORT=relay
+RELAY_URL=https://heliograph-relay.dbhq.uk
+RELAY_ESTATE=payments
+RELAY_STATION=db-a
+RELAY_TOKEN=...
+RELAY_IDENTITY=/home/ops/.heliograph-identity
+RELAY_PEER=/home/ops/.heliograph-peer
+```
+
+`./service.sh install` reads it, tells you which variables that transport wants
+if it is missing, and says so if the file is readable by anyone else. systemd
+gets an `EnvironmentFile`; launchd and the `setsid` fallback source it before
+`exec`, because a LaunchAgent plist is world-readable and a token has no
+business being in one.
 
 ## Picking one
 

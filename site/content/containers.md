@@ -7,6 +7,17 @@ a real loop in it, and applies the shipped manifest to a real cluster.
 
 **It clones, then gets out of the way. It never re-implements `start.sh`.**
 
+Unless there is nothing to clone. A share or blob station has no repository, so
+the image carries the station payload - planted at build time by
+the same `bootstrap.sh` that plants a transport repo - and the entrypoint copies
+it into place instead of cloning. The git path is unchanged and the clone is
+still authoritative there; the baked payload is a fallback for the transports
+with no repo, not a second opinion about the ones that have one.
+
+The relay is the exception, and not for want of plumbing: it is the one
+transport that needs `heliograph-seal`, and this image does not carry that
+binary. See [the relay](/relay) for why it exists at all.
+
 `entrypoint.sh` resolves the repo URL, clones or reuses a checkout, and
 `exec ./start.sh`. Everything past the clone is `start.sh`'s alone. That
 boundary is why the container cannot drift from a station started by hand.
