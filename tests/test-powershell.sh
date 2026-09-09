@@ -405,6 +405,19 @@ assert_eq "station.ps1 dot-sources it rather than defining its own" "0" \
 # the prefix and ran that alone, which stays green if the prefix is removed from
 # the command or moved after the exec. station.ps1 honours $env:HELIOGRAPH_BASH,
 # so on Linux it can be pointed at the bash that is already here and driven.
+# HELIOGRAPH_BASH IS SET ONLY OFF WINDOWS, and that is the point rather than a
+# convenience. On Windows, finding Git bash IS what station.ps1 is for, so
+# overriding it there would skip the thing under test - and the first version
+# did exactly that and failed on the runner: under Git bash `command -v bash`
+# gives /usr/bin/bash, which converts to C:/Program Files/Git/usr/bin/bash, and
+# the real file is bash.exe. Find-GitBash knows that; a test guessing at it does
+# not.
+PS_BASH_ENV=()
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*) ;;
+  *) PS_BASH_ENV=("HELIOGRAPH_BASH=$(command -v bash)") ;;
+esac
+
 cat > "$TR/start.sh" <<'STARTSH'
 #!/usr/bin/env bash
 echo "TRANSPORT=[${TRANSPORT:-}]"
@@ -416,7 +429,7 @@ chmod +x "$TR/start.sh"
 printf "TRANSPORT='relay'\nRELAY_URL='https://r.invalid'\n" > "$TR/.station-env"
 
 RC=0
-OUT="$(HELIOGRAPH_BASH="$(command -v bash)" "$PS_BIN" -NoProfile -File "$TR/station.ps1" --once 2>&1)" || RC=$?
+OUT="$(env ${PS_BASH_ENV[@]+"${PS_BASH_ENV[@]}"} "$PS_BIN" -NoProfile -File "$TR/station.ps1" --once 2>&1)" || RC=$?
 assert_contains "station.ps1 hands the env file's values to start.sh, a NEW process" \
   "TRANSPORT=[relay]" "$OUT"
 assert_contains "including the transport's own variables" \
@@ -428,7 +441,7 @@ assert_eq "and start.sh's own exit code comes back through station.ps1" "7" "$RC
 
 rm -f "$TR/.station-env"
 RC=0
-OUT="$(HELIOGRAPH_BASH="$(command -v bash)" "$PS_BIN" -NoProfile -File "$TR/station.ps1" --once 2>&1)" || RC=$?
+OUT="$(env ${PS_BASH_ENV[@]+"${PS_BASH_ENV[@]}"} "$PS_BIN" -NoProfile -File "$TR/station.ps1" --once 2>&1)" || RC=$?
 assert_contains "with no env file at all it still hands over" "ARGS=[--once]" "$OUT"
 assert_contains "with nothing set, which is right" "TRANSPORT=[]" "$OUT"
 
