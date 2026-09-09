@@ -111,6 +111,37 @@ jobs:
             }
           done
 
+      # THE DEPLOYED RELAY, on main only.
+      #
+      # Everything above is measured against a local double, which proves the
+      # two halves agree and says nothing about the thing actually running at
+      # heliograph-relay.dbhq.uk - its TLS, its custom domain, its Durable
+      # Object routing, or whether the token it was configured with is still
+      # the token we hold. Those fail independently of this repository, and
+      # silently: the first anybody would know is a station that cannot reach
+      # its relay.
+      #
+      # NOT ON PULL REQUESTS, because a PR from a fork gets no secrets and the
+      # step would report a false negative for every contributor. It SKIPS
+      # rather than fails without them, so a repository with no relay
+      # configured is not broken by this.
+      #
+      # It touches a routing key no station can be named, so it collects
+      # nothing anybody is waiting for - a GET on that API deletes what it
+      # returns.
+      - name: the deployed relay still answers this credential
+        if: github.event_name == 'push'
+        env:
+          HELIOGRAPH_RELAY_URL: ${{ secrets.HELIOGRAPH_RELAY_URL }}
+          HELIOGRAPH_RELAY_ESTATE: ${{ secrets.HELIOGRAPH_RELAY_ESTATE }}
+          HELIOGRAPH_RELAY_TOKEN: ${{ secrets.HELIOGRAPH_RELAY_TOKEN }}
+        run: |
+          if [ -z "${HELIOGRAPH_RELAY_TOKEN:-}" ]; then
+            echo "no relay credential configured for this repository - skipping"
+            exit 0
+          fi
+          go test ./cmd/heliograph -run TestRelayReachesTheDeployedRelay -v -count=1
+
       - name: the docs agree with the station
         # The end-to-end test proves the two halves INTEROPERATE. This proves
         # they DESCRIBE each other correctly, which is a different failure.
