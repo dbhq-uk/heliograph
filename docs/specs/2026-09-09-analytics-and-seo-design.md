@@ -60,6 +60,24 @@ Graph tags and `llms.txt`. The audit found:
 Titles were already hand-written for the search result. The keyword research
 below adjusts a handful.
 
+## The baseline, measured before any of this shipped
+
+Lighthouse through the PageSpeed Insights API on 2026-09-09, live site:
+
+| Page | Performance | SEO | Accessibility | Best practices |
+|---|---|---|---|---|
+| `/` mobile | 98 | 100 | 100 | 96 |
+| `/` desktop | 100 | 100 | 100 | 96 |
+| `/install` mobile | 100 | 100 | 100 | 96 |
+| `/install` desktop | 100 | 100 | 100 | 96 |
+
+The four points off best practices are "errors in console", which are the
+two font preloads that 404. Search Console for the same day: zero impressions
+and zero queries for any `heliograph.dbhq.uk` page in the previous 90 days,
+the home page "unknown to Google", and `/install` "discovered, currently not
+indexed". The site had never been crawled, so nothing here is a regression to
+measure against; it is the floor.
+
 ## Keyword research
 
 Done with the DataForSEO API against UK and US Google, under a hard budget of
