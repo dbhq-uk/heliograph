@@ -55,9 +55,24 @@ cd transport
 ./start.sh
 ```
 
-**Requirements:** bash, git, and whatever the step itself invokes. Stock macOS,
-Alpine and busybox all work with nothing added. A GNU `sed` is preferred but not
+**Requirements:** bash 4 or newer, git, and whatever the step itself invokes.
+Alpine and busybox work with nothing added. A GNU `sed` is preferred but not
 required, and the preflight says exactly what you give up without one.
+
+**macOS needs a bash installing.** It still ships 3.2 at `/bin/bash` - the last
+GPLv2 release, from 2007 - and the station uses `declare -A` and `${var^^}`,
+neither of which 3.2 has, so the preflight refuses it and will not start:
+
+```bash
+brew install bash
+```
+
+Nothing else about a Mac is unusual. The one thing to know is that a
+**LaunchAgent does not inherit your PATH**: it gets
+`/usr/bin:/bin:/usr/sbin:/sbin`, where the only bash is 3.2. `service.sh
+install` resolves an absolute path to a newer one and writes it into the plist,
+so this is handled - but it is why a Mac station has to be installed with
+`service.sh` rather than by hand-writing a plist that says `/bin/bash`.
 
 ## Prove it will work before committing to anything
 

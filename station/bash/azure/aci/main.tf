@@ -53,9 +53,41 @@ variable "subnetName" {
 }
 
 variable "repoUrl" {
-  description = "The transport repo to clone, https:// or git@."
+  description = "The transport repo to clone, https:// or git@. Empty for any transport but git, which has no repository to clone."
   type        = string
+  default     = ""
 }
+# --- the transport -------------------------------------------------------------
+# EVERY OTHER HOST TAKES ONE, and this template did not: it required a repoUrl
+# and built a fixed environment, so a relay, share or blob station could not be
+# deployed here at all. station.sh has taken TRANSPORT since A3 and the image
+# carries the station payload, so the only thing missing was a way to say so.
+#
+# `env` AND `secureEnv` RATHER THAN A VARIABLE PER TRANSPORT. Each transport
+# declares its own requirements with cap_need and the station reads them from
+# the environment, so a template that named RELAY_URL, PIGEONHOLE_SAS and the
+# rest would need editing every time a transport gains a variable - and would be
+# five templates out of date at once. This way the template knows about
+# transports exactly as much as it needs to, which is not at all.
+variable "transport" {
+  description = "Which channel the station uses: git, relay, share, blob. Anything but git needs no repoUrl - the image carries the payload - and the entrypoint REFUSES a repoUrl alongside a non-git transport rather than ignoring it."
+  type        = string
+  default     = "git"
+}
+
+variable "extraEnv" {
+  description = "Extra plain environment for the container, for the selected transport's own variables. Values are visible in `terraform show` and in the resource definition: put anything secret in extraSecureEnv."
+  type        = map(string)
+  default     = {}
+}
+
+variable "extraSecureEnv" {
+  description = "Extra SECRET environment, for tokens. Goes through the platform's secure value field, so it does not appear in terraform's plain environment map - the same treatment gitToken already gets."
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
 
 variable "gitToken" {
   description = "Token for an https:// transport repo. Leave empty for a public repo or an ssh:// remote."
@@ -112,19 +144,40 @@ locals {
   # same way - there is still no separate `args` field to reach for instead.
   command = length(var.startArgs) == 0 ? [] : concat([var.entrypoint], var.startArgs)
 
+  # REPO_URL ONLY FOR GIT. The entrypoint refuses a REPO_URL alongside a non-git
+  # TRANSPORT rather than ignoring it - because a REPO_URL there means somebody
+  # believes this container is going to clone something, and it is not. Sending
+  # one anyway would deploy a container that exits 2 on every start.
   env_vars = merge(
-    { REPO_URL = var.repoUrl },
+    var.transport == "git" ? { REPO_URL = var.repoUrl } : { TRANSPORT = var.transport },
     var.gitTokenUser == "" ? {} : { GIT_TOKEN_USER = var.gitTokenUser },
+    var.extraEnv,
   )
   # GIT_TOKEN goes through secure_environment_variables below, not here, so it
   # never lands in `terraform show`/state's plain environment_variables map -
   # the azurerm_container_group equivalent of the bicep template's
   # secureValue. It is still readable by anyone who can read the container
   # group's own definition, same caveat as the bicep version.
-  secure_env_vars = var.gitToken == "" ? {} : { GIT_TOKEN = var.gitToken }
+  secure_env_vars = merge(
+    var.gitToken == "" ? {} : { GIT_TOKEN = var.gitToken },
+    var.extraSecureEnv,
+  )
 }
 
 resource "azurerm_container_group" "this" {
+  lifecycle {
+    precondition {
+      # A DEPLOYMENT THAT VALIDATES AND THEN EXITS 2 IS THE WORST OF BOTH. Making
+      # repoUrl optional for the non-git transports also made it optional for
+      # git, where it is the one thing the entrypoint cannot do without: the
+      # container came up, printed "no repository URL given", and stopped -
+      # after terraform reported success.
+      condition     = var.transport != "git" || var.repoUrl != ""
+      error_message = "transport is git, so repoUrl is required: that is the repository the station clones. For any other transport leave it empty - the image carries the payload."
+    }
+  }
+
+
   name                = var.name
   location            = var.location
   resource_group_name = var.resource_group_name

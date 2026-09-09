@@ -52,9 +52,31 @@ func Install(fsys fs.FS, root, target string) (Report, error) {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() {
-			files = append(files, p)
+		// THE SAME PRUNE bootstrap.sh MAKES, and for the same measured reason.
+		//
+		// `terraform init` drops a provider binary next to each Azure template,
+		// and azurerm alone is over 200MB - so a bootstrapped repo went from
+		// about 200KB to 913MB before that prune existed, and that repo gets
+		// cloned on a locked-down control node, sometimes over the link that is
+		// the reason this tool exists.
+		//
+		// HERE IT IS WORSE THAN A LARGE REPO. `go:embed all:bash` reads the
+		// WORKING TREE at build time, so a release built on a machine where
+		// anybody had run `terraform init` would carry those binaries inside
+		// the `heliograph` binary itself - permanently, in every download.
+		// .gitignore keeps them out of the repository and does nothing about
+		// the embed, and CI never saw it because a CI runner starts clean.
+		//
+		// Found by running `terraform test` locally, which is exactly the thing
+		// the templates needed and nothing had ever done.
+		if d.IsDir() {
+			switch d.Name() {
+			case ".terraform", ".git", "node_modules":
+				return fs.SkipDir
+			}
+			return nil
 		}
+		files = append(files, p)
 		return nil
 	})
 	if err != nil {

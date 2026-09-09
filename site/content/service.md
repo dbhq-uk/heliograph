@@ -29,12 +29,31 @@ It picks the best mechanism available, in this order:
 | | |
 |---|---|
 | **systemd `--user`, plus lingering** | the right answer on any modern Linux. `loginctl enable-linger` is what makes a user service survive logout |
-| **launchd** | macOS. A LaunchAgent, loaded for real |
+| **launchd** | macOS. A LaunchAgent, loaded for real. Needs a bash 4 or newer - see below |
 | **`setsid` + `nohup`** | the fallback where neither exists. Honest about being one |
 
 `HELIOGRAPH_SERVICE_NAME` overrides the unit name. One transport repo per
 investigation is ordinary, and a fixed name would let the second install
 silently replace the first.
+
+### On macOS, the LaunchAgent does not inherit your PATH
+
+It gets `/usr/bin:/bin:/usr/sbin:/sbin`, and the only bash there is the 3.2 that
+macOS still ships. The station's preflight refuses 3.2, so a plist that simply
+says `/bin/bash` produces a station that fails on every start and is restarted
+for ever by a `KeepAlive` doing exactly what it should. Every symptom points at
+launchd, and launchd is innocent.
+
+`service.sh install` therefore resolves an **absolute** path to a bash 4 or
+newer at install time, writes that into `ProgramArguments`, and prepends its
+directory to the LaunchAgent's PATH. With no such bash on the machine it
+refuses to install rather than leaving a crash loop behind:
+
+```
+error no bash 4 or newer on this Mac, and /bin/bash is 3.2.
+```
+
+`brew install bash` and run it again.
 
 ## Windows: `service.ps1`
 

@@ -51,6 +51,37 @@ variable "repoUrl" {
   type        = string
 }
 
+# --- the transport -------------------------------------------------------------
+# EVERY OTHER HOST TAKES ONE. Here it selects the CHANNEL only: repoUrl above
+# stays required, because a bare VM has no image and `git clone` is how the
+# payload arrives. A relay station on a VM therefore still needs a git host
+# reachable once, at first boot - a public or internal payload mirror, which is
+# a very different ask from a private repository a station pushes evidence to,
+# but not nothing.
+#
+# `extraEnv` AND `extraSecureEnv` RATHER THAN A VARIABLE PER TRANSPORT. Each
+# transport declares its own requirements with cap_need and the station reads
+# them from the environment, so a template naming RELAY_URL, PIGEONHOLE_SAS and
+# the rest would need editing every time a transport gains a variable.
+variable "transport" {
+  description = "Which channel the station uses: git, relay, share, blob. repoUrl is still required here whatever this says - see its own description."
+  type        = string
+  default     = "git"
+}
+
+variable "extraEnv" {
+  description = "Extra plain environment for the station's systemd unit, for the selected transport's own variables."
+  type        = map(string)
+  default     = {}
+}
+
+variable "extraSecureEnv" {
+  description = "Extra SECRET environment, for tokens. It lands in the same root:heliograph 0640 EnvironmentFile as the git token, so it is out of `systemctl cat` and `systemctl show` - the same treatment, and the same caveat."
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
 variable "gitToken" {
   description = "Token for an https:// transport repo. Leave empty for a public repo or an ssh:// remote."
   type        = string
@@ -114,18 +145,33 @@ data "azurerm_subnet" "this" {
 locals {
   image_parts = split(":", var.image)
 
+  # BASE64, so nothing an operator types can become shell. cloud-init.sh
+  # substitutes every other value straight into a double-quoted assignment in a
+  # script that runs as root at first boot; a whole environment block is exactly
+  # the shape that eventually carries a quote or a newline, and there it would
+  # be code rather than data. See cloud-init.sh's own note.
+  extra_env_b64 = base64encode(join("\n", [
+    for k, v in merge(var.extraEnv, var.extraSecureEnv) : "${k}=${v}"
+  ]))
+
   cloud_init_filled = replace(
     replace(
       replace(
         replace(
-          file("${path.module}/cloud-init.sh"),
-          "__REPO_URL__", var.repoUrl
+          replace(
+            replace(
+              file("${path.module}/cloud-init.sh"),
+              "__REPO_URL__", var.repoUrl
+            ),
+            "__GIT_TOKEN__", var.gitToken
+          ),
+          "__GIT_TOKEN_USER__", var.gitTokenUser
         ),
-        "__GIT_TOKEN__", var.gitToken
+        "__START_ARGS__", join(" ", var.startArgs)
       ),
-      "__GIT_TOKEN_USER__", var.gitTokenUser
+      "__TRANSPORT__", var.transport
     ),
-    "__START_ARGS__", join(" ", var.startArgs)
+    "__EXTRA_ENV_B64__", local.extra_env_b64
   )
 }
 

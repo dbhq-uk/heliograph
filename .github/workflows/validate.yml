@@ -327,6 +327,83 @@ jobs:
           terraform -chdir=infra init -backend=false >/dev/null
           terraform -chdir=infra validate
 
+      # THE STATION'S OWN TEMPLATES, WHICH NOTHING CHECKED.
+      #
+      # `infra/` has been validated since it existed. station/bash/azure/ - the
+      # five templates the documentation calls deployed - had never been through
+      # `terraform validate` or `bicep build` in CI at all, so an edit to any of
+      # them shipped unverified. They are what somebody runs against an estate
+      # they cannot easily debug, which is the worst place for that.
+      #
+      # `-backend=false`, so no state and no credentials are needed: this asks
+      # whether the configuration is well formed, not whether it deploys.
+      - name: the station's Azure templates are valid and formatted
+        run: |
+          set -euo pipefail
+          terraform fmt -check -diff -recursive station/bash/azure
+          n=0
+          for d in station/bash/azure/*/; do
+            [ -f "$d/main.tf" ] || continue
+            n=$((n + 1))
+            echo "--- $d"
+            terraform -chdir="$d" init -backend=false -input=false >/dev/null
+            terraform -chdir="$d" validate
+          done
+          [ "$n" -gt 0 ] || { echo "::error::no templates were validated, so this checked nothing"; exit 1; }
+          echo "$n terraform template(s) validated"
+
+      # AND THE REFUSALS ARE RUN, which `validate` never does: it checks that a
+      # configuration is well formed, not what it does with values. `plan`
+      # would, and it needs a subscription - these templates read a real subnet
+      # and a real service plan before they reach the resource.
+      #
+      # `mock_provider` is what makes a precondition testable at all. A
+      # precondition nobody has watched fail is a precondition nobody knows
+      # works, and every one of these was written because the thing it refuses
+      # would otherwise deploy and then exit 2, or be rejected by Azure halfway
+      # through creating a resource group's worth of things.
+      - name: the templates refuse what they say they refuse
+        run: |
+          set -euo pipefail
+          n=0
+          for f in station/bash/azure/*/main.tftest.hcl; do
+            [ -f "$f" ] || continue
+            d="$(dirname "$f")"
+            n=$((n + 1))
+            echo "--- $d"
+            terraform -chdir="$d" test
+          done
+          [ "$n" -gt 0 ] || { echo "::error::no template tests ran, so this checked nothing"; exit 1; }
+          echo "$n template test file(s) ran"
+
+      # bicep is a SECOND implementation of each template, and two
+      # implementations of one deployment is exactly the drift this repository
+      # keeps paying for. `az bicep build` is the only thing that reads them.
+      #
+      # WARNINGS ARE FAILURES HERE. The linter's no-unused-params is how a
+      # parameter added to the bicep and never wired into the resource gets
+      # noticed - which is precisely the mistake made while writing this, twice.
+      - name: the station's bicep templates build, warnings included
+        run: |
+          set -uo pipefail
+          az bicep install >/dev/null 2>&1 || true
+          bad=0; n=0
+          for f in station/bash/azure/*/main.bicep; do
+            [ -f "$f" ] || continue
+            n=$((n + 1))
+            out="$(az bicep build --file "$f" --stdout 2>&1 >/dev/null)"
+            if [ -n "$out" ]; then
+              echo "$out"
+              echo "::error::$f does not build cleanly"
+              bad=1
+            else
+              echo "ok $f"
+            fi
+          done
+          [ "$n" -gt 0 ] || { echo "::error::no bicep templates were built, so this checked nothing"; exit 1; }
+          [ "$bad" = "0" ] || exit 1
+          echo "$n bicep template(s) built with no warnings"
+
       - name: the specs are still there
         # They are the only thing in this repository that is finished, and a
         # PR that removes one should have to say so out loud.

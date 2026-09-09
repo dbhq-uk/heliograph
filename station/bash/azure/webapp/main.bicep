@@ -41,7 +41,32 @@ param subnetName string
 param planName string
 
 @description('The transport repo to clone, https:// or git@.')
-param repoUrl string
+param repoUrl string = ''
+// REQUIRED WHEN transport IS git, and bicep has no way to say so: there is no
+// cross-parameter assertion in the language or in ARM. The Terraform twin
+// refuses it with a precondition. Here, an empty repoUrl on a git station
+// deploys a container that prints "no repository URL given" and exits 2 -
+// after the deployment reports success.
+
+// --- the transport -----------------------------------------------------------
+// EVERY OTHER HOST TAKES ONE, and this template did not: it required a repoUrl
+// and built a fixed environment, so a relay, share or blob station could not be
+// deployed here at all. station.sh has taken TRANSPORT since A3 and the image
+// carries the station payload, so the only thing missing was a way to say so.
+//
+// `env` AND `secureEnv` RATHER THAN A PARAMETER PER TRANSPORT. Each transport
+// declares its own requirements with cap_need and the station reads them from
+// the environment, so a template naming RELAY_URL, PIGEONHOLE_SAS and the rest
+// would need editing every time a transport gains a variable.
+@description('Which channel the station uses: git, relay, share, blob. Anything but git needs no repoUrl - the image carries the payload.')
+param transport string = 'git'
+
+@description('Extra plain environment, for the selected transport\'s own variables.')
+param extraEnv object = {}
+
+@description('Extra SECRET environment, for tokens.')
+@secure()
+param extraSecureEnv object = {}
 
 @description('Token for an https:// transport repo. Leave empty for a public repo or an ssh:// remote.')
 @secure()
@@ -54,7 +79,7 @@ param gitTokenUser string = ''
 param statusPort int = 8080
 
 @description('Image to run.')
-param image string = 'ghcr.io/dbhq-uk/heliograph-toolkit:1.0.0-rc2'
+param image string = 'ghcr.io/dbhq-uk/heliograph-toolkit:1.0.0-rc1'
 
 @description('Arguments for start.sh, and after --, for station.sh. The repo URL is NOT one of these: it travels as REPO_URL. Space-joined into the container\'s Startup Command, so no argument here may itself contain a space.')
 param startArgs array = []
@@ -129,8 +154,11 @@ resource site 'Microsoft.Web/sites@2023-12-01' = {
           value: string(statusPort)
         }
         {
-          name: 'REPO_URL'
-          value: repoUrl
+          // REPO_URL ONLY FOR GIT. The entrypoint refuses one beside a non-git
+          // TRANSPORT rather than ignoring it, so a station on another channel
+          // is told its transport instead.
+          name: transport == 'git' ? 'REPO_URL' : 'TRANSPORT'
+          value: transport == 'git' ? repoUrl : transport
         }
         {
           // See the header: turns off the persistent Azure Files /home
@@ -145,7 +173,24 @@ resource site 'Microsoft.Web/sites@2023-12-01' = {
           name: 'GIT_TOKEN_USER'
           value: gitTokenUser
         }
-      ], empty(gitToken) ? [] : [
+      ],
+      // LAST, so a duplicate name wins - which is what Terraform's merge()
+      // does with the same two maps. The two emitted the extras in opposite
+      // positions and therefore resolved a collision opposite ways: an
+      // extraSecureEnv.GIT_TOKEN overrode the gitToken parameter under
+      // Terraform and lost to it under bicep. Two implementations of one
+      // deployment disagreeing about precedence is worse than either rule.
+      //
+      // App settings have no separate secure field - see the gitToken note
+      // below - so both maps land here and carry the same caveat.
+      map(items(extraEnv), e => {
+        name: e.key
+        value: e.value
+      }),
+      map(items(extraSecureEnv), e => {
+        name: e.key
+        value: e.value
+      }), empty(gitToken) ? [] : [
         {
           // App settings have no secureValue field the way ACI's
           // environmentVariables do. This still keeps the token out of the

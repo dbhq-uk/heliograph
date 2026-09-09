@@ -377,7 +377,7 @@ plist_of() {  # plist_of <repo> [args...] - render without touching launchctl
     <key>Label</key><string>${LAUNCH_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
+        <string>${PLIST_BASH:-/opt/homebrew/bin/bash}</string>
 ${args_xml}    </array>
     <key>KeepAlive</key>
     <dict><key>SuccessfulExit</key><false/></dict>
@@ -404,6 +404,29 @@ assert_eq "and KeepAlive is never unconditional" "0" \
 
 assert_contains "it survives a reboot, which the setsid fallback does not" \
   "RunAtLoad" "$(cat "$sv_src")"
+
+# THE PLIST MUST NOT NAME /bin/bash, and this is the Linux-runnable half of a
+# defect that only a Mac can demonstrate.
+#
+# macOS ships bash 3.2 at /bin/bash, which start.sh's preflight refuses. A Mac
+# that runs stations has a newer one from Homebrew, and the operator's PATH
+# finds it - but a LaunchAgent's PATH is /usr/bin:/bin:/usr/sbin:/sbin, which
+# does not. So a plist saying `/bin/bash` installs cleanly, fails preflight on
+# every start, exits 1, and is restarted for ever by a KeepAlive that is doing
+# exactly what it should. Four CI runs read that as a flaky test.
+assert_eq "the plist does not exec /bin/bash, which on a Mac is 3.2" "0" \
+  "$(grep -c '<string>/bin/bash</string>' "$sv_src")"
+# Asked of the DEFINITION and of the VERSION TEST, not of the name. Grepping
+# for "pick_bash" passes on a comment mentioning it, which is how a guard ends
+# up reporting a mechanism that is no longer wired to anything.
+assert_eq "it defines pick_bash, which resolves a bash at install time" "1" \
+  "$(grep -c '^pick_bash() {' "$sv_src")"
+assert_contains "and pick_bash refuses anything older than 4" \
+  '[ "$v" -ge 4 ]' "$(cat "$sv_src")"
+# And puts that bash's directory on the agent's PATH, so anything start.sh
+# spawns as a bare `bash` finds the same one rather than falling back to 3.2.
+assert_contains "and prepends its directory to the agent's PATH" \
+  'PATH=$(sh_quote "$bindir")' "$(cat "$sv_src")"
 
 # The label carries the service name for the same reason the unit name does:
 # one transport repo per investigation is ordinary, and a fixed label would

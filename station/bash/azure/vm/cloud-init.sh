@@ -51,6 +51,32 @@ REPO_URL="__REPO_URL__"
 GIT_TOKEN="__GIT_TOKEN__"
 GIT_TOKEN_USER="__GIT_TOKEN_USER__"
 START_ARGS="__START_ARGS__"
+# The transport, and its own variables as EnvironmentFile lines.
+#
+# ON A VM THE CLONE IS HOW THE PAYLOAD ARRIVES, and that is a different question
+# from which channel carries the requests. A container image ships the station,
+# so its entrypoint refuses a repository URL beside a non-git transport - there
+# is genuinely nothing to clone. A bare VM has no such image: `git clone` is the
+# only way the toolkit gets here, so repoUrl stays required whatever TRANSPORT
+# says, and it names where the PAYLOAD comes from rather than where logs go.
+#
+# That is worth being plain about: a relay station on a VM still needs a git
+# host reachable ONCE, at first boot. A public or internal payload mirror is a
+# very different ask from a private repository a station pushes evidence to, but
+# it is not nothing.
+TRANSPORT="__TRANSPORT__"
+# BASE64, NOT THE LINES THEMSELVES. Everything above is substituted straight
+# into a double-quoted shell assignment in a script that runs as root at first
+# boot, so a value containing a quote, a `$` or a newline is not a value - it is
+# code. That is survivable for repoUrl, which the same person chose, and it is
+# not something to add MORE of: a whole environment block is exactly the shape
+# that ends up carrying somebody else's string one day.
+#
+# Encoded on the control side, decoded here, never expanded by the shell. It
+# also settles the quoting question the other way: whatever bytes went in come
+# out, including the ones systemd would have mangled if this were assembled
+# line by line in the template.
+EXTRA_ENV_B64="__EXTRA_ENV_B64__"
 
 LOG=/var/log/heliograph-cloud-init.log
 exec > >(tee -a "$LOG") 2>&1
@@ -95,12 +121,24 @@ chmod +x "$WORKDIR/start.sh"
 # the unit, so the token is not visible in `systemctl cat` or
 # `systemctl show` - only in this file, which is root:heliograph 0640.
 install -d -m 0750 -o root -g heliograph /etc/heliograph
+# CREATED 0640 BEFORE ANYTHING IS WRITTEN INTO IT. A plain `> file` creates it
+# at 0644 under the default umask and the chmod came afterwards, so every token
+# in it was world-readable for the width of that window - on a machine where
+# cloud-init runs as root beside whatever else the image starts.
+install -m 0640 -o root -g heliograph /dev/null /etc/heliograph/env
 {
   printf 'GIT_TOKEN=%s\n' "$GIT_TOKEN"
   printf 'GIT_TOKEN_USER=%s\n' "$GIT_TOKEN_USER"
-} > /etc/heliograph/env
-chown root:heliograph /etc/heliograph/env
-chmod 0640 /etc/heliograph/env
+  [ -n "$TRANSPORT" ] && [ "$TRANSPORT" != "git" ] && printf 'TRANSPORT=%s\n' "$TRANSPORT"
+  # systemd's EnvironmentFile, so systemd's rules: it strips leading and
+  # trailing whitespace, honours quotes, and treats a newline as the end of an
+  # assignment. A value that needs any of that has to arrive already quoted -
+  # the template does not add quotes, because guessing when to would be worse
+  # than saying so. A backslash in an unquoted value IS altered by systemd.
+  if [ -n "$EXTRA_ENV_B64" ]; then
+    printf '%s' "$EXTRA_ENV_B64" | base64 -d
+  fi
+} >> /etc/heliograph/env
 
 cat > /etc/systemd/system/heliograph.service <<UNIT
 [Unit]

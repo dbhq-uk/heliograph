@@ -20,6 +20,7 @@ in CI. The site documents the far side. There is no PowerShell station.
 | control CLI over git | works, driven end to end in CI against a real station |
 | relay | **works end to end**, driven against the deployed relay at `heliograph-relay.dbhq.uk` on 2026-09-09 |
 | Azure Blob | works end to end via `drop.sh` and `pigeonhole.sh`, not via the CLI |
+| every host but a pipeline | carries a transport. Azure Blob works outright everywhere; the relay and the file share need a volume the templates do not mount |
 | file share | **works end to end**, proved by a CLI round trip in CI |
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
@@ -61,18 +62,17 @@ in CI. The site documents the far side. There is no PowerShell station.
 | - | **the breadcrumb says the nav label, not the H1** - `/compared` read "heliograph / heliograph compared with AWS SSM Run Command and Azure Run Command", found by driving the deployed page rather than by a test |
 | - | **the docs affordances, measured against paseo.sh** - a copy button on every code block, Copy/View as markdown above the title, a visible breadcrumb, a rail that marks where you are, `favicon.ico` and `apple-touch-icon.png`, and the GitHub mark on the site's own links to the repository. Spec: [`docs/specs/2026-09-09-site-affordances-design.md`](docs/specs/2026-09-09-site-affordances-design.md) |
 | - | **the content the research asked for** - `/air-gapped`, `/compared` (AWS SSM and Azure Run Command), and a permissions section on `/security`. Also: `heliograph send` on a bundle told people to run `./station.sh --bundle`, which has never existed; it now says the honest thing |
+| #49 | **the Azure templates carry a transport**, and CI validates them at all |
 
 ## Next, in order
 
-1. **The five Azure templates are the last git-only hosts.** They take a
-   `repoUrl` and build a fixed environment, so selecting another transport means
-   editing the template. Nothing in CI runs `terraform validate` over them
-   either - only `infra/` is checked - so an edit to them is unverified today.
-   The pipelines are deliberately git-shaped and say so: the git push is the
-   trigger, and a non-git station there is a cron job that costs a wait per step
-2. **Conformance across every transport in CI** (PR 7). Property 9 only
-   exercises git today, so a no-op `tp_put_log` on another transport would pass
-3. **Track B: the PowerShell station**, seven PRs, gated on 1. Windows
+1. **Conformance across every transport in CI** (roadmap A/PR 7). Property 9
+   only exercises git today, so a no-op `tp_put_log` on another transport would
+   pass. Every transport now has both halves and a host that can run it, which
+   is what makes this the next thing worth doing
+2. **Track B: the PowerShell station**, seven PRs. Windows PowerShell 5.1,
+   carrying git, share and relay. The conformance driver is the deliverable,
+   not the code Windows
    PowerShell 5.1, carrying git, share and relay. The conformance driver is the
    deliverable, not the code
 4. **The bundle's station side.** `/air-gapped` now says plainly that the
@@ -119,20 +119,43 @@ Stated on the site rather than hidden, so nobody plans around a promise.
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour
-- **`test-launchd.sh` has now failed three times**, always on the same
-  assertion: *"launchd restarted the loop as pid N after a clean exit"*. The
-  test writes `stop: yes`, watches until launchd reports no pid, waits eight
-  seconds and asks again - and a pid was there.
-  `KeepAlive { SuccessfulExit: false }` should forbid exactly that.
-  Two readings, and they need opposite fixes: the loop exited NON-zero, so
-  launchd restarted it correctly and the defect is upstream of the assertion; or
-  launchd's respawn throttle raced the eight-second window, so the assertion is
-  what is wrong. `launchctl print` carries *last exit code*, which separates
-  them outright, and it cannot be read after the fact.
-  **The test now captures that itself on failure**, along with the station's
-  service log and the published status. Nobody had gathered it in three
-  occurrences because every one of them was somebody re-running a job. The next
-  failure carries its own diagnosis; do not re-run it without reading that
+- **The ACI templates are not twins.** `aci/main.tf` declares an `ip_address`
+  block with TCP 65000 and `aci/main.bicep` omits `ipAddress` entirely, so the
+  two produce different resources from the same inputs - network policy and
+  audit tooling see an exposed private port only under Terraform. Pre-existing,
+  found by an adversarial read on 2026-09-09, and NOT fixed here because which
+  of the two is right is a deployment question: the Terraform provider refuses a
+  VNet-injected group with no ports (that refusal is documented in azure.md),
+  and bicep does not. Deciding needs a deployment, not a diff
+- **A value an operator types reaches the VM's cloud-init unescaped.**
+  `repoUrl`, `gitToken` and `gitTokenUser` are substituted straight into
+  double-quoted shell assignments in a script that runs as root at first boot,
+  so a quote or a `$` in one is code rather than data. Pre-existing, and the
+  same person chose the value and owns the VM, so it is a robustness problem
+  rather than an escalation. The transport's environment block was added
+  base64-encoded specifically so as not to widen it
+**Fixed on 2026-09-09, and recorded because it was on this list: no station has
+ever run under launchd.** `test-launchd.sh` had failed four times on *"launchd
+restarted the loop as pid N after a clean exit"*, and every occurrence was
+re-run clean by somebody, so nobody read it. On the fourth the test captured
+`launchctl print` itself, and the answer was one line: `last exit code = 1`,
+with `PATH => /usr/bin:/bin:/usr/sbin:/sbin` above it and *"FAIL bash need 4 or
+newer, found 3.2.57"* in the station's log.
+
+macOS ships bash 3.2 at `/bin/bash`. A Mac that runs stations has a newer one
+from Homebrew and the operator's PATH finds it, so `service.sh install` passes
+every check it makes. A LaunchAgent does not inherit that PATH, so it found 3.2,
+the preflight refused it, the station exited 1, and `KeepAlive
+{ SuccessfulExit: false }` restarted it - correctly. The plist was blameless and
+the assertion was right. The station simply never started, and a poll for *"is a
+loop running"* kept finding one because a crash loop always has a pid.
+
+`service.sh` now resolves an absolute bash 4-or-newer at install time,
+`pick_bash`, writes it into `ProgramArguments`, and prepends its directory to
+the agent's PATH; with none on the machine it refuses to install rather than
+leaving a crash loop behind. `test-service.sh` asserts all of that on Linux, and
+`test-launchd.sh` now checks the plist's bash and the log for *"Not starting the
+station"* before believing a pid.
 
 **Fixed on 2026-09-08, and recorded because they were on this list:** the relay
 sequence collision between the loop and the runner is closed by a `mkdir` lock
@@ -156,6 +179,30 @@ pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
 
+**A re-run that goes green is a diagnosis nobody made.** The launchd assertion
+failed four times and was re-run clean four times, and the fourth failure - the
+first to print `launchctl print` - said in one line that no station had ever
+started on a Mac. An intermittent failure is a race between a real bug and a
+poll, not an absence of one. Make a test carry its own evidence BEFORE it fails
+again, because the evidence that settles it is usually the kind the next run
+destroys.
+
+**A process is not a service.** *"the loop is running as pid N"* was true
+throughout a crash loop, because launchd kept making new ones. Assert on what
+the thing was installed to DO - it got past preflight, it published a status -
+never on the existence of a pid.
+
+**A template nobody has validated is a template nobody knows parses.** The very
+first CI run of `terraform validate` over `station/bash/azure`, added on
+2026-09-09, failed on code that predated it: a SENSITIVE value cannot drive
+`for_each`, because a `for_each` key becomes part of a resource address and a
+secret may not go there. `var.gitToken` is sensitive, so
+`for_each = var.gitToken == "" ? [] : [1]` is sensitive too, and the Container
+Apps job had never parsed under the pinned terraform. It had been DEPLOYED -
+just with a newer terraform than CI pins, which is why nothing noticed. Unwrap
+only what is genuinely not secret: the EMPTINESS of a token, or the NAMES of a
+secret map, never the values.
+
 **Adversarial review finds what self-review does not.** Two codex passes on
 2026-09-08 found ten defects, five missed entirely - a quoting bypass of the
 env guard, `cap_push` returning 0 on failure, a committed test artefact that
@@ -177,6 +224,15 @@ locks and two processes went in at once. Four takers wanting fifteen numbers
 each got 33 distinct numbers out of 60. It fails exactly like having no lock:
 intermittently, silently, under load. Ask `kill -0` whether the recorded pid is
 alive, which is what station.sh has always done.
+
+**`go:embed` reads the working tree, and .gitignore does not stop it.**
+`terraform init` in the Azure templates drops 200MB of provider binaries per
+template, and `bootstrap.sh` has pruned `.terraform` since it was written. The Go
+planter did not - so a release built on any machine where somebody had run
+terraform would have carried those binaries inside the `heliograph` binary,
+permanently, in every download. CI never saw it because a CI runner starts
+clean. Found by running `terraform test` locally, which is the thing the
+templates needed and nothing had ever done.
 
 **One file format, two implementations, is six disagreements.** The
 `.station-env` rules were written in bash for `service.sh` and again in

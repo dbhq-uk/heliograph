@@ -38,7 +38,24 @@ param vnetName string
 param subnetName string
 
 @description('The transport repo to clone, https:// or git@.')
-param repoUrl string
+param repoUrl string = ''
+
+// --- the transport -----------------------------------------------------------
+// EVERY OTHER HOST TAKES ONE, and this template did not: it required a repoUrl
+// and built a fixed environment, so a relay, share or blob station could not be
+// deployed here at all. station.sh has taken TRANSPORT since A3 and the image
+// carries the station payload, so the only thing missing was a way to say so.
+//
+// `env` AND `secureEnv` RATHER THAN A PARAMETER PER TRANSPORT. Each transport
+// declares its own requirements with cap_need and the station reads them from
+// the environment, so a template naming RELAY_URL, PIGEONHOLE_SAS and the rest
+// would need editing every time a transport gains a variable.
+@description('Which channel the station uses: git, relay, share, blob. repoUrl is still required here whatever this says: a bare VM has no image, so the clone is how the PAYLOAD arrives, which is a different question from which channel carries the requests.')
+param transport string = 'git'
+
+@description('The selected transport\'s own variables, as base64 of KEY=value lines - systemd EnvironmentFile format. BASE64 BECAUSE cloud-init.sh substitutes every other value straight into a double-quoted shell assignment that runs as root at first boot, where a quote or a newline would be code rather than data. The Terraform twin builds this from two maps; bicep has no base64 of a joined object, so it is passed in:  base64(join([\'RELAY_URL=...\', \'RELAY_TOKEN=...\'], \'\\n\'))')
+@secure()
+param extraEnvB64 string = ''
 
 @description('Token for an https:// transport repo. Leave empty for a public repo or an ssh:// remote.')
 @secure()
@@ -74,7 +91,7 @@ var cloudInitTemplate = loadTextContent('cloud-init.sh')
 var cloudInitFilled = replace(
   replace(
     replace(
-      replace(cloudInitTemplate, '__REPO_URL__', repoUrl),
+      replace(replace(replace(cloudInitTemplate, '__REPO_URL__', repoUrl), '__TRANSPORT__', transport), '__EXTRA_ENV_B64__', extraEnvB64),
       '__GIT_TOKEN__', gitToken
     ),
     '__GIT_TOKEN_USER__', gitTokenUser

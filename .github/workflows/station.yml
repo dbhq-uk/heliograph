@@ -540,6 +540,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A Mac ships bash 3.2 - the last GPLv2 release, from 2007 - and the
+      # station's preflight refuses it, correctly: it uses `declare -A` and
+      # `${var^^}`, neither of which 3.2 has. So a Mac that runs a station has
+      # a newer bash, and this runner must too, or the job below tests a
+      # station that refuses to start.
+      #
+      # It went unnoticed for four runs because it does not LOOK like that.
+      # launchd restarts a failing job, so a poll for "is a loop running" keeps
+      # finding a pid, and only the timing of the restart decides whether the
+      # run is green. The fix is in service.sh; this makes the runner able to
+      # demonstrate it.
+      - name: A Mac that runs a station has a bash 4 or newer
+        run: |
+          brew list bash >/dev/null 2>&1 || brew install bash
+          "$(brew --prefix)/bin/bash" --version | head -1
+
       # There is no systemd on a Mac and the setsid fallback does not survive
       # a reboot. The assertion that earns this runner is that `stop: yes`
       # STICKS: KeepAlive/SuccessfulExit=false is a belief about somebody
