@@ -89,18 +89,20 @@ Stated on the site rather than hidden, so nobody plans around a promise.
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour
-- **`test-launchd.sh` is flaky, and it has now failed twice.** Both times on the
-  same assertion, and the evidence is worth writing down rather than
-  re-gathering: *"launchd restarted the loop as pid N after a clean exit"*. The
+- **`test-launchd.sh` has now failed three times**, always on the same
+  assertion: *"launchd restarted the loop as pid N after a clean exit"*. The
   test writes `stop: yes`, watches until launchd reports no pid, waits eight
   seconds and asks again - and a pid was there.
   `KeepAlive { SuccessfulExit: false }` should forbid exactly that.
-  Two readings, both untested: the loop exited NON-zero (so launchd restarted it
-  correctly, and the defect is upstream of the assertion), or launchd's respawn
-  throttle raced the eight-second window. **The next person to see it should
-  capture `$LOG_FILE` and `launchctl print` before re-running**, which is the
-  one thing nobody has done. It cannot be reproduced off macOS, which is why it
-  is still here
+  Two readings, and they need opposite fixes: the loop exited NON-zero, so
+  launchd restarted it correctly and the defect is upstream of the assertion; or
+  launchd's respawn throttle raced the eight-second window, so the assertion is
+  what is wrong. `launchctl print` carries *last exit code*, which separates
+  them outright, and it cannot be read after the fact.
+  **The test now captures that itself on failure**, along with the station's
+  service log and the published status. Nobody had gathered it in three
+  occurrences because every one of them was somebody re-running a job. The next
+  failure carries its own diagnosis; do not re-run it without reading that
 
 **Fixed on 2026-09-08, and recorded because they were on this list:** the relay
 sequence collision between the loop and the runner is closed by a `mkdir` lock
