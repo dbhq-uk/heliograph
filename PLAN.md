@@ -18,7 +18,7 @@ in CI. The site documents the far side. There is no PowerShell station.
 | | |
 |---|---|
 | control CLI over git | works, driven end to end in CI against a real station |
-| relay | **works end to end**, against the deployed relay at `heliograph-relay.dbhq.uk` |
+| relay | **works end to end**, driven against the deployed relay at `heliograph-relay.dbhq.uk` on 2026-09-09 |
 | Azure Blob | works end to end via `drop.sh` and `pigeonhole.sh`, not via the CLI |
 | file share | **works end to end**, proved by a CLI round trip in CI |
 | bundle, object store | control side only; **no station side at all** |
@@ -60,6 +60,19 @@ in CI. The site documents the far side. There is no PowerShell station.
 3. **Track B: the PowerShell station**, seven PRs, gated on 1. Windows
    PowerShell 5.1, carrying git, share and relay. The conformance driver is the
    deliverable, not the code
+
+## Operational notes
+
+- **The relay estate is `heliograph`**, on `heliograph-relay.dbhq.uk`. Its
+  control and station tokens are in 1Password, DBHQ vault, *heliograph relay -
+  estate tokens*. **That is the only copy**: Cloudflare secrets are write-only,
+  so `wrangler secret put HELIOGRAPH_RELAY_ESTATES` replaces a value nobody can
+  read back. The previous value was unrecoverable and was replaced on
+  2026-09-09; record any future one before setting it
+- The same control token is a repository secret, so CI checks on every push to
+  `main` that the deployed relay still answers it. Pull requests skip that step:
+  a fork gets no secrets, and a false negative for a contributor is worse than
+  the check
 
 ## Known defects, recorded and NOT fixed
 

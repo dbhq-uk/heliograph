@@ -12,10 +12,17 @@ HTTPS and meet at a server neither of them trusts.
 | relay server | [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay), **deployed at `heliograph-relay.dbhq.uk`** |
 | control side | `heliograph init --transport relay`, and a round trip in CI drives all three halves |
 
-**It works end to end.** A request goes out sealed, a station nobody can log
-into runs it, and the log comes back - proved by a test that builds the real
-binary, runs a real station through `start.sh`, and reads the log back through
-`heliograph logs`.
+**It works end to end, over the deployed relay.** On 2026-09-09 a sealed
+request went out through `heliograph-relay.dbhq.uk`, a station picked it up, ran
+the step and sealed the log, and the CLI read it back with its timestamps and
+its footer intact.
+
+Two things prove it, and they prove different things. A round trip in CI drives
+the real binary, a real `start.sh` and a real `heliograph-seal` against a local
+relay - that is what shows the two halves agree. A second check, on `main` only,
+asks the **deployed** relay whether it still answers this credential - that is
+what catches the TLS, the custom domain, the routing and the token going wrong
+independently of this repository, which they can and which is silent.
 
 ## Setting one up
 
@@ -34,6 +41,27 @@ heliograph send steps/probe.sh
 Full flags on [the CLI page](/cli#relay-estates). The one step that matters
 most is the last one there: **compare the two fingerprints over a channel the
 operator already trusts.** It is the only step a machine cannot do for you.
+
+### Running your own
+
+The relay is a queue with a token check and no keys, so hosting one is a small
+thing to own:
+
+```bash
+CTL=$(head -c 32 /dev/urandom | base64)
+STN=$(head -c 32 /dev/urandom | base64)
+docker run -p 8080:8080 \
+  -e HELIOGRAPH_RELAY_ESTATES="payments:$CTL:$STN" \
+  ghcr.io/dbhq-uk/heliograph-relay:latest
+```
+
+Put it behind something that terminates TLS. `heliograph init` refuses a plain
+`http://` URL for anything but loopback, because the token travels as a bearer
+header on every request.
+
+**Keep the estates value somewhere you can read it back.** Cloudflare secrets
+are write-only, so a hosted relay whose token nobody recorded can only be
+re-issued - which means re-enrolling every station on it.
 
 ## The threat model, which is the whole point
 
