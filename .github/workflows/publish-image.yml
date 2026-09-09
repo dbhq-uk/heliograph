@@ -169,15 +169,27 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
             type=sha,prefix=sha-
 
+      # QEMU, because the final stage runs `apt-get install` and that has to
+      # execute for the target architecture. The Go builder stage does NOT need
+      # it - it is pinned to $BUILDPLATFORM and cross-compiles with GOARCH - so
+      # only the small debian layer is emulated.
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v4
 
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
-          # station/, not station/bash/docker/: the Dockerfile plants the
-          # station payload with bootstrap.sh, so both have to be in the
-          # context. See the payload section of the Dockerfile.
-          context: station
+          # BOTH ARCHITECTURES, or the Dockerfile's TARGETARCH is decoration.
+          # setup-buildx alone changes nothing: without this the build produces
+          # the runner's platform only, and an arm64 node - a Graviton box, an
+          # Apple laptop, an arm64 Kubernetes pool - pulls an image with no
+          # variant it can run. The release workflow has cross-built the control
+          # binary for arm64 since the beginning; this had not caught up.
+          platforms: linux/amd64,linux/arm64
+          # The repository root: the Dockerfile plants the station payload
+          # with bootstrap.sh AND builds heliograph-seal from source, and the
+          # Go module is here. See the payload section of the Dockerfile.
+          context: .
           file: station/bash/docker/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}

@@ -43,11 +43,11 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 DOCKERFILE="$ROOT/station/bash/docker/Dockerfile"
-# THE CONTEXT IS station/, NOT the Dockerfile's own directory. The image plants
-# the station payload with bootstrap.sh so that a transport with nothing to
-# clone - the relay, the file share, the blob - has one, and bootstrap.sh and
-# the toolkit it copies both live a level up.
-DOCKER_DIR="$ROOT/station"
+# THE CONTEXT IS THE REPOSITORY ROOT, not the Dockerfile's own directory. The
+# image plants the station payload with bootstrap.sh so that a transport with
+# nothing to clone has one, and builds heliograph-seal - which the relay refuses
+# to start without - from the Go module here.
+DOCKER_DIR="$ROOT"
 IMAGE="heliograph-toolkit-test:local"
 
 # HOST_UID - measured, never assumed, and used to build $IMAGE below. Every
@@ -1783,6 +1783,33 @@ assert_eq "and it is a whole one, transports and all" "yes" "$out"
 out="$(run_in bash -c 'test -f /opt/heliograph/payload/transports/share.sh && echo yes || echo no')"
 assert_eq "including the transports that have nothing to clone" "yes" "$out"
 
+# THE IMAGE'S PAYLOAD MUST BE bootstrap.sh's PAYLOAD, file for file.
+#
+# The Dockerfile plants it by RUNNING bootstrap.sh, so the only way they can
+# differ is the build context - and `.dockerignore` is a file nobody re-reads.
+# `**/secrets/*` was in it, station/bash/secrets/ is part of the payload, and
+# the image quietly shipped one file fewer than every other way of planting a
+# station. Nothing else here would have seen that.
+#
+# The two are compared as SORTED PATH LISTS. Contents would be stricter and
+# would fail on every mode or timestamp difference a copy legitimately makes;
+# what actually goes wrong is a file that is not there.
+BOOTSTRAP_REF="$TMP/bootstrap-ref"
+"$ROOT/station/bootstrap.sh" "$BOOTSTRAP_REF" >/dev/null 2>&1
+# Local artefacts a developer's checkout may hold. They are gitignored, they are
+# excluded from the build context on purpose, and a clean clone has none of
+# them - so they are not a difference between the two plantings.
+ref_list="$(cd "$BOOTSTRAP_REF" && find . -type f | sed 's|^\./||' |
+              grep -vE '^(\.station-|\.agent-)|__pycache__|\.pyc$|^ops-logs/.*\.txt$' | sort)"
+img_list="$(run_in bash -c "cd /opt/heliograph/payload && find . -type f | sed 's|^\./||' | sort")"
+if [ "$ref_list" = "$img_list" ]; then
+  t_ok "the image's payload is exactly what bootstrap.sh plants"
+else
+  t_no "the image's payload is exactly what bootstrap.sh plants"
+  printf '     only in bootstrap.sh: [%s]\n' "$(comm -23 <(printf '%s\n' "$ref_list") <(printf '%s\n' "$img_list") | tr '\n' ' ')"
+  printf '     only in the image:    [%s]\n' "$(comm -13 <(printf '%s\n' "$ref_list") <(printf '%s\n' "$img_list") | tr '\n' ' ')"
+fi
+
 # --- REPO_URL alongside a non-git transport is refused ------------------------
 # REFUSED, NOT IGNORED. A REPO_URL here means somebody believes this container
 # is going to clone something, and it is not. Ignoring it silently leaves them
@@ -1790,6 +1817,84 @@ assert_eq "including the transports that have nothing to clone" "yes" "$out"
 run_entry -e TRANSPORT=share -e REPO_URL=https://example.invalid/x.git "$IMAGE"
 assert_eq "REPO_URL with a non-git transport is refused" "2" "$RC"
 assert_contains "and it says why there is nothing to clone" "no repository to clone" "$OUT"
+
+# --- heliograph-seal, the one binary the far side is ever given --------------
+# THE RELAY IS THE ONLY TRANSPORT THAT NEEDS ONE. Without it in the image a
+# relay station could not run in a container at all - transports/relay.sh
+# refuses to start when it is missing, and is right to.
+out="$(run_in bash -c 'test -x /usr/local/bin/heliograph-seal && echo yes || echo no')"
+assert_eq "the image carries heliograph-seal" "yes" "$out"
+out="$(run_in /usr/local/bin/heliograph-seal version)"
+assert_contains "and it runs, so it was built for this architecture" "heliograph-seal" "$out"
+
+# A cross-built image that silently carried an amd64 binary on arm64 would fail
+# at the first seal with "exec format error", on a machine nobody can log into.
+out="$(run_in bash -c 'heliograph-seal keygen --out /tmp/k.json >/dev/null 2>&1 && heliograph-seal fingerprint --identity /tmp/k.json')"
+case "$out" in
+  [0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+    t_ok "and it really does the cryptography, not merely start" ;;
+  *)
+    t_no "and it really does the cryptography, not merely start"
+    printf '     got: [%s]\n' "$out" ;;
+esac
+
+# The recorded checksum must describe the binary beside it, or the pin the
+# entrypoint offers is worse than none: it would refuse a good binary.
+out="$(run_in bash -c 'a="$(cat /opt/heliograph/heliograph-seal.sha256)"; b="$(sha256sum /usr/local/bin/heliograph-seal | cut -d" " -f1)"; [ "$a" = "$b" ] && echo match || echo "differ: $a vs $b"')"
+assert_eq "the recorded checksum matches the binary it sits beside" "match" "$out"
+
+# curl, because relay.sh and blob.sh both refuse in tp_init without it. The
+# image installed libcurl through git and no binary at all, which is the version
+# of that mistake that looks fine.
+out="$(run_in bash -c 'command -v curl >/dev/null 2>&1 && echo present || echo absent')"
+assert_eq "curl is present, or the HTTP transports refuse before anything else" "present" "$out"
+
+# --- the entrypoint offers the seal, and says what its checksum is worth ------
+# The operator's own RELAY_SEAL_SHA256 - from the checksum published beside the
+# release - is a real check. The image's own record proves only that the binary
+# has not changed since the image was built. Both beat having no binary, and the
+# entrypoint has to say which it used rather than leaving it to be inferred.
+run_entry -e TRANSPORT=relay -e RELAY_URL=https://relay.invalid \
+  -e RELAY_ESTATE=e -e RELAY_STATION=s -e RELAY_TOKEN=t \
+  -e RELAY_IDENTITY=/nonexistent -e RELAY_PEER=/nonexistent "$IMAGE" -- --once
+assert_contains "the entrypoint points a relay station at the image's seal binary" \
+  "heliograph-seal: this image" "$OUT"
+assert_contains "and offers its recorded checksum" "RELAY_SEAL_SHA256 from this image" "$OUT"
+assert_contains "saying plainly what that proves and what it does not" \
+  "nothing about which binary was built" "$OUT"
+# It still fails, because the identities are not there - which is the preflight
+# doing its job, and proves the seal was not the thing that stopped it.
+assert_eq "and the run still refuses without the key files" "1" "$RC"
+assert_contains "for the reason that is actually wrong, named by variable" \
+  "RELAY_IDENTITY" "$OUT"
+
+# An operator's own pin wins, and is named as the one worth having.
+run_entry -e TRANSPORT=relay -e RELAY_URL=https://relay.invalid \
+  -e RELAY_ESTATE=e -e RELAY_STATION=s -e RELAY_TOKEN=t \
+  -e RELAY_IDENTITY=/nonexistent -e RELAY_PEER=/nonexistent \
+  -e RELAY_SEAL_SHA256=deadbeef "$IMAGE" -- --once
+assert_contains "an operator's own checksum is used instead" "RELAY_SEAL_SHA256 is yours" "$OUT"
+assert_eq "and the image's record is not offered over it" "" \
+  "$(printf '%s' "$OUT" | grep -o "from this image's own record")"
+# AND IT REACHES THE STATION. Asserting only on the entrypoint's own message is
+# vacuous: an implementation that said "is yours" and then quietly exported the
+# image's checksum passes that. relay.sh prints what it EXPECTED when the pin
+# fails, so the operator's value has to appear in its refusal.
+assert_contains "and relay.sh really received it, refusing the binary against THAT value" \
+  "expected deadbeef" "$OUT"
+
+# A mounted RELAY_SEAL must NOT be paired with the image binary's checksum:
+# that refuses a perfectly good binary for a mismatch the operator did not cause
+# and cannot explain.
+run_entry -e TRANSPORT=relay -e RELAY_URL=https://relay.invalid \
+  -e RELAY_ESTATE=e -e RELAY_STATION=s -e RELAY_TOKEN=t \
+  -e RELAY_IDENTITY=/nonexistent -e RELAY_PEER=/nonexistent \
+  -e RELAY_SEAL=/usr/bin/env "$IMAGE" -- --once
+assert_contains "a seal binary the operator chose is used as given" "RELAY_SEAL is set" "$OUT"
+assert_eq "and this image's checksum is NOT applied to it" "" \
+  "$(printf '%s' "$OUT" | grep -o "from this image's own record")"
+assert_contains "and the reason is said, not left to be inferred" \
+  "describes a different binary" "$OUT"
 
 # --- an argument carrying a credential is refused on this path too -----------
 # Every argument goes to start.sh, which prints an unrecognised option verbatim.

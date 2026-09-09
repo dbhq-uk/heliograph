@@ -621,16 +621,33 @@ ensure_image() {
   for a in ${build_args[@]+"${build_args[@]}"}; do
     build_cmd+=(--build-arg "$a")
   done
-  # THE CONTEXT IS station/, TWO LEVELS ABOVE THE DOCKERFILE, which looks wrong
-  # and is not. The image plants the station payload with bootstrap.sh so that a
-  # transport with nothing to clone - the file share, the blob - has one, and
-  # the Dockerfile therefore COPYs both `bootstrap.sh` and `bash/`, which live
-  # in station/ while the Dockerfile is in station/bash/docker.
+  # THE CONTEXT IS THE REPOSITORY ROOT, THREE LEVELS ABOVE THE DOCKERFILE, which
+  # looks wrong and is not. The image plants the station payload with
+  # bootstrap.sh so a transport with nothing to clone has one, and builds
+  # heliograph-seal - which the relay refuses to start without - from the Go
+  # module. Both live above station/bash/docker.
   #
-  # One `..` was the first attempt and it resolved to station/bash: the build
-  # then failed at `COPY bash ...` with "/bash: not found", which this wrapper
-  # reports to the operator as "the image would not build".
-  build_cmd+=("$(cd "$(dirname "$DOCKERFILE")/../.." && pwd)")
+  # Getting the depth wrong fails at a COPY with "/bash: not found", which this
+  # wrapper reports to the operator as "the image would not build" - blaming the
+  # Dockerfile for the caller's mistake. It has happened twice.
+  #
+  # RESOLVED THROUGH SYMLINKS, AND THEN CHECKED, because `--dockerfile` takes an
+  # arbitrary path. `/tmp/build/Dockerfile` symlinked to the real one passes the
+  # existence test and derives a context three levels above /tmp/build - which
+  # may be `/`. Docker would then upload somebody's whole filesystem as build
+  # context before failing a COPY. So the link is followed, and the directory it
+  # lands in has to look like this repository before it is used.
+  local ctx
+  ctx="$(cd "$(dirname "$(readlink -f "$DOCKERFILE" 2>/dev/null || printf '%s' "$DOCKERFILE")")/../../.." 2>/dev/null && pwd -P)"
+  if [ -z "$ctx" ] || [ ! -f "$ctx/go.mod" ] || [ ! -f "$ctx/station/bootstrap.sh" ]; then
+    die "cannot work out a build context for $DOCKERFILE.
+  This image is built from the repository root: it plants the station payload
+  with station/bootstrap.sh and builds heliograph-seal from the Go module, so
+  the context must hold both go.mod and station/bootstrap.sh.
+  Resolved to: ${ctx:-<nothing>}
+  Point --dockerfile at the real station/bash/docker/Dockerfile in a checkout."
+  fi
+  build_cmd+=("$ctx")
 
   local exists=1
   # `--` before the tag, and before the image in RUN_ARGS below, for the same

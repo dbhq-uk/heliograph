@@ -49,28 +49,26 @@ in CI. The site documents the far side. There is no PowerShell station.
 | #38 | **the relay, reachable and usable** - and four defects only a round trip could find |
 | #39 | proved over the deployed relay, and CI keeps asking |
 | #40 | **containers and services can select a transport** - and twelve defects a review found in it |
+| #41 | **`heliograph-seal` in the image** - a relay station runs in a container |
 
 ## Next, in order
 
-1. **`heliograph-seal` is in no image and no host recipe.** It is the one
-   transport that needs a binary, so a relay station cannot run in a container
-   at all - everything else about it works. It needs adding to the image (a
-   build stage, since `station/` carries no Go by rule) or mounting, and
-   `RELAY_SEAL_SHA256` needs populating with the checksum published beside the
-   release, or the pin `relay.sh` already enforces stays a warning nobody can
-   satisfy
-2. **The hosts that are still git-only** (the rest of PR 6). Containers,
+1. **The hosts that are still git-only** (the rest of PR 6). Containers,
    Kubernetes and the three service mechanisms carry a transport now. Still to
    do: the five Azure templates, the two pipeline definitions, and
    `service.ps1`
-3. **Conformance across every transport in CI** (PR 7). Property 9 only
+2. **Conformance across every transport in CI** (PR 7). Property 9 only
    exercises git today, so a no-op `tp_put_log` on another transport would pass
-4. **Track B: the PowerShell station**, seven PRs, gated on 2. Windows
+3. **Track B: the PowerShell station**, seven PRs, gated on 1. Windows
    PowerShell 5.1, carrying git, share and relay. The conformance driver is the
    deliverable, not the code
 
 ## Operational notes
 
+- **A relay station in a container was driven against the deployed relay on
+  2026-09-09.** The image carries `heliograph-seal` built from the same commit,
+  and the log came back with a non-zero exit reported honestly. The station name
+  used was `in-a-container`
 - **The relay estate is `heliograph`**, on `heliograph-relay.dbhq.uk`. Its
   control and station tokens are in 1Password, DBHQ vault, *heliograph relay -
   estate tokens*. **That is the only copy**: Cloudflare secrets are write-only,
@@ -145,6 +143,12 @@ locks and two processes went in at once. Four takers wanting fifteen numbers
 each got 33 distinct numbers out of 60. It fails exactly like having no lock:
 intermittently, silently, under load. Ask `kill -0` whether the recorded pid is
 alive, which is what station.sh has always done.
+
+**A `.dockerignore` is a file nobody re-reads, and it decides what ships.**
+`**/secrets/*` looked like prudence and was wrong: `station/bash/secrets/` is
+part of the payload, so the image quietly planted one file fewer than every
+other way of planting a station, and nothing would have noticed. The image's
+payload is now compared file-for-file against `bootstrap.sh`'s.
 
 **Sourcing an env file does not export anything.** `. file` with `KEY=value` in
 it sets a SHELL variable, and the next thing the LaunchAgent and the setsid
