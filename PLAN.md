@@ -171,6 +171,17 @@ pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
 
+**A template nobody has validated is a template nobody knows parses.** The very
+first CI run of `terraform validate` over `station/bash/azure`, added on
+2026-09-09, failed on code that predated it: a SENSITIVE value cannot drive
+`for_each`, because a `for_each` key becomes part of a resource address and a
+secret may not go there. `var.gitToken` is sensitive, so
+`for_each = var.gitToken == "" ? [] : [1]` is sensitive too, and the Container
+Apps job had never parsed under the pinned terraform. It had been DEPLOYED -
+just with a newer terraform than CI pins, which is why nothing noticed. Unwrap
+only what is genuinely not secret: the EMPTINESS of a token, or the NAMES of a
+secret map, never the values.
+
 **Adversarial review finds what self-review does not.** Two codex passes on
 2026-09-08 found ten defects, five missed entirely - a quoting bypass of the
 env guard, `cap_push` returning 0 on failure, a committed test artefact that

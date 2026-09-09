@@ -154,7 +154,7 @@ data "azurerm_container_app_environment" "this" {
 # Checked here rather than left to the platform, because a deployment that fails
 # halfway has already created a resource group's worth of things.
 locals {
-  extra_secret_names = [for k, v in var.extraSecureEnv : lower(replace(k, "_", "-"))]
+  extra_secret_names = [for k in nonsensitive(keys(var.extraSecureEnv)) : lower(replace(k, "_", "-"))]
 }
 
 resource "azurerm_container_app_job" "this" {
@@ -197,7 +197,7 @@ resource "azurerm_container_app_job" "this" {
   }
 
   dynamic "secret" {
-    for_each = var.gitToken == "" ? [] : [1]
+    for_each = nonsensitive(var.gitToken) == "" ? [] : [1]
     content {
       name  = "git-token"
       value = var.gitToken
@@ -209,10 +209,10 @@ resource "azurerm_container_app_job" "this" {
   # the env reference below derives the same name - which is why the derivation
   # is a plain expression rather than anything the caller supplies.
   dynamic "secret" {
-    for_each = var.extraSecureEnv
+    for_each = toset(nonsensitive(keys(var.extraSecureEnv)))
     content {
-      name  = lower(replace(secret.key, "_", "-"))
-      value = secret.value
+      name  = lower(replace(secret.value, "_", "-"))
+      value = var.extraSecureEnv[secret.value]
     }
   }
 
@@ -267,8 +267,19 @@ resource "azurerm_container_app_job" "this" {
         }
       }
 
+      # `nonsensitive`, because a SENSITIVE VALUE CANNOT DRIVE for_each.
+      #
+      # Terraform refuses it - "Cannot use a string value in for_each" - since a
+      # for_each key ends up in a resource address, which is not a place a
+      # secret may go. `var.gitToken` is sensitive, so the comparison and the
+      # conditional built on it are sensitive too, and this whole block has
+      # therefore never validated under the terraform CI pins. Nothing noticed,
+      # because nothing had ever run `terraform validate` over these templates.
+      #
+      # Only the EMPTINESS is unwrapped here. The value itself still goes
+      # through the secret above and is never interpolated into anything.
       dynamic "env" {
-        for_each = var.gitToken == "" ? [] : [1]
+        for_each = nonsensitive(var.gitToken) == "" ? [] : [1]
         content {
           name        = "GIT_TOKEN"
           secret_name = "git-token"
@@ -279,11 +290,15 @@ resource "azurerm_container_app_job" "this" {
       # secret NAME has to be a valid Container Apps secret name - lowercase
       # alphanumeric and dashes - so it is derived from the variable name rather
       # than being it.
+      # OVER THE KEYS, not the map: a sensitive map cannot drive for_each, and
+      # the NAMES are not the secret - the values are. So the names are
+      # unwrapped and iterated, and each value is fetched inside the block,
+      # where it stays sensitive and goes to the secret field.
       dynamic "env" {
-        for_each = var.extraSecureEnv
+        for_each = toset(nonsensitive(keys(var.extraSecureEnv)))
         content {
-          name        = env.key
-          secret_name = lower(replace(env.key, "_", "-"))
+          name        = env.value
+          secret_name = lower(replace(env.value, "_", "-"))
         }
       }
     }
