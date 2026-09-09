@@ -443,6 +443,56 @@ footer p{margin:0}
   font-family:inherit;border:1px solid transparent}
 .consent .btn-ghost{border-color:var(--slate)}
 
+/* The copy button on a code block. Hidden without JS, because a control that
+   cannot work is worse than no control, and most of this site's readers are
+   agents that run none of it. */
+.code{position:relative}
+/* Room for the button, so it never sits on the first line. The commands here
+   are long enough to scroll, and the one most worth copying is the one that
+   was underneath it. */
+.code pre{padding-right:4.6rem}
+.code .copy{
+  position:absolute;top:.55rem;right:.55rem;
+  display:inline-flex;align-items:center;gap:.35rem;
+  padding:.3rem .6rem;border-radius:6px;cursor:pointer;
+  background:var(--slate);color:var(--ink-2);border:1px solid var(--ridge);
+  font:500 .74rem/1 'Archivo',ui-sans-serif,system-ui,sans-serif;letter-spacing:.02em;
+  opacity:0;transition:opacity .18s var(--ease),color .18s var(--ease),border-color .18s var(--ease)}
+.code:hover .copy,.code .copy:focus-visible{opacity:1}
+.code .copy:hover{color:var(--flash);border-color:var(--brass)}
+.code .copy[data-done]{opacity:1;color:var(--gold);border-color:var(--brass)}
+.no-js .copy,.no-js .page-actions{display:none}
+/* Touch has no hover, so the button would never appear. */
+@media (hover:none){.code .copy{opacity:1}}
+
+/* The breadcrumb and the two markdown controls, above the title. The JSON-LD
+   has claimed a breadcrumb since the SEO work; this is the reader's copy. */
+.crumbs{font-size:.82rem;color:var(--ink-3);margin:0 0 .45rem;
+  display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+.crumbs a{color:var(--ink-3);text-decoration:none}
+.crumbs a:hover{color:var(--gold)}
+.crumbs span[aria-hidden]{opacity:.55}
+.crumbs .here{color:var(--ink-2)}
+.page-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1.6rem}
+.page-actions a,.page-actions button{
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.36rem .7rem;border-radius:6px;cursor:pointer;text-decoration:none;
+  background:transparent;color:var(--ink-2);border:1px solid var(--ridge);
+  font:500 .8rem/1.1 'Archivo',ui-sans-serif,system-ui,sans-serif;
+  transition:color .18s var(--ease),border-color .18s var(--ease)}
+.page-actions a:hover,.page-actions button:hover{color:var(--flash);border-color:var(--brass)}
+.page-actions button[data-done]{color:var(--gold);border-color:var(--brass)}
+.page-actions svg{width:14px;height:14px;flex:none}
+
+/* The GitHub mark, wherever a link points at the repository. */
+.gh{width:1em;height:1em;vertical-align:-.14em;flex:none}
+.site-header nav a .gh,footer .gh{margin-right:.32em}
+
+/* The rail marks where you are. Without it the column is a list of links
+   that never changes while the page moves under it. */
+.rail nav a.here{color:var(--flash)}
+.rail nav a.here::before{background:var(--gold)}
+
 `
 
 // HeroJS draws the signal.
@@ -656,6 +706,88 @@ const HeroJS = `
 // browser with no dialog support, the class is put back to no-js and the
 // sidebar stays visible above the article as an ordinary grouped list. That is
 // less polished and entirely usable, which is the right way round.
+
+// GitHubMark is the Octocat, inlined and inheriting currentColor.
+//
+// On a link to the repository the mark is recognised before the word next to
+// it is read, and it costs no request. Used under GitHub's logo guidance: to
+// point at GitHub, unmodified except in size and colour.
+const GitHubMark = `<svg class="gh" viewBox="0 0 16 16" aria-hidden="true" focusable="false">` +
+	`<path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 ` +
+	`0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 ` +
+	`1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 ` +
+	`0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 ` +
+	`0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>`
+
+// CopyJS backs both copy controls: the button on every code block, and
+// "Copy as markdown" at the top of a docs page.
+//
+// The markdown one fetches the page's own .md mirror rather than scraping the
+// DOM back into markdown. The mirror is byte for byte the source, and the DOM
+// is not.
+const CopyJS = `
+(function(){
+  if(!navigator.clipboard)return;
+  function flash(btn,word){
+    var was=btn.querySelector('span');
+    if(!was)return;
+    var old=was.textContent;
+    was.textContent=word;
+    btn.setAttribute('data-done','');
+    setTimeout(function(){was.textContent=old;btn.removeAttribute('data-done');},1600);
+  }
+  document.addEventListener('click',function(e){
+    var btn=e.target.closest('[data-copy],[data-copy-markdown]');
+    if(!btn)return;
+    var md=btn.getAttribute('data-copy-markdown');
+    if(md){
+      fetch(md).then(function(r){return r.ok?r.text():Promise.reject();})
+        .then(function(text){return navigator.clipboard.writeText(text);})
+        .then(function(){flash(btn,'Copied');})
+        .catch(function(){flash(btn,'Failed');});
+      return;
+    }
+    var code=btn.parentNode.querySelector('code');
+    if(!code)return;
+    navigator.clipboard.writeText(code.innerText)
+      .then(function(){flash(btn,'Copied');})
+      .catch(function(){flash(btn,'Failed');});
+  });
+})();
+`
+
+// RailJS marks the section you are reading in the "on this page" column.
+//
+// An IntersectionObserver rather than a scroll handler: the browser does the
+// work off the main thread, and a scroll listener on a long docs page is the
+// classic way to make a page feel heavy while doing nothing visible.
+const RailJS = `
+(function(){
+  var rail=document.querySelector('.rail nav');
+  if(!rail||!('IntersectionObserver' in window))return;
+  var links={},ids=[];
+  Array.prototype.forEach.call(rail.querySelectorAll('a'),function(a){
+    var id=decodeURIComponent(a.getAttribute('href').slice(1));
+    if(document.getElementById(id)){links[id]=a;ids.push(id);}
+  });
+  if(!ids.length)return;
+  var seen={};
+  function paint(){
+    var current=null;
+    for(var i=0;i<ids.length;i++){if(seen[ids[i]]){current=ids[i];break;}}
+    // Nothing on screen means every heading is above the viewport: keep the
+    // last one passed, rather than clearing the mark on a long section.
+    if(!current)return;
+    for(var j=0;j<ids.length;j++)links[ids[j]].classList.toggle('here',ids[j]===current);
+  }
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(en){seen[en.target.id]=en.isIntersecting;});
+    paint();
+  },{rootMargin:'0px 0px -70% 0px'});
+  ids.forEach(function(id){io.observe(document.getElementById(id));});
+})();
+`
+
 const NavJS = `<script>
 (function(){
   // Any bail-out puts the page back into no-JS mode, because the js class is

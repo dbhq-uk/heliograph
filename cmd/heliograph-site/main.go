@@ -371,7 +371,10 @@ func headerNav(p site.Page) string {
 	for _, item := range homeNav {
 		fmt.Fprintf(&b, `<a href="%s">%s</a>`, href(item.slug), escAttr(item.label))
 	}
-	b.WriteString(`</nav>`)
+	// The repository, last and marked. Three words and a logo: a header that
+	// lists everything is the one nobody reads.
+	b.WriteString(`<a href="https://github.com/dbhq-uk/heliograph">` +
+		site.GitHubMark + `Source</a></nav>`)
 	return b.String()
 }
 
@@ -422,6 +425,35 @@ func sidebarItems(p site.Page, all []site.Page, prefix string) string {
 	}
 	return b.String()
 }
+
+// pageHead is the breadcrumb and the two markdown controls, above the title.
+//
+// The breadcrumb is the reader's copy of the BreadcrumbList the JSON-LD has
+// claimed since the SEO work: a crawler was being told about navigation that
+// nothing on the page showed. The markdown controls were a <link> in the head
+// and one line in the footer, which is where an agent finds them and a person
+// driving one never scrolls to.
+func pageHead(p site.Page) string {
+	return fmt.Sprintf(`<nav class="crumbs" aria-label="Breadcrumb">`+
+		`<a href="/">heliograph</a><span aria-hidden="true">/</span>`+
+		`<span class="here">%[1]s</span></nav>`+
+		`<div class="page-actions">`+
+		`<button type="button" data-copy-markdown="/%[2]s.md" `+
+		`aria-label="Copy this page as markdown">%[3]s<span>Copy as markdown</span></button>`+
+		`<a href="/%[2]s.md">%[4]s<span>View as markdown</span></a>`+
+		`</div>`, escAttr(p.Title), p.Slug, iconCopy, iconDoc)
+}
+
+// The two icons for those controls. Inline for the same reason as the brand:
+// they inherit currentColor and cost no request.
+const (
+	iconCopy = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" ` +
+		`aria-hidden="true" focusable="false"><rect x="5.4" y="5.4" width="8.2" height="8.2" rx="1.6"/>` +
+		`<path d="M10.6 5.4V4A1.6 1.6 0 0 0 9 2.4H4A1.6 1.6 0 0 0 2.4 4v5A1.6 1.6 0 0 0 4 10.6h1.4"/></svg>`
+	iconDoc = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" ` +
+		`aria-hidden="true" focusable="false"><path d="M9 1.9H4.6A1.7 1.7 0 0 0 2.9 3.6v8.8a1.7 1.7 0 0 0 1.7 1.7h6.8a1.7 1.7 0 0 0 1.7-1.7V5.8Z"/>` +
+		`<path d="M9 1.9v3.9h4.1"/></svg>`
+)
 
 // rail is the "on this page" column. Omitted below three headings: a rail with
 // two entries is furniture, and it takes width from the thing it is pointing at.
@@ -506,6 +538,10 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 		navJS = site.NavJS
 	}
 
+	crumbs := ""
+	if p.Slug != "index" && !o.noindex {
+		crumbs = pageHead(p)
+	}
 	mirror := ""
 	if !o.noindex {
 		mirror = fmt.Sprintf(` &middot; <a href="/%s.md">This page as markdown</a>`, p.Slug)
@@ -523,20 +559,23 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 %[2]s
 %[3]s
 <main id="main-content" tabindex="-1" class="doc%[4]s">
+%[13]s
 %[5]s
 </main>
 %[6]s
 %[7]s
 <footer><div class="inner">
 <p>A free, open-source tool by <a href="https://dbhq.uk">DBHQ</a>.</p>
-<p><a href="https://github.com/dbhq-uk/heliograph">Source</a>%[8]s</p>
+<p><a href="https://github.com/dbhq-uk/heliograph">`+site.GitHubMark+`Source</a>%[8]s</p>
 </div></footer>
 %[9]s
 <script>%[10]s
-%[11]s</script>
+%[11]s
+%[14]s
+%[15]s</script>
 %[12]s
 `, header, hero, shellOpen, wide, site.RenderBody(body), shellClose, railHTML,
-		mirror, consentHTML, site.HeroJS, consentJS, navJS)
+		mirror, consentHTML, site.HeroJS, consentJS, navJS, crumbs, site.CopyJS, site.RailJS)
 }
 
 // head is everything before the body: the words a search result and a shared
@@ -568,7 +607,9 @@ func head(p site.Page, o pageOptions) string {
 <meta property="og:image:alt" content="heliograph: run it on a machine you cannot log into">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="%[3]s">
+<link rel="icon" href="/assets/favicon.ico" sizes="48x48">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 `, escAttr(title), escAttr(description(p)), canonical, baseURL)
 	if !o.noindex {
 		// The markdown mirror, announced so an agent does not have to guess.
@@ -868,7 +909,7 @@ const heroHTML = `<section class="hero">
     back as a log with every line timestamped in UTC, whether it passed or failed.</p>
     <div class="cta">
       <a class="btn btn-primary" href="/quickstart">Quick start</a>
-      <a class="btn btn-ghost" href="https://github.com/dbhq-uk/heliograph">Source</a>
+      <a class="btn btn-ghost" href="https://github.com/dbhq-uk/heliograph">` + site.GitHubMark + `Source</a>
     </div>
   </div>
 </section>
