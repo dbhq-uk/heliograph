@@ -64,14 +64,14 @@ in CI. The site documents the far side. There is no PowerShell station.
 | - | **the content the research asked for** - `/air-gapped`, `/compared` (AWS SSM and Azure Run Command), and a permissions section on `/security`. Also: `heliograph send` on a bundle told people to run `./station.sh --bundle`, which has never existed; it now says the honest thing |
 | #49 | **the Azure templates carry a transport**, and CI validates them at all - which found that a sensitive value cannot drive `for_each`, so the Container Apps job had never parsed under the pinned terraform. Also: **no station had ever run under launchd**, because a LaunchAgent's PATH holds only macOS's bash 3.2 |
 | #50 | **conformance over every transport**, with a stub relay so it needs no Cloudflare account - and a teeth check per transport, because running the suite three times only proves three passes |
+| #51 | **the conformance harness stops being Unix** (Track B/PR 8) - p6's privileged account and p8's cancel move into the driver, p8 proves the cancel by watching the log stop growing, and the redaction corpus lands with a test that every rule is load-bearing |
 
 ## Next, in order
 
-1. **Track B: the PowerShell station**, seven PRs. Windows PowerShell 5.1,
-   carrying git, share and relay. The conformance driver is the deliverable,
-   not the code - and the suite it has to pass now runs over three transports,
-   so a PowerShell station that captures perfectly and delivers nothing cannot
-   be called done
+1. **Track B: the PowerShell station**, PR 9 onwards. `caplib.psm1` first - the
+   capture and nothing else, passing properties 1-4, 7 and 9. The harness is
+   ready for it: nothing platform-specific is left in the suite, and the
+   redaction corpus is the one file both implementations are measured against
 2. **The bundle's station side.** `/air-gapped` now says plainly that the
    bundle cannot be read by a station, and the CLI says the same. That page is
    the first thing to update when it lands
@@ -116,15 +116,6 @@ Stated on the site rather than hidden, so nobody plans around a promise.
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour
-- **The conformance suite's cancel property cannot prove the process died.**
-  `drv_capture_bg` is called through command substitution, so it starts in a
-  subshell and the suite cannot `wait` for it. Both kill attempts may fail and
-  the suite carries on after a fixed sleep, so an implementation that ignored
-  cancellation could outlive the test. p8 still asserts the run did not reach
-  its end, which is the property; what is missing is proof of the corpse. The
-  fix is to start it in the current shell and return the pid through a pidfile.
-  Found by an adversarial read on 2026-09-09, not fixed here because it changes
-  the driver contract and every driver with it
 - **The ACI templates are not twins.** `aci/main.tf` declares an `ip_address`
   block with TCP 65000 and `aci/main.bicep` omits `ipAddress` entirely, so the
   two produce different resources from the same inputs - network policy and
@@ -184,6 +175,18 @@ Break every new assertion deliberately and watch it fail before keeping it.
 pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
+
+**A corpus is only testing the rules it is the ONLY thing catching.** The
+redaction corpus was written case by case, each one realistic - a GitLab token
+in a clone URL, a Bearer token behind an `Authorization:` header - and every one
+of those is caught by a *different, broader* rule. Four rules could be deleted
+outright with the corpus still reporting a clean run. Found by deleting them,
+one at a time, which is now `test-redaction-corpus.sh` and runs every time. The
+mutation itself was wrong twice first: deleting the last `-e` line broke the
+line continuation, and `awk -v` ate a trailing backslash - and in both cases a
+`cap_redact` that no longer existed leaked nothing, which reads exactly like a
+rule the corpus caught. **A mutation test needs a liveness check or its passes
+are silence.**
 
 **An exit code is not evidence that anything ran.** The conformance suite's two
 gate properties were asserted by exit status alone, so a runner that returned 0
