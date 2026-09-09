@@ -396,8 +396,191 @@ nothing run inside the container can close it.
 USAGE
 }
 
+# =============================================================================
+#  A TRANSPORT THAT HAS NOTHING TO CLONE
+# =============================================================================
+# This entrypoint has one job before start.sh: put a transport repo at $WORKDIR.
+# For git that means a clone, and everything below it is about doing that safely.
+#
+# For the relay, the file share and the blob transport there IS no clone. The
+# request does not travel in a repository, the log does not come back in one,
+# and there is nothing at the far end to fetch. So the payload has to be in the
+# image, and it is: /opt/heliograph/payload, planted at build time by the same
+# bootstrap.sh that plants a transport repo.
+#
+# THE GIT PATH IS UNTOUCHED. When the transport is git the clone still wins and
+# the baked payload is never looked at - there is one authoritative copy of
+# start.sh and it is the one in the repo the operator controls. The payload in
+# the image is a fallback for the transports with no repo, not a second opinion
+# about the ones that have one.
+#
+# WHY THIS WAS THE LAST THING MISSING. station.sh has taken TRANSPORT since A3,
+# start.sh asks the transport rather than assuming git, and every transport's
+# variables are read from the environment - which a container already has. The
+# single reason a container could not run one of those stations was this file
+# demanding a URL to clone.
+PAYLOAD_DIR="${HELIOGRAPH_PAYLOAD:-/opt/heliograph/payload}"
+
+# A status endpoint, when a host asks for one.
+#
+# Off unless HELIOGRAPH_STATUS_PORT is set, so ACI, a VM and a plain docker run
+# are unaffected. Azure Web App for Containers needs it: that platform probes a
+# port and, when nothing answers, stops the site after 230 seconds. Measured.
+#
+# Started here rather than inside start.sh because it is a property of the HOST,
+# not of the loop. start.sh runs on laptops and jump boxes that want no
+# listening socket at all. Backgrounded before the exec, so it survives becoming
+# a child of whatever start.sh turns into, and dies with the container when pid
+# 1 exits.
+#
+# A FUNCTION, because there are two handovers now. It sat inline above the one
+# exec, and the non-git path never reaches that - so a relay station on Azure
+# Web App would have started, worked perfectly, answered no port, and been
+# stopped after 230 seconds.
+start_status_server() {
+  [ -n "${HELIOGRAPH_STATUS_PORT:-}" ] || return 0
+  if [ -x /usr/local/bin/status-server.pl ]; then
+    HELIOGRAPH_WORKDIR="$WORKDIR" /usr/local/bin/status-server.pl &
+  else
+    echo "entrypoint: HELIOGRAPH_STATUS_PORT is set but status-server.pl is not" >&2
+    echo "  in this image. The port will not be answered, and a host that probes" >&2
+    echo "  one will stop this container." >&2
+  fi
+}
+
+# A payload is a payload, not a file called start.sh.
+#
+# `[ -x "$WORKDIR/start.sh" ]` was the whole test, and one executable filename is
+# not an identification: a mounted application directory with a script of that
+# name in it would have been EXECUTED. These four are what bootstrap.sh lays
+# down and what the loop needs, so a directory with all of them is a heliograph
+# payload and a directory with only some is a mess this script must not add to.
+payload_here() {
+  local d="$1"
+  [ -x "$d/start.sh" ] && [ -f "$d/station.sh" ] &&
+    [ -f "$d/caplib.sh" ] && [ -d "$d/transports" ]
+}
+
+# The image's payload, identified, so a stale one can be SEEN.
+#
+# A persistent volume outlives the container, so a station planted by last
+# year's image keeps running while the operator upgrades the tag and believes
+# something changed. Same class of failure as the git path's "a clone of a
+# DIFFERENT repo is refused, not silently reused", and it gets the same
+# treatment: identified, reported, never destroyed.
+payload_id() {
+  cat "$1/start.sh" "$1/station.sh" "$1/caplib.sh" 2>/dev/null |
+    sha256sum 2>/dev/null | cut -c1-12
+}
+
+plant_payload() {
+  local here_id image_id
+  image_id="$(payload_id "$PAYLOAD_DIR")"
+
+  if payload_here "$WORKDIR"; then
+    here_id="$(payload_id "$WORKDIR")"
+    if [ "$here_id" = "$image_id" ]; then
+      say "reusing the payload at $WORKDIR ($here_id), which is this image's"
+    elif [ "${HELIOGRAPH_REPLANT:-0}" = "1" ]; then
+      say "replanting: $WORKDIR held $here_id, this image carries $image_id"
+      # Overwrites only what the image carries, and deletes nothing: ops-logs
+      # may hold a captured log that was never delivered, which is the one copy
+      # of the evidence this toolkit exists to carry off an unreachable machine.
+      ( cd "$PAYLOAD_DIR" && cp -R . "$WORKDIR/" ) || {
+        echo "entrypoint: could not replant into $WORKDIR" >&2
+        exit 1
+      }
+    else
+      say "warn: $WORKDIR holds payload $here_id and this image carries $image_id."
+      say "      That volume was planted by a DIFFERENT image and is what will run."
+      say "      Upgrading the image tag alone changes nothing here."
+      say "      Set HELIOGRAPH_REPLANT=1 to overwrite it with this image's, or"
+      say "      point HELIOGRAPH_WORKDIR somewhere empty. Nothing is deleted"
+      say "      either way: ops-logs may hold a log that never got delivered."
+    fi
+    return 0
+  fi
+
+  # NOT A PAYLOAD. Whatever is here is somebody else's, and copying over it
+  # would overwrite anything sharing a name - TASK.md, start.sh, service.sh -
+  # and follow any symlink among them straight out of the directory.
+  if [ ! -r "$WORKDIR" ] || [ ! -x "$WORKDIR" ]; then
+    echo "entrypoint: cannot read or traverse $WORKDIR, so nothing inside it can" >&2
+    echo "  be established and nothing may be written into it. The usual cause is" >&2
+    echo "  a mounted directory owned by a different uid than this container's." >&2
+    exit 1
+  fi
+  if [ -n "$(ls -A "$WORKDIR" 2>/dev/null)" ]; then
+    echo "entrypoint: $WORKDIR is not empty and is not a heliograph payload." >&2
+    echo "  It has no station.sh, caplib.sh or transports/, so this script cannot" >&2
+    echo "  say what it is - and it will not copy a payload over it." >&2
+    echo "  Point HELIOGRAPH_WORKDIR at an empty location, and investigate this" >&2
+    echo "  directory separately with its contents intact." >&2
+    exit 1
+  fi
+
+  if [ ! -x "$PAYLOAD_DIR/start.sh" ]; then
+    echo "entrypoint: TRANSPORT is '$TRANSPORT', which has nothing to clone, and" >&2
+    echo "  there is no station payload at $PAYLOAD_DIR or at $WORKDIR." >&2
+    echo "  This image should carry one. If you built it yourself, build with" >&2
+    echo "  station/ as the context so the Dockerfile can plant it - or mount a" >&2
+    echo "  payload and point HELIOGRAPH_WORKDIR at it." >&2
+    exit 1
+  fi
+  say "planting the station payload $image_id from $PAYLOAD_DIR into $WORKDIR"
+  # cp -R rather than a move: the image's copy is read-only and shared across
+  # restarts, and the station writes into its own payload directory - ops-logs,
+  # the delivery record, the relay's sequence state. A container that consumed
+  # the image's copy would work exactly once.
+  ( cd "$PAYLOAD_DIR" && cp -R . "$WORKDIR/" ) || {
+    echo "entrypoint: could not copy the payload into $WORKDIR" >&2
+    exit 1
+  }
+  return 0
+}
+
 main() {
-  local url="" existing_url remote_rc remote_err errfile
+  local url="" existing_url remote_rc remote_err errfile _a
+
+  # TRANSPORT is read here and nowhere else in this file. Everything past this
+  # branch is git's, and is skipped entirely for anything else - including the
+  # credential table, which asks about a remote that will not exist.
+  TRANSPORT="${TRANSPORT:-git}"
+  if [ "$TRANSPORT" != "git" ]; then
+    # REFUSED, NOT IGNORED. A REPO_URL here means somebody believes this
+    # container is going to clone something, and it is not. Ignoring it silently
+    # leaves them waiting on a station pointed somewhere else entirely, which is
+    # the failure this whole toolkit exists to prevent.
+    if [ -n "${REPO_URL:-}" ]; then
+      echo "entrypoint: TRANSPORT is '$TRANSPORT' and REPO_URL is set." >&2
+      echo "  A '$TRANSPORT' station has no repository to clone: the request and" >&2
+      echo "  the log travel over that transport instead. Unset REPO_URL, or set" >&2
+      echo "  TRANSPORT=git if this really is a git station." >&2
+      exit 2
+    fi
+    # THE SAME REFUSAL THE GIT PATH MAKES, needed here for the same reason.
+    # Every argument goes to start.sh, and start.sh prints an unrecognised
+    # option verbatim - so a `docker run image https://user:token@host/repo.git`
+    # that merely gained TRANSPORT=relay would put the credential in the log.
+    # The clone is gone from this path; the leak was not.
+    for _a in "$@"; do
+      if url_has_credential "$_a"; then
+        echo "entrypoint: an argument carries a credential ($(printf '%s' "$_a" | mask_secrets))." >&2
+        echo "  TRANSPORT is '$TRANSPORT', so nothing here clones anything and every" >&2
+        echo "  argument goes to start.sh - which prints an unrecognised option" >&2
+        echo "  verbatim, putting that credential in the log." >&2
+        echo "  AND ROTATE IT. If this arrived on a 'docker run' command line it is" >&2
+        echo "  already in the host's process table and in 'docker inspect' output." >&2
+        exit 2
+      fi
+    done
+    mkdir -p "$WORKDIR" || { echo "entrypoint: cannot create $WORKDIR" >&2; exit 1; }
+    plant_payload
+    cd "$WORKDIR" || { echo "entrypoint: cannot enter $WORKDIR" >&2; exit 1; }
+    start_status_server
+    say "handing over to start.sh with TRANSPORT=$TRANSPORT"
+    exec ./start.sh "$@"
+  fi
 
   # Both set is refused rather than one silently winning. It used to let
   # REPO_URL win and treat every argument as opaque passthrough to start.sh -
@@ -663,32 +846,11 @@ main() {
   fi
 
   cd "$WORKDIR" || { echo "entrypoint: cannot cd into $WORKDIR" >&2; exit 1; }
+  start_status_server
   # exec, not a child: the same reason start.sh execs station.sh rather than
   # running it as one - a signal sent to this container's pid 1 has to reach
   # start.sh (and, through its own exec, station.sh) directly, or an operator's
   # `docker stop` would leave the real work orphaned and unsignalled.
-# A status endpoint, when a host asks for one.
-#
-# Off unless HELIOGRAPH_STATUS_PORT is set, so ACI, a VM and a plain docker run
-# are unaffected. Azure Web App for Containers needs it: that platform probes a
-# port and, when nothing answers, stops the site after 230 seconds. Measured.
-#
-# Started here rather than inside start.sh because it is a property of the
-# HOST, not of the loop. start.sh runs on laptops and jump boxes that want no
-# listening socket at all.
-#
-# Backgrounded before the exec below, so it survives becoming a child of
-# whatever start.sh turns into, and dies with the container when pid 1 exits.
-if [ -n "${HELIOGRAPH_STATUS_PORT:-}" ]; then
-  if [ -x /usr/local/bin/status-server.pl ]; then
-    HELIOGRAPH_WORKDIR="$WORKDIR" /usr/local/bin/status-server.pl &
-  else
-    echo "entrypoint: HELIOGRAPH_STATUS_PORT is set but status-server.pl is not" >&2
-    echo "  in this image. The port will not be answered, and a host that probes" >&2
-    echo "  one will stop this container." >&2
-  fi
-fi
-
   exec ./start.sh "$@"
 }
 

@@ -69,6 +69,31 @@ xml_escape() {
   printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
 
+# sh_quote - one argument, safe to paste into a shell command line.
+#
+# Needed because two of the three mechanisms now build a `bash -c` string: the
+# LaunchAgent and the setsid fallback both have to source the env file before
+# exec'ing start.sh, and a repo path with a space or a quote in it would
+# otherwise split into two arguments or end the string early.
+sh_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+# env_wrapped_prefix - the shell that loads the env file before exec'ing.
+#
+# `set -a` IS THE WHOLE POINT, and leaving it out was a defect that looked like
+# working code. `. file` with `KEY=value` in it sets a SHELL variable, and the
+# very next thing this does is `exec bash start.sh` - a new process, which
+# inherits environment variables and not shell ones. So the file was read,
+# every value discarded, and a relay station started as a git one and failed its
+# preflight. systemd was unaffected because EnvironmentFile exports for you,
+# which is exactly how a defect ends up in two mechanisms out of three.
+#
+# One definition, used by the LaunchAgent and the setsid fallback both, so they
+# cannot drift apart again.
+env_wrapped_prefix() {
+  printf 'set -a; [ -r %s ] && . %s; set +a; ' \
+    "$(sh_quote "$STATION_ENV")" "$(sh_quote "$STATION_ENV")"
+}
+
 launchd_ok() {
   [ "$(uname -s 2>/dev/null)" = "Darwin" ] || return 1
   command -v launchctl >/dev/null 2>&1
@@ -125,8 +150,210 @@ systemd_user_ok() {
 # its own. An earlier version checked only for ssh and let everything else fall
 # through to the token chain, which refused to install against a local path
 # remote - a remote that needs no credential at all. Its own test caught it.
+# WHERE A NON-GIT STATION'S CONFIGURATION LIVES.
+#
+# The whole point of this file's credential check is that a detached process
+# inherits nothing from the shell that installed it. That is exactly as true of
+# RELAY_TOKEN and SHARE_DIR as it is of GIT_TOKEN - more so, because a relay
+# station has no fallback file the way caplib reads ~/.git-token.
+#
+# So the unit reads an env file, and this is the one place its name is written.
+# Mode 600, gitignored, beside the payload: an EnvironmentFile is systemd's own
+# answer, launchd's plist has no equivalent and sources it from the wrapper, and
+# putting the secret in the unit itself would put it in `systemctl cat`.
+STATION_ENV="$REPO_ROOT/.station-env"
+
+# --- reading the env file ------------------------------------------------------
+#
+# ONE FILE, TWO PARSERS, and that is the constraint everything here is shaped by.
+#
+# systemd reads it with EnvironmentFile, which is its own format: no expansion,
+# no command substitution, quotes honoured. launchd and the setsid fallback have
+# no such mechanism, so they SOURCE it in a shell - where `$`, backticks, `&`,
+# `;` and `|` all mean something.
+#
+# A plain `PIGEONHOLE_SAS=?sv=x&ss=y&sig=z` - an ordinary Azure SAS, exactly what
+# an operator pastes - is fine to systemd and, to a shell, three background jobs
+# and a lost credential. So the file is VALIDATED at install time against the
+# intersection of the two languages, and a line outside it is refused with the
+# line quoted back.
+#
+# The intersection is small and easy to state: KEY=value, where the value is
+# either single-quoted or contains nothing either parser treats specially.
+env_file_lines() {
+  # Comments and blanks dropped; CR stripped, because a file edited on Windows
+  # otherwise carries one into the value and `relay\r` names no transport.
+  sed -e 's/\r$//' -e 's/^[[:space:]]*//' -e '/^#/d' -e '/^$/d' "$STATION_ENV" 2>/dev/null
+}
+
+validate_env_file() {
+  local line key value bad=0 n=0
+  while IFS= read -r line; do
+    n=$((n + 1))
+    case "$line" in
+      *=*) ;;
+      *)
+        warn "$STATION_ENV line $n is not a KEY=value assignment: $line"
+        bad=1; continue ;;
+    esac
+    key="${line%%=*}"
+    value="${line#*=}"
+    # `export FOO=x` is valid shell and invalid to systemd. `FOO = x` is valid
+    # to neither, and a parser that merely looked for `TRANSPORT` would have
+    # accepted it and then not set it.
+    case "$key" in
+      [A-Za-z_]*) ;;
+      *) warn "$STATION_ENV line $n has no usable variable name: $line"; bad=1; continue ;;
+    esac
+    case "$key" in
+      *[!A-Za-z0-9_]*)
+        warn "$STATION_ENV line $n: '$key' is not a variable name. systemd's"
+        warn "  EnvironmentFile takes no 'export' and no spaces around the '='."
+        bad=1; continue ;;
+    esac
+    case "$value" in
+      \'*\')
+        # Single-quoted. Neither parser expands anything inside, which is what
+        # makes this the form to recommend. A second quote inside it would end
+        # the string in the shell and not in systemd, so it is refused.
+        case "${value#\'}" in
+          *\'*\'*) warn "$STATION_ENV line $n: nested single quote in $key"; bad=1 ;;
+        esac ;;
+      *[\$\`\&\;\|\<\>\(\)\"\\]*|*\'*)
+        warn "$STATION_ENV line $n: $key holds a character a shell would act on."
+        warn "  launchd and the setsid fallback SOURCE this file, so an unquoted"
+        warn "  '&' backgrounds a job and loses the rest of the value. Wrap it:"
+        warn "      $key='...'"
+        bad=1 ;;
+    esac
+  done < <(env_file_lines)
+  [ "$n" -gt 0 ] || { warn "$STATION_ENV is empty"; return 1; }
+  return "$bad"
+}
+
+env_file_value() {  # env_file_value <KEY>
+  local v
+  v="$(env_file_lines | sed -n "s/^$1=//p" | tail -1)"
+  # Strip one layer of matching quotes, which is what both parsers do.
+  case "$v" in
+    \'*\') v="${v#\'}"; v="${v%\'}" ;;
+    \"*\") v="${v#\"}"; v="${v%\"}" ;;
+  esac
+  printf '%s' "$v"
+}
+
+# The transport this station will actually use, which is not necessarily git.
+#
+# READ FROM THE ENV FILE FIRST, then this shell. The env file is what the
+# service will see, so it is what the checks below have to reason about - an
+# operator who wrote TRANSPORT=relay into it and then ran `./service.sh install`
+# from a plain shell would otherwise get the git credential check, fail it, and
+# be told to configure a git remote for a station that will never use one.
+station_transport() {
+  local t=""
+  [ -r "$STATION_ENV" ] && t="$(env_file_value TRANSPORT)"
+  printf '%s' "${t:-${TRANSPORT:-git}}"
+}
+
+# For a transport that is not git, the credential is a set of variables, and the
+# question is whether the DETACHED service will be given them.
+#
+# IT ASKS THE TRANSPORT WHAT IT NEEDS rather than carrying a list. Every
+# transport declares its own requirements with cap_need, one per line, so the
+# names come out of transports/<name>.sh and stay right when a transport
+# changes. This file has never duplicated a check start.sh owns and does not
+# start now: start.sh asks whether the VALUES work, which needs the far side.
+# This asks the one thing start.sh cannot - whether they arrive at all.
+transport_needs() {  # transport_needs <transport> - the variables it requires
+  sed -n 's/^[[:space:]]*cap_need[[:space:]]\{1,\}\([A-Z_][A-Z0-9_]*\).*/\1/p' \
+    "$REPO_ROOT/transports/$1.sh" 2>/dev/null | sort -u
+}
+
+transport_env_check() {
+  local t="$1" missing="" v
+  if [ ! -f "$REPO_ROOT/transports/$t.sh" ]; then
+    warn "TRANSPORT is '$t' and there is no $REPO_ROOT/transports/$t.sh."
+    local shipped="" f
+    for f in "$REPO_ROOT"/transports/*.sh; do
+      [ -f "$f" ] || continue
+      f="$(basename "$f" .sh)"
+      shipped="${shipped:+$shipped, }$f"
+    done
+    warn "  This payload ships: ${shipped:-none}"
+    warn "  A typo here installs a service that cannot start and retries for ever."
+    return 1
+  fi
+  if [ ! -r "$STATION_ENV" ]; then
+    warn "TRANSPORT is '$t', and a detached service inherits nothing from this shell."
+    warn "  Its variables have to be somewhere the service can read. Write them to"
+    warn "  $STATION_ENV, one KEY='value' per line, mode 600:"
+    warn ""
+    warn "      TRANSPORT='$t'"
+    for v in $(transport_needs "$t"); do warn "      $v='...'"; done
+    warn ""
+    warn "  SINGLE QUOTES ARE NOT DECORATION. systemd reads this file and so does"
+    warn "  a shell, and an unquoted '&' - an Azure SAS is full of them - means"
+    warn "  something to one of them and not the other."
+    warn "  Then re-run this. './start.sh --check' proves the values themselves."
+    return 1
+  fi
+  # EVERY VARIABLE THE TRANSPORT ASKS FOR. Checking only that the file exists
+  # was fail-open in the worst available way: a file holding TRANSPORT=relay
+  # and nothing else installed cleanly and produced a service that could not
+  # start, restarting on a timer, on a machine nobody is watching.
+  for v in $(transport_needs "$t"); do
+    [ -n "$(env_file_value "$v")" ] || missing="$missing $v"
+  done
+  if [ -n "$missing" ]; then
+    warn "$STATION_ENV does not set:$missing"
+    warn "  transports/$t.sh requires each of those - it says so with cap_need -"
+    warn "  and a detached service sees only this file. It would start, fail its"
+    warn "  own preflight, and be restarted on a timer for ever."
+    return 1
+  fi
+  # A file anybody can read is a token anybody can read.
+  #
+  # `-rw-------` and stricter, and nothing else. Ten characters: the type, then
+  # owner, group and other. Positions five to ten are group and other, so a
+  # file only its owner can touch has six dashes there.
+  #
+  # Written as "what is acceptable" rather than as a list of bits to catch,
+  # because the list is where this kind of check goes wrong - an earlier version
+  # tested two positions, both off by one, and reported a 644 file as fine.
+  local mode
+  mode="$(ls -ld -- "$STATION_ENV" 2>/dev/null | cut -c1-10)"
+  case "$mode" in
+    ????------) : ;;
+    "")         warn "cannot read the permissions of $STATION_ENV" ;;
+    *)
+      warn "$STATION_ENV is readable or writable beyond its owner ($mode)."
+      warn "  It holds this station's transport credential. chmod 600 it." ;;
+  esac
+  say "transport  : $t, configured in $STATION_ENV"
+  return 0
+}
+
 credential_check() {
-  local src url scheme
+  local src url scheme t
+  # VALIDATED BEFORE THE TRANSPORT IS DECIDED, whenever the file exists at all.
+  #
+  # A malformed line is not a non-git problem: launchd and the setsid fallback
+  # source this file for a git station too. And it is circular the other way -
+  # `export TRANSPORT='relay'` is exactly the malformed line an operator writes,
+  # and reading the transport out of it FIRST gives 'git', runs the git checks,
+  # and reports a missing origin remote to somebody whose real problem is one
+  # word at the start of one line.
+  if [ -e "$STATION_ENV" ]; then
+    validate_env_file || {
+      warn "  Fix those lines and re-run. Nothing has been installed."
+      return 1
+    }
+  fi
+  t="$(station_transport)"
+  if [ "$t" != "git" ]; then
+    transport_env_check "$t"
+    return $?
+  fi
   # shellcheck source=caplib.sh disable=SC1091
   . "$REPO_ROOT/caplib.sh" 2>/dev/null || { warn "could not read caplib.sh, skipping the credential check"; return 0; }
   src="$(_cap_token_source 2>/dev/null)"
@@ -225,6 +452,15 @@ StartLimitBurst=5
 [Service]
 Type=simple
 WorkingDirectory=$REPO_ROOT
+# OPTIONAL, hence the leading dash: a git station that keeps its token in
+# ~/.git-token needs no such file, and systemd refuses to start a unit whose
+# EnvironmentFile is missing unless it is marked optional.
+#
+# This is how a relay, share or blob station gets its variables at all. A
+# detached process inherits nothing from the shell that installed it - the same
+# fact this file has always warned about for GIT_TOKEN, and the reason those
+# stations could not be run as a service before.
+EnvironmentFile=-$STATION_ENV
 ExecStart=/usr/bin/env bash $REPO_ROOT/start.sh$EXEC_TAIL
 Restart=on-failure
 RestartSec=10
@@ -310,12 +546,25 @@ cmd_install() {
   # --- launchd, on macOS ------------------------------------------------------
   if launchd_ok; then
     mkdir -p "$LAUNCH_DIR"
-    local args_xml=""
-    local a
-    for a in "$REPO_ROOT/start.sh" ${START_ARGS+"${START_ARGS[@]}"}; do
-      args_xml="${args_xml}        <string>$(xml_escape "$a")</string>
-"
+    # THE ENV FILE IS SOURCED, NOT INLINED INTO THE PLIST.
+    #
+    # launchd has an EnvironmentVariables dict and it is the wrong place for
+    # this: a LaunchAgent plist is world-readable by default, and a station's
+    # RELAY_TOKEN would sit in it in cleartext for anybody on the machine, and
+    # in every backup of ~/Library. The env file is mode 600 and stays the one
+    # copy - so the LaunchAgent runs a shell that sources it and then execs start.sh.
+    #
+    # `[ -r ... ] &&` rather than a bare source: a git station keeping its token
+    # in ~/.git-token has no such file, and a launchd job that failed because a
+    # file it never needed was absent would be a poor trade for the tidiness.
+    local args_xml="" a cmd
+    cmd="$(env_wrapped_prefix)exec bash $(sh_quote "$REPO_ROOT/start.sh")"
+    for a in ${START_ARGS+"${START_ARGS[@]}"}; do
+      cmd="$cmd $(sh_quote "$a")"
     done
+    args_xml="        <string>-c</string>
+        <string>$(xml_escape "$cmd")</string>
+"
     cat > "$LAUNCH_PATH" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -365,7 +614,21 @@ PLIST
   # setsid detaches from the controlling terminal so SIGHUP never arrives, and
   # the redirects matter as much: a process whose stdout is a closed pty gets
   # EIO on the next write and dies anyway, having survived the signal.
-  setsid nohup bash "$REPO_ROOT/start.sh" ${START_ARGS+"${START_ARGS[@]}"} >>"$LOG_FILE" 2>&1 </dev/null &
+  # The env file, here too. This path DOES inherit the installing shell, so a
+  # git station with GIT_TOKEN exported has always worked - but a station
+  # configured through the env file must behave the same under all three
+  # mechanisms, or "it works as a service" depends on which one the machine
+  # happened to have.
+  if [ -r "$STATION_ENV" ]; then
+    local fallback_cmd
+    fallback_cmd="$(env_wrapped_prefix)exec bash $(sh_quote "$REPO_ROOT/start.sh")"
+    for a in ${START_ARGS+"${START_ARGS[@]}"}; do
+      fallback_cmd="$fallback_cmd $(sh_quote "$a")"
+    done
+    setsid nohup bash -c "$fallback_cmd" >>"$LOG_FILE" 2>&1 </dev/null &
+  else
+    setsid nohup bash "$REPO_ROOT/start.sh" ${START_ARGS+"${START_ARGS[@]}"} >>"$LOG_FILE" 2>&1 </dev/null &
+  fi
   local pid=$!
   sleep 2
   if ! kill -0 "$pid" 2>/dev/null; then

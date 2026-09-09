@@ -62,6 +62,7 @@ spec:
         - name: agent
           image: ghcr.io/dbhq-uk/heliograph-toolkit:1.0.0-rc2
           env:
+            # --- git, the default -------------------------------------------
             - name: REPO_URL
               value: "https://github.com/YOUR-ORG/YOUR-TRANSPORT-REPO.git"
             # GitHub wants x-access-token here. GitLab wants oauth2. Azure
@@ -74,6 +75,33 @@ spec:
                 secretKeyRef:
                   name: heliograph-git
                   key: token
+
+            # --- ANOTHER TRANSPORT ------------------------------------------
+            # For a cluster that cannot reach a git host at all. Delete the four
+            # entries above - INCLUDING REPO_URL, which the entrypoint refuses
+            # alongside a non-git TRANSPORT rather than ignoring - and use one of
+            # these. The image carries the station payload, so there is nothing
+            # to clone.
+            #
+            # A FILE SHARE needs a volume and nothing else. Uncomment the
+            # matching volume and volumeMount at the foot of this file too:
+            #
+            # - name: TRANSPORT
+            #   value: "share"
+            # - name: SHARE_DIR
+            #   value: "/mnt/ops"
+            # - name: SHARE_SCOPE
+            #   value: "dns-timeouts"
+            #
+            # THE RELAY DOES NOT WORK IN THIS IMAGE YET, and it is stated here
+            # rather than shown as a recipe that fails. transports/relay.sh
+            # refuses to start without `heliograph-seal`, the crypto helper it
+            # is the one transport to need, and this image does not carry it -
+            # it is published with the releases and would have to be added to
+            # the image or mounted. When it is, the variables are RELAY_URL,
+            # RELAY_ESTATE, RELAY_STATION, RELAY_TOKEN, RELAY_IDENTITY,
+            # RELAY_PEER and RELAY_SEAL_SHA256, with the two key files from a
+            # mounted Secret and the token from secretKeyRef.
           resources:
             requests:
               cpu: "100m"
@@ -86,6 +114,23 @@ spec:
               memory: "1Gi"
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false   # the clone has to land somewhere
+            # The clone, or the planted payload, has to land somewhere.
+            readOnlyRootFilesystem: false
             capabilities:
               drop: ["ALL"]
+
+          # --- with TRANSPORT=share, uncomment this and the volume below ------
+          # volumeMounts:
+          #   - name: ops-share
+          #     mountPath: /mnt/ops
+
+
+      # --- with TRANSPORT=share ---------------------------------------------
+      # The share is whatever both sides mount. An NFS export and a PVC are the
+      # two ordinary shapes; the station cares only that the path is there and
+      # writable, and `./start.sh --check` proves that before anything runs.
+      #
+      # volumes:
+      #   - name: ops-share
+      #     persistentVolumeClaim:
+      #       claimName: heliograph-ops-share

@@ -94,3 +94,6 @@ Thumbs.db
 # never shared and never committed: a copy restored elsewhere would let the
 # relay replay everything it has ever seen.
 .station-relay-state
+# The transport's variables for a detached service - see service.sh. Mode 600,
+# and it holds a token: never committed.
+.station-env

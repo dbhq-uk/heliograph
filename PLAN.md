@@ -47,17 +47,25 @@ in CI. The site documents the far side. There is no PowerShell station.
 | #36 | **the preflight stops assuming git** - `tp_preflight`, `tp_sync`, and a token that was being printed |
 | #37 | **`transports/share.sh`** - the file share gets its far side |
 | #38 | **the relay, reachable and usable** - and four defects only a round trip could find |
+| #39 | proved over the deployed relay, and CI keeps asking |
+| #40 | **containers and services can select a transport** - and twelve defects a review found in it |
 
 ## Next, in order
 
-1. **Hosts can select a transport** (PR 6). `TRANSPORT` and the `RELAY_*` set
-   through the Docker entrypoint, the Kubernetes manifest and the five Azure
-   templates. Plant `heliograph-seal` with its checksum populated. The station
-   side is now ready for this: `./start.sh` starts a relay station, and what is
-   left is carrying the variables there
-2. **Conformance across every transport in CI** (PR 7). Property 9 only
+1. **`heliograph-seal` is in no image and no host recipe.** It is the one
+   transport that needs a binary, so a relay station cannot run in a container
+   at all - everything else about it works. It needs adding to the image (a
+   build stage, since `station/` carries no Go by rule) or mounting, and
+   `RELAY_SEAL_SHA256` needs populating with the checksum published beside the
+   release, or the pin `relay.sh` already enforces stays a warning nobody can
+   satisfy
+2. **The hosts that are still git-only** (the rest of PR 6). Containers,
+   Kubernetes and the three service mechanisms carry a transport now. Still to
+   do: the five Azure templates, the two pipeline definitions, and
+   `service.ps1`
+3. **Conformance across every transport in CI** (PR 7). Property 9 only
    exercises git today, so a no-op `tp_put_log` on another transport would pass
-3. **Track B: the PowerShell station**, seven PRs, gated on 1. Windows
+4. **Track B: the PowerShell station**, seven PRs, gated on 2. Windows
    PowerShell 5.1, carrying git, share and relay. The conformance driver is the
    deliverable, not the code
 
@@ -68,8 +76,18 @@ Stated on the site rather than hidden, so nobody plans around a promise.
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour
-- **`test-launchd.sh` is flaky.** Failed once on a branch, passed on re-run,
-  clean on main. Watch it; do not act yet
+- **`test-launchd.sh` is flaky, and it has now failed twice.** Both times on the
+  same assertion, and the evidence is worth writing down rather than
+  re-gathering: *"launchd restarted the loop as pid N after a clean exit"*. The
+  test writes `stop: yes`, watches until launchd reports no pid, waits eight
+  seconds and asks again - and a pid was there.
+  `KeepAlive { SuccessfulExit: false }` should forbid exactly that.
+  Two readings, both untested: the loop exited NON-zero (so launchd restarted it
+  correctly, and the defect is upstream of the assertion), or launchd's respawn
+  throttle raced the eight-second window. **The next person to see it should
+  capture `$LOG_FILE` and `launchctl print` before re-running**, which is the
+  one thing nobody has done. It cannot be reproduced off macOS, which is why it
+  is still here
 
 **Fixed on 2026-09-08, and recorded because they were on this list:** the relay
 sequence collision between the loop and the runner is closed by a `mkdir` lock
@@ -114,6 +132,21 @@ locks and two processes went in at once. Four takers wanting fifteen numbers
 each got 33 distinct numbers out of 60. It fails exactly like having no lock:
 intermittently, silently, under load. Ask `kill -0` whether the recorded pid is
 alive, which is what station.sh has always done.
+
+**Sourcing an env file does not export anything.** `. file` with `KEY=value` in
+it sets a SHELL variable, and the next thing the LaunchAgent and the setsid
+fallback do is `exec bash start.sh` - a new process, which inherits environment
+variables and not shell ones. So the file was read and every value discarded,
+and a relay station started as a git one. systemd was unaffected, because
+EnvironmentFile exports for you: which is exactly how a defect ends up in two
+mechanisms out of three and looks like working code in the one that is tested.
+`set -a` around the source.
+
+**One file, two parsers, is a specification.** The same `.station-env` is read
+by systemd's EnvironmentFile and sourced by a shell, and an ordinary Azure SAS -
+`?sv=...&ss=...&sig=...` - is a value to one and three background jobs to the
+other. The file is validated at install time against the intersection of the two
+languages rather than hoped about.
 
 **A round trip finds what reading cannot.** The relay had four defects that
 every review had walked past, and all four surfaced within an hour of the first

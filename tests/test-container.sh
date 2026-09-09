@@ -43,7 +43,11 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 DOCKERFILE="$ROOT/station/bash/docker/Dockerfile"
-DOCKER_DIR="$(dirname "$DOCKERFILE")"
+# THE CONTEXT IS station/, NOT the Dockerfile's own directory. The image plants
+# the station payload with bootstrap.sh so that a transport with nothing to
+# clone - the relay, the file share, the blob - has one, and bootstrap.sh and
+# the toolkit it copies both live a level up.
+DOCKER_DIR="$ROOT/station"
 IMAGE="heliograph-toolkit-test:local"
 
 # HOST_UID - measured, never assumed, and used to build $IMAGE below. Every
@@ -1758,6 +1762,111 @@ fi
 # than by name. Filtering on the "heliograph-" name prefix the wrapper now
 # defaults to would risk removing a real operator's kept container on a
 # developer's own machine, which is precisely the thing that fix exists to
+# =============================================================================
+#  A TRANSPORT WITH NOTHING TO CLONE
+# =============================================================================
+# THE SINGLE REASON A CONTAINER COULD NOT RUN A RELAY OR SHARE STATION was this
+# entrypoint demanding a URL. station.sh has taken TRANSPORT since A3, start.sh
+# asks the transport rather than assuming git, and a container already has an
+# environment to put the variables in - but there was nothing to put at
+# $WORKDIR, because those transports have no repository.
+#
+# The image carries the payload now, planted at build time by the same
+# bootstrap.sh that plants a transport repo. These assert that it is there, that
+# it is used, and that a whole run happens over a transport with no git in it.
+
+# --- the payload is in the image ----------------------------------------------
+out="$(run_in bash -c 'test -x /opt/heliograph/payload/start.sh && echo yes || echo no')"
+assert_eq "the image carries a station payload" "yes" "$out"
+out="$(run_in bash -c 'test -f /opt/heliograph/payload/station.sh && test -d /opt/heliograph/payload/transports && echo yes || echo no')"
+assert_eq "and it is a whole one, transports and all" "yes" "$out"
+out="$(run_in bash -c 'test -f /opt/heliograph/payload/transports/share.sh && echo yes || echo no')"
+assert_eq "including the transports that have nothing to clone" "yes" "$out"
+
+# --- REPO_URL alongside a non-git transport is refused ------------------------
+# REFUSED, NOT IGNORED. A REPO_URL here means somebody believes this container
+# is going to clone something, and it is not. Ignoring it silently leaves them
+# waiting on a station pointed somewhere else entirely.
+run_entry -e TRANSPORT=share -e REPO_URL=https://example.invalid/x.git "$IMAGE"
+assert_eq "REPO_URL with a non-git transport is refused" "2" "$RC"
+assert_contains "and it says why there is nothing to clone" "no repository to clone" "$OUT"
+
+# --- an argument carrying a credential is refused on this path too -----------
+# Every argument goes to start.sh, which prints an unrecognised option verbatim.
+# The clone is gone from the non-git path; the leak was not.
+run_entry -e TRANSPORT=share "$IMAGE" "https://ci-user:$TOKEN@example.invalid/x.git"
+assert_eq "a credentialed argument is refused with a non-git transport" "2" "$RC"
+assert_eq "and the token itself is never printed" "" "$(printf '%s' "$OUT" | grep -o "$TOKEN")"
+
+# --- a workdir holding something else is never copied over -------------------
+# `cp -R` over a mounted application directory overwrites anything sharing a
+# name and follows any symlink among them out of the directory.
+FOREIGN="$TMP/foreign"
+mkdir -p "$FOREIGN"
+printf 'somebody else\n' > "$FOREIGN/TASK.md"
+printf 'not ours\n' > "$FOREIGN/start.sh"
+chmod +x "$FOREIGN/start.sh"
+chmod -R 777 "$FOREIGN"
+run_entry -e TRANSPORT=share -e HELIOGRAPH_WORKDIR=/mnt/foreign \
+  -v "$FOREIGN:/mnt/foreign" "$IMAGE"
+assert_eq "a non-empty workdir that is not a payload is refused" "1" "$RC"
+assert_contains "and it says it cannot identify what is there" "not a heliograph payload" "$OUT"
+assert_eq "and nothing was written over it" "not ours" "$(cat "$FOREIGN/start.sh")"
+assert_eq "including the file that shares a name with the toolkit's own" \
+  "somebody else" "$(cat "$FOREIGN/TASK.md")"
+
+# --- a whole run, over a share, with no git anywhere in it --------------------
+# The share is a directory both sides can see, which inside a container test is
+# a bind mount. This is the end-to-end assertion: a request goes in, the station
+# runs it, and the CAPTURED LOG comes back out - through a transport with no
+# repository, no clone and no credential.
+SHARE_MNT="$TMP/share-mnt"
+mkdir -p "$SHARE_MNT/probe/ops-logs"
+chmod -R 777 "$SHARE_MNT"
+printf 'id: c1\nstep: env\n' > "$SHARE_MNT/probe/request"
+run_entry -e TRANSPORT=share -e SHARE_DIR=/mnt/ops -e SHARE_SCOPE=probe \
+  -v "$SHARE_MNT:/mnt/ops" "$IMAGE" -- --once --interval 1
+assert_eq "a share station runs to completion in a container" "0" "$RC"
+assert_contains "the preflight names the transport it was given" "transport     share" "$OUT"
+assert_eq "and no git check is run for it" "0" \
+  "$(printf '%s\n' "$OUT" | grep -cE '^(ok|warn|FAIL) +(git|branch|remote|token)\b')"
+
+# The evidence, on the share. THE CONTENTS, not the existence of a file: a
+# tp_put_log that created an empty destination, or shipped the status document
+# instead of the log, would pass a check that only counted *.txt - and that is
+# exactly the shape of defect this transport has already had once.
+assert_eq "a status document reached the share" "1" \
+  "$([ -f "$SHARE_MNT/probe/status" ] && echo 1 || echo 0)"
+assert_contains "and it reports the run finished rather than still running" \
+  "idle" "$(cat "$SHARE_MNT/probe/status" 2>/dev/null)"
+assert_contains "and names the request it answered" "c1" "$(cat "$SHARE_MNT/probe/status" 2>/dev/null)"
+
+SHARE_LOG="$(find "$SHARE_MNT/probe/ops-logs" -name '*.txt' 2>/dev/null | head -1)"
+assert_eq "a captured log reached the share" "1" \
+  "$([ -n "$SHARE_LOG" ] && echo 1 || echo 0)"
+assert_contains "with the footer, so a reader can tell a finished run from a hung one" \
+  "RESULT" "$(cat "$SHARE_LOG" 2>/dev/null)"
+assert_contains "and the step's own output in it, timestamped" \
+  " | " "$(cat "$SHARE_LOG" 2>/dev/null)"
+assert_contains "and the banner naming what ran" "STEP:" "$(cat "$SHARE_LOG" 2>/dev/null)"
+
+# --- a stale payload on a volume is reported, not silently run ---------------
+# A persistent volume outlives the container, so a station planted by an older
+# image keeps running while the operator upgrades the tag and believes something
+# changed. Identified and reported; never destroyed.
+STALE="$TMP/stale"
+mkdir -p "$STALE"
+"$ROOT/station/bootstrap.sh" "$STALE" >/dev/null 2>&1
+printf '\n# planted by an older image\n' >> "$STALE/caplib.sh"
+chmod -R 777 "$STALE"
+run_entry -e TRANSPORT=share -e SHARE_DIR=/mnt/ops -e SHARE_SCOPE=probe \
+  -e HELIOGRAPH_WORKDIR=/mnt/stale \
+  -v "$SHARE_MNT:/mnt/ops" -v "$STALE:/mnt/stale" "$IMAGE" -- --once --interval 1
+assert_contains "a payload from a different image is called out" \
+  "planted by a DIFFERENT image" "$OUT"
+assert_contains "and the operator is told how to replace it" "HELIOGRAPH_REPLANT=1" "$OUT"
+assert_contains "and told nothing was deleted" "Nothing is deleted" "$OUT"
+
 # stop. Every image named here is one this file built itself.
 for stale_image in "$IMAGE" "$IMAGE-uid$(id -u)" "heliograph-wraptest:local" \
                    "heliograph-toolkit-test:local-ownermismatch" "my-team/heliograph:local"; do

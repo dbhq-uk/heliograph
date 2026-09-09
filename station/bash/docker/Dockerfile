@@ -87,9 +87,15 @@ ENV DEBIAN_FRONTEND=noninteractive
 #     so that path is token-based over HTTPS regardless of what ships here.
 # `openssh-client` only makes SSH possible where an agent exists to forward;
 # it does not make it universal.
+# curl is here because THREE transports are HTTP and refuse without it.
+# transports/relay.sh and transports/blob.sh both check `command -v curl` in
+# tp_init and return 1, so a container told TRANSPORT=blob failed at the first
+# line of the preflight - while this file installed libcurl through git and no
+# curl BINARY at all, which is the shape of that mistake that looks fine.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
          ca-certificates \
+         curl \
          git \
          openssh-client \
          sudo \
@@ -149,14 +155,45 @@ RUN useradd --create-home --uid "${HELIOGRAPH_UID}" --shell /bin/bash heliograph
 # start.sh. It owns none of start.sh's job - the preflight, the credential
 # table, the branch checkout, the handover to station.sh - only the clone that
 # has to happen before start.sh (and caplib.sh with it) exists to be run.
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY bash/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 # The status server. Perl is already here - git pulls it in - so this adds no
 # package and no measurable size. It only runs when HELIOGRAPH_STATUS_PORT is
 # set, which is off unless a host needs it. Azure Web App for Containers does:
 # it probes a port and stops the site after 230s if nothing answers.
-COPY status-server.pl /usr/local/bin/status-server.pl
+COPY bash/docker/status-server.pl /usr/local/bin/status-server.pl
 RUN chmod 0755 /usr/local/bin/entrypoint.sh
+
+# --- the station payload, for the transports with nothing to clone --------------
+# THE BUILD CONTEXT IS station/, not station/bash/docker/, and this is why.
+#
+# For git, this image clones a transport repo and that clone is the one
+# authoritative copy of start.sh. Nothing here competes with it and the payload
+# below is never looked at.
+#
+# For the relay, the file share and the blob transport there is no repository to
+# clone - the request and the log travel over the transport itself. Until this
+# existed, that was the single reason a container could not run one of those
+# stations: station.sh has taken TRANSPORT since A3 and start.sh asks the
+# transport rather than assuming git, but the entrypoint had nothing to put at
+# $WORKDIR.
+#
+# PLANTED BY bootstrap.sh, not by a COPY, so the image's payload is exactly what
+# a transport repo gets - the same file list, the same gitignore rename, and CI
+# already asserts that `heliograph bootstrap` and this script agree. "Which
+# station is this image running" then has the same answer as "which image is
+# this".
+#
+# Owned by root and mode 0755: the entrypoint COPIES it into $WORKDIR rather
+# than running from it, because the station writes into its own payload
+# directory - ops-logs, the delivery record, the relay's sequence state - and a
+# container that consumed the image's copy would work exactly once.
+COPY bootstrap.sh /tmp/heliograph/bootstrap.sh
+COPY bash /tmp/heliograph/bash
+RUN bash /tmp/heliograph/bootstrap.sh /opt/heliograph/payload >/dev/null \
+    && rm -rf /tmp/heliograph \
+    && chmod -R a+rX /opt/heliograph/payload \
+    && test -x /opt/heliograph/payload/start.sh
 
 USER heliograph
 WORKDIR /home/heliograph

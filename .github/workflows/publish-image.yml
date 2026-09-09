@@ -174,7 +174,10 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
-          context: station/bash/docker
+          # station/, not station/bash/docker/: the Dockerfile plants the
+          # station payload with bootstrap.sh, so both have to be in the
+          # context. See the payload section of the Dockerfile.
+          context: station
           file: station/bash/docker/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
