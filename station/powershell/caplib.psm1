@@ -150,6 +150,66 @@ function Write-CapFooter {
     Add-CapContent -Path $Path -Lines $lines
 }
 
+# --- building a command line -------------------------------------------------
+# ProcessStartInfo.ArgumentList DOES NOT EXIST ON .NET FRAMEWORK, so it does not
+# exist under Windows PowerShell 5.1 - which is the floor this module targets.
+# It was added in .NET Core 2.1. Written against pwsh 7 and tested there, the
+# first version used it and would have thrown "You cannot call a method on a
+# null-valued expression" on the one platform this exists for.
+#
+# So: `Arguments`, built here, with the quoting rules CommandLineToArgvW
+# actually applies. Those rules are not "wrap it in quotes": a backslash is
+# literal EXCEPT immediately before a quote, where it must be doubled, and a
+# run of backslashes at the end of an argument must be doubled because the
+# closing quote follows it.
+function ConvertTo-CapArgumentString {
+    param([string[]] $Argv)
+    $parts = New-Object System.Collections.Generic.List[string]
+    foreach ($a in $Argv) {
+        if ($a -eq '') { $parts.Add('""'); continue }
+        if ($a -notmatch '[\s"]') { $parts.Add($a); continue }
+        $sb = New-Object System.Text.StringBuilder
+        [void]$sb.Append('"')
+        $slashes = 0
+        foreach ($ch in $a.ToCharArray()) {
+            if ($ch -eq '\') {
+                $slashes++
+                continue
+            }
+            if ($ch -eq '"') {
+                [void]$sb.Append('\' * ($slashes * 2 + 1))
+                [void]$sb.Append('"')
+            } else {
+                [void]$sb.Append('\' * $slashes)
+                [void]$sb.Append($ch)
+            }
+            $slashes = 0
+        }
+        [void]$sb.Append('\' * ($slashes * 2))
+        [void]$sb.Append('"')
+        $parts.Add($sb.ToString())
+    }
+    return ($parts -join ' ')
+}
+
+# POSIX single-quoting, for the `sh -c` path. Everything inside single quotes is
+# literal except a single quote itself, which is closed, escaped and reopened.
+function ConvertTo-CapPosixArgumentString {
+    param([string[]] $Argv)
+    $parts = New-Object System.Collections.Generic.List[string]
+    foreach ($a in $Argv) {
+        $parts.Add("'" + $a.Replace("'", "'\''") + "'")
+    }
+    return ($parts -join ' ')
+}
+
+function Test-CapWindows {
+    # 5.1 does not define $IsWindows AT ALL, and under Set-StrictMode reading an
+    # undefined variable is an error rather than $false - so the obvious test is
+    # itself a 5.1-only failure. This asks the platform instead.
+    return [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+}
+
 function Invoke-CapRun {
     <#
       .SYNOPSIS
@@ -168,74 +228,94 @@ function Invoke-CapRun {
         [string[]] $ArgumentList = @()
     )
 
+    # ONE PIPE, MERGED BY THE PLATFORM, exactly as the bash side does it.
+    #
+    # `cap_run` is `"$@" 2>&1 | ...`: the SHELL merges the two streams into one
+    # before anything reads them. Everything downstream then sees a single
+    # ordered stream, and that ordering is the child's own.
+    #
+    # Two pipes read from one thread cannot reproduce that, and the first
+    # version of this function tried. Each pipe had one outstanding
+    # ReadLineAsync and the loop took whichever completed first - so a line that
+    # arrived while the loop was busy with the other stream sat in a completed
+    # task, unstamped, until the loop came back for it. Under steady output on
+    # one stream the other starves: its reader stops draining, its stamp drifts
+    # from its arrival, and the child can block writing to it. The claim "the
+    # stamp is taken the instant a line lands" was false in exactly the case
+    # that matters - a busy step.
+    #
+    # Handler-based reading is not available either: a PowerShell scriptblock on
+    # OutputDataReceived runs on a threadpool thread with no runspace and kills
+    # the process outright ("There is no Runspace available to run scripts in
+    # this thread"), and Register-ObjectEvent's -Action runs when the ENGINE is
+    # free, which is the buffering defect relocated. Without Add-Type - which a
+    # hardened estate may block - there is no way to put a reader on its own
+    # thread.
+    #
+    # So the merge happens where bash does it: in the child. One pipe, one
+    # blocking ReadLine on this thread, and the stamp taken the line after.
+    $argv = @($FilePath) + $ArgumentList
+    if (Test-CapWindows) {
+        # /d skips AutoRun, which an estate may have set to something that
+        # prints. /s makes cmd strip exactly the first and last quote and take
+        # the rest verbatim, which is the only reliable way to pass a command
+        # line through it.
+        $shell = $env:ComSpec
+        if (-not $shell) { $shell = 'cmd.exe' }
+        $inner = ConvertTo-CapArgumentString -Argv $argv
+        $arguments = '/d /s /c "' + $inner + ' 2>&1"'
+    } else {
+        $shell = '/bin/sh'
+        $inner = ConvertTo-CapPosixArgumentString -Argv $argv
+        $arguments = ConvertTo-CapArgumentString -Argv @('-c', ($inner + ' 2>&1'))
+    }
+
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $FilePath
-    foreach ($a in $ArgumentList) { [void]$psi.ArgumentList.Add($a) }
+    $psi.FileName = $shell
+    $psi.Arguments = $arguments
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
+    # NOT redirected. There is nothing on it: the child merged it into stdout,
+    # and a redirected pipe nobody reads is a pipe a child can block filling.
+    $psi.RedirectStandardError = $false
 
-    # THE ENCODING, set explicitly on both streams.
+    # THE DECODER, set explicitly.
     #
-    # A console under an OEM codepage (437, 850, 932) decodes a UTF-8 byte
-    # sequence as mojibake, and the damage is done before anything here sees
-    # the line - so no amount of care later recovers it. The step's output is
-    # evidence from a machine nobody can reach twice.
+    # This chooses how BYTES ARE READ and it does not make the child emit UTF-8;
+    # Microsoft is explicit that it cannot. What it fixes is the common case: a
+    # console under an OEM codepage (437, 850, 932) whose default decoding turns
+    # a UTF-8 sequence into mojibake before anything here sees the line. A
+    # native program that genuinely emits OEM is a case this does not handle and
+    # PLAN.md records it as such rather than pretending otherwise.
     $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-    $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
 
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi
     [void]$proc.Start()
 
-    # TWO PIPES, ONE THREAD, AND THE STAMP TAKEN THE INSTANT A LINE LANDS.
-    #
-    # stdout and stderr are separate pipes and must both be drained or a child
-    # that fills one while we block on the other deadlocks. The obvious answer -
-    # OutputDataReceived with a scriptblock handler - does not work and fails in
-    # a way worth recording: the handler runs on a threadpool thread with no
-    # runspace, and PowerShell terminates the whole process with "There is no
-    # Runspace available to run scripts in this thread". Not an exception a
-    # caller can catch. A capture that crashes the station is worse than one
-    # that buffers.
-    #
-    # Register-ObjectEvent does have a runspace, but its -Action runs when the
-    # ENGINE gets round to it, so the stamp would say when PowerShell was free
-    # rather than when the line arrived - which is the buffering defect exactly,
-    # just relocated.
-    #
-    # So: one ReadLineAsync per pipe, WaitAny for whichever completes first, and
-    # the stamp taken here, in this thread, immediately. No handlers, no extra
-    # runspaces, and nothing between the read and the clock.
     $writer = [System.IO.File]::AppendText($Path)
     try {
         $writer.AutoFlush = $true
 
-        $tOut = $proc.StandardOutput.ReadLineAsync()
-        $tErr = $proc.StandardError.ReadLineAsync()
-
-        while (($null -ne $tOut) -or ($null -ne $tErr)) {
-            $pending = New-Object 'System.Collections.Generic.List[System.Threading.Tasks.Task]'
-            $which = New-Object 'System.Collections.Generic.List[string]'
-            if ($null -ne $tOut) { $pending.Add($tOut); $which.Add('out') }
-            if ($null -ne $tErr) { $pending.Add($tErr); $which.Add('err') }
-
-            $i = [System.Threading.Tasks.Task]::WaitAny($pending.ToArray())
+        while ($true) {
+            # BLOCKING, on this thread, so the stamp on the next line is the
+            # moment this one returned and nothing can get between them.
+            $line = $proc.StandardOutput.ReadLine()
+            if ($null -eq $line) { break }
             $stamp = [DateTime]::UtcNow
-            $line = $pending[$i].Result
 
-            if ($null -eq $line) {
-                # EOF on that pipe. Retired rather than re-issued, or the loop
-                # spins on a completed task for as long as the other one runs.
-                if ($which[$i] -eq 'out') { $tOut = $null } else { $tErr = $null }
-                continue
-            }
-
-            # THE TRAILING CR. ReadLine splits on the newline and keeps
-            # everything before it, so a CRLF stream leaves a CR on the end of
-            # every value: invisible in a terminal, wrong in the file, and it
-            # silently breaks any later grep anchored with $ - which is exactly
-            # what somebody reads these logs with.
+            # THE TRAILING CR, kept as a belt to .NET's braces.
+            #
+            # .NET's StreamReader.ReadLine already treats CR, LF and CRLF as
+            # terminators, so a trailing CR does not reach here - measured, not
+            # assumed. bash's `read` splits on LF alone and DOES leave one,
+            # which is why cap_run strips it. This stays because the guarantee
+            # belongs to this function rather than to whichever reader it
+            # happens to use, and it costs one comparison per line.
+            #
+            # It is also where the two implementations diverge on a BARE CR: a
+            # progress bar writing "step 1`rstep 2`rstep 3`n" is one line with
+            # embedded CRs to bash and three lines to .NET. PLAN.md records it.
             if ($line.EndsWith("`r")) { $line = $line.Substring(0, $line.Length - 1) }
 
             $line = $script:CapAnsi.Replace($line, '')
@@ -244,19 +324,13 @@ function Invoke-CapRun {
             $stamped = $stamp.ToString('HH:mm:ss') + ' | ' + $line
             Write-Host $stamped
             $writer.WriteLine($stamped)
-
-            if ($which[$i] -eq 'out') {
-                $tOut = $proc.StandardOutput.ReadLineAsync()
-            } else {
-                $tErr = $proc.StandardError.ReadLineAsync()
-            }
         }
     } finally {
         $writer.Close()
     }
 
-    # Both pipes are at EOF, so the child has closed them, but closing a pipe
-    # and exiting are not the same instant and ExitCode throws before exit.
+    # EOF on the pipe means the child closed it, which is not the same instant
+    # as exiting - and ExitCode throws before the process has exited.
     $proc.WaitForExit()
 
     # THE REAL EXIT CODE, taken from the process rather than from
@@ -333,6 +407,9 @@ function Add-CapContent {
 }
 
 Export-ModuleMember -Function @(
+    'ConvertTo-CapArgumentString',
+    'ConvertTo-CapPosixArgumentString',
+    'Test-CapWindows',
     'Invoke-CapRedact',
     'Get-CapStamp',
     'Write-CapHeader',

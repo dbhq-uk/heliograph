@@ -517,6 +517,35 @@ jobs:
           Write-Output "registered, reported and removed"
           Pop-Location
 
+      # THE FLOOR, EXERCISED. Windows PowerShell 5.1 is what caplib.psm1
+      # targets, and until this ran nothing had ever tested it: the driver
+      # preferred pwsh, so on a runner with both editions the 5.1 path was
+      # never taken. That is precisely how a first version shipped using
+      # ProcessStartInfo.ArgumentList, which .NET Framework does not have and
+      # which would have thrown on every real 5.1 station.
+      #
+      # Both editions, separately, because "it works on 7" says nothing about
+      # the platform this exists for.
+      - name: The capture passes conformance on Windows PowerShell 5.1 AND on 7
+        shell: bash
+        run: |
+          set -uo pipefail
+          rc=0
+          for ps in powershell pwsh; do
+            command -v "$ps" >/dev/null 2>&1 || {
+              echo "::error::$ps is not on this runner, so that edition was NOT tested"; rc=1; continue; }
+            echo "--- $ps"
+            CONF_PS_SHELL="$ps" ./tests/conformance/conformance.sh \
+              tests/conformance/drivers/powershell.sh 2>&1 | tee "/tmp/conf-$ps.out"
+            [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::conformance failed under $ps"; rc=1; }
+            # The two known skips - the gates and delivery - and no more.
+            n="$(grep -c '^SKIP' "/tmp/conf-$ps.out" || true)"
+            [ "$n" = "2" ] || { echo "::error::$ps skipped $n properties, not 2"; rc=1; }
+            grep -q "^--- conformance: caplib.psm1" "/tmp/conf-$ps.out" || {
+              echo "::error::$ps did not report which interpreter it ran"; rc=1; }
+          done
+          exit $rc
+
       - name: The suite's Windows-relevant files, unskipped
         shell: bash
         run: |

@@ -90,6 +90,8 @@ _drv_deliverable() {
 #   undeclared  declares no mode - the gate must refuse it
 #   declared    declares read-only, and TOUCHES A MARKER given as $3
 #   ships       declares read-only, prints evidence, exits 7
+#   messy       ANSI, a CRLF line, a line on stderr, and a final line with no
+#               newline after it
 drv_step_name() { printf 'steps/%s.sh' "$1"; }
 
 # drv_step_echo <path-without-extension> <file-of-lines> - a step that prints
@@ -133,6 +135,16 @@ drv_step_file() {  # drv_step_file <kind> <path-without-extension> [marker]
       } > "$path" ;;
     ships)
       printf '#!/usr/bin/env bash\n# heliograph-mode: read-only\necho the evidence\nexit 7\n' > "$path" ;;
+    messy)
+      # RAW printf, never echo: the point is the exact bytes. The last line has
+      # no newline after it deliberately.
+      {
+        printf '#!/usr/bin/env bash\n'
+        printf "printf '\\\\033[1;31mred line\\\\033[0m\\\\n'\n"
+        printf "printf 'crlf line\\\\r\\\\n'\n"
+        printf "printf 'to stderr\\\\n' >&2\n"
+        printf "printf 'no trailing newline'\n"
+      } > "$path" ;;
     *) return 1 ;;
   esac
   chmod +x "$path"

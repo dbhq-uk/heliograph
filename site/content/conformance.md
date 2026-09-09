@@ -23,7 +23,7 @@ becomes a second copy of one implementation.
 `drivers/mutant.sh` is deliberately broken and the suite asserts that it
 **fails**. A test suite nobody has watched fail is a suite nobody knows works.
 
-## The nine properties
+## The ten properties
 
 **1. Every captured line carries a distinct UTC timestamp.**
 Three lines a second apart must produce three different stamps. This is the
@@ -87,6 +87,13 @@ until the suite started watching the size.
 
 **9. The finished log reaches the far side.**
 Read back from the receiving end, never from the working tree that wrote it.
+
+**10. The log carries text, not a terminal.**
+ANSI escapes stripped, carriage returns gone, stderr captured, and **the final
+line kept even with no newline after it**. That last one found a real defect:
+the bash capture dropped it, because `while read` returns non-zero at EOF and
+the loop ended - and the line a step was mid-way through writing is the probe
+that was in flight, which is the most valuable line in the file.
 
 ## Property 9 is the one worth explaining
 

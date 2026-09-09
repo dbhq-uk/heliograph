@@ -120,6 +120,15 @@ Stated on the site rather than hidden, so nobody plans around a promise.
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour
+- **The two captures disagree about a bare carriage return.** A progress bar
+  writing `step 1\rstep 2\rstep 3\n` is ONE line with embedded `^M` to the
+  bash capture, because `read` splits on LF alone, and THREE lines to
+  caplib.psm1, because .NET's `ReadLine` treats a lone CR as a terminator.
+  .NET's is the better answer - an embedded `^M` in a committed log is the same
+  defect the trailing-CR strip exists to remove - so the fix belongs on the bash
+  side and changes `cap_run`'s read loop. Found on 2026-09-09 by writing
+  property 10, which is also what found that bash was DROPPING the final line
+  when it had no newline after it. That one is fixed
 - **The ACI templates are not twins.** `aci/main.tf` declares an `ip_address`
   block with TCP 65000 and `aci/main.bicep` omits `ipAddress` entirely, so the
   two produce different resources from the same inputs - network policy and

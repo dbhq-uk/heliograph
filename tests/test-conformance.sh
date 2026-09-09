@@ -148,11 +148,30 @@ if [ -n "$(command -v pwsh || command -v powershell)" ]; then
     drv_capture "$SHAPE/ps.log" "$SHAPE/step"
   ) >/dev/null 2>&1
 
-  if diff -u <(shape_of "$SHAPE/bash.log") <(shape_of "$SHAPE/ps.log") > "$SHAPE/diff" 2>&1; then
-    t_ok "both implementations write a log of exactly the same shape"
-  else
-    t_no "the two implementations write DIFFERENT logs:"
-    sed 's/^/     /' "$SHAPE/diff" | head -20
+  # BOTH LOGS ARE REQUIRED TO EXIST AND TO SAY SOMETHING FIRST.
+  #
+  # `diff` of two empty streams is equal, and process substitution hides the
+  # exit status of the `sed` that produced them - so if neither capture ran,
+  # this reported "exactly the same shape" for two logs that were not there.
+  # Two failures agreeing is not agreement.
+  shape_ready=1
+  for f in "$SHAPE/bash.log" "$SHAPE/ps.log"; do
+    for want in 'TIME | working' 'exit code    : 42' 'RESULT       : FAILED'; do
+      grep -qF "${want#TIME | }" "$f" 2>/dev/null || {
+        t_no "the shape fixture produced no usable log at $(basename "$f"): missing [$want]"
+        shape_ready=0
+        break 2
+      }
+    done
+  done
+
+  if [ "$shape_ready" = "1" ]; then
+    if diff -u <(shape_of "$SHAPE/bash.log") <(shape_of "$SHAPE/ps.log") > "$SHAPE/diff" 2>&1; then
+      t_ok "both implementations write a log of exactly the same shape"
+    else
+      t_no "the two implementations write DIFFERENT logs:"
+      sed 's/^/     /' "$SHAPE/diff" | head -20
+    fi
   fi
   rm -rf "$SHAPE"
 fi

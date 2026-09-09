@@ -26,13 +26,25 @@
 _P_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _P_CAPTURE="$_P_HERE/powershell-capture.ps1"
 
-# `pwsh` first: on Windows both may exist, and 7 is what a new estate installs.
-# Windows PowerShell 5.1 is the floor the implementation targets, so
-# `powershell` is a first-class answer rather than a fallback.
-_P_SHELL=""
-for _c in pwsh powershell powershell.exe; do
-  if command -v "$_c" >/dev/null 2>&1; then _P_SHELL="$_c"; break; fi
-done
+# CONF_PS_SHELL OVERRIDES, and that is not a convenience.
+#
+# Windows PowerShell 5.1 is the floor this implementation targets, and the
+# driver preferring `pwsh` meant the floor was never once exercised - on a
+# Windows host with both editions installed it tested 7 and ignored 5.1
+# entirely. That is exactly how the first version shipped using
+# ProcessStartInfo.ArgumentList, which does not exist on .NET Framework and
+# would have thrown on every 5.1 station.
+#
+# So Windows CI runs this suite twice, once per edition, by setting
+# CONF_PS_SHELL. The default order is only what to do when nobody said.
+_P_SHELL="${CONF_PS_SHELL:-}"
+if [ -n "$_P_SHELL" ]; then
+  command -v "$_P_SHELL" >/dev/null 2>&1 || _P_SHELL=""
+else
+  for _c in pwsh powershell powershell.exe; do
+    if command -v "$_c" >/dev/null 2>&1; then _P_SHELL="$_c"; break; fi
+  done
+fi
 
 drv_name() {
   if [ -n "$_P_SHELL" ]; then
@@ -122,6 +134,19 @@ PS
 # heliograph-mode: read-only
 Write-Output 'the evidence'
 exit 7
+PS
+      ;;
+    messy)
+      # [Console]::Out.Write and ::Error.Write rather than Write-Output and
+      # Write-Error: the point is the exact bytes on the exact stream. A
+      # Write-Error would arrive as a formatted ErrorRecord with its own
+      # decoration, which is a different thing to capture.
+      cat > "$path" <<'PS'
+$esc = [char]27
+[Console]::Out.Write("$esc[1;31mred line$esc[0m`n")
+[Console]::Out.Write("crlf line`r`n")
+[Console]::Error.Write("to stderr`n")
+[Console]::Out.Write('no trailing newline')
 PS
       ;;
     *) return 1 ;;

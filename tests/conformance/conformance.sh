@@ -464,4 +464,55 @@ else
   t_skip "p9: driver cannot observe the far side, so delivery is unchecked here"
 fi
 
+# --- property 10: the log carries TEXT, not a terminal ------------------------
+# Everything above is about timing, exit codes, gates and delivery. None of it
+# asks what actually lands in the file when a step behaves the way real steps
+# behave, and both implementations had untested behaviour here - one of them
+# wrong.
+#
+# Four things, each of which has cost somebody time somewhere:
+#
+#   ANSI      a step that colours its output leaves escape sequences in a file
+#             that gets committed. Unreadable, and unsearchable with grep.
+#   CRLF      `read` keeps everything before the newline, so a CRLF stream
+#             leaves a CR on every line: invisible in a terminal, and it
+#             silently breaks any grep anchored with $.
+#   stderr    a step that fails usually says why on stderr. A capture that
+#             takes only stdout keeps the output and loses the diagnosis.
+#   the last  a step killed mid-write, or one ending in `printf` without a
+#     line    newline, has a final line with no terminator. THE BASH SIDE
+#             DROPPED IT: `while read` returns non-zero at EOF and the loop
+#             ended, discarding the partial. That line is the probe that was in
+#             flight, which is the single most valuable line in the file.
+#             Found by writing this property, not by reading the code.
+if drv_supports capture; then
+  drv_step_file messy "$WORK/messy"
+  drv_capture "$WORK/p10.log" "$WORK/messy" >/dev/null 2>&1
+  p10_body="$(cat "$WORK/p10.log" 2>/dev/null)"
+
+  assert_eq "p10: no ANSI escape survives into the log" "0" \
+    "$(printf '%s' "$p10_body" | grep -c "$(printf '\033')" || true)"
+  assert_eq "p10: no carriage return survives into the log" "0" \
+    "$(printf '%s' "$p10_body" | grep -c "$(printf '\r')" || true)"
+  assert_contains "p10: the coloured line itself is kept, only its escapes go" \
+    "red line" "$p10_body"
+  assert_contains "p10: stderr is captured, or a failure keeps its output and loses its reason" \
+    "to stderr" "$p10_body"
+  assert_contains "p10: the final line survives even with no newline after it" \
+    "no trailing newline" "$p10_body"
+
+  # And it is STAMPED like any other line, not appended raw. A partial line
+  # bolted on after the loop is the obvious fix and it produces a line the
+  # reader cannot place in time.
+  p10_last="$(printf '%s\n' "$p10_body" | grep 'no trailing newline' | head -1)"
+  case "$p10_last" in
+    [0-9][0-9]:[0-9][0-9]:[0-9][0-9]" | "*)
+      t_ok "p10: and it is stamped like every other line" ;;
+    *)
+      t_no "p10: the final line arrived unstamped: [$p10_last]" ;;
+  esac
+else
+  t_skip "p10: driver does not support capture"
+fi
+
 t_summary
