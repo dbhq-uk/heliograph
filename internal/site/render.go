@@ -56,6 +56,21 @@ func Title(md string) string {
 	return ""
 }
 
+// WithoutH1 returns the body with its first H1 line removed.
+//
+// For the home page, whose H1 is the hero's. A page with two H1s tells a
+// search engine it has two titles, and the second one here was just the
+// product's name.
+func WithoutH1(md string) string {
+	lines := strings.Split(md, "\n")
+	for i, l := range lines {
+		if m := reHeading.FindStringSubmatch(l); m != nil && len(m[1]) == 1 {
+			return strings.Join(append(lines[:i:i], lines[i+1:]...), "\n")
+		}
+	}
+	return md
+}
+
 // stripInline removes markdown emphasis for use in a title or a summary.
 func stripInline(s string) string {
 	s = reBold.ReplaceAllString(s, "$1")

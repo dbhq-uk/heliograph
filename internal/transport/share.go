@@ -237,7 +237,11 @@ func (b *Bundle) PutRequest(r wire.Request) error {
 		return err
 	}
 	fmt.Printf("bundle written: %s\n", path)
-	fmt.Println("  carry it to the station and run: ./station.sh --bundle <file>")
+	// The station side of the bundle does not exist yet. This used to name a
+	// flag that has never existed, which is the sort of thing that costs
+	// somebody an afternoon before they conclude the tool is broken.
+	fmt.Println("  the bundle has no station side yet: carry the step across and run it by hand,")
+	fmt.Println("  PUSH=0 ./run.sh <step>, as described at https://heliograph.dbhq.uk/air-gapped")
 	return nil
 }
 

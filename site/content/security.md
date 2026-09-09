@@ -69,6 +69,30 @@ For an estate that wants "runs only what I approved", `REQUIRE_PIN=1` refuses
 any step whose file hash the operator has not approved. It is off by default
 because it reintroduces the relaying this tool exists to remove.
 
+## Claude Code permissions, sandboxes, and where the gates sit
+
+Two searches bring people here, and both deserve a straight answer.
+
+**Is heliograph a sandbox for Claude Code?** No. Claude Code's permission
+prompts and its sandbox govern what the agent may do on the machine it is
+running on: yours. heliograph never puts the agent on the far side. It
+publishes a request, and a station somebody else started decides whether to run
+it, through the four gates above. So there is nothing for heliograph to
+sandbox. The agent's whole reach into the estate is one file that declares
+itself read-only or an action, and a station that refuses anything else.
+
+**Does `--dangerously-skip-permissions` change what it can do?** No. That flag
+turns off the prompts Claude Code shows before acting on your machine. It says
+nothing to the station. A step still has to declare its mode, an action still
+needs `CONFIRM=yes`, the station still has to have been started with
+`--allow-actions`, and root is still refused. The agent can skip its own prompts
+and lose nothing but its own prompts; what runs on the far side is decided on
+the far side, by the operator who started the loop.
+
+The honest corollary: heliograph does not make skipping permissions safe on the
+control side either. It never touches your machine's permissions, in either
+direction.
+
 ## A request is a control channel, and is treated as one
 
 The request names the step to run, so it is trusted by construction. Trusted is
