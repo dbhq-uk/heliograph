@@ -168,9 +168,12 @@ func RenderBody(md string) string {
 				continue
 			}
 			if inCode {
-				out.WriteString("</code></pre>\n")
+				// The button sits after the <pre> and is found from it by the
+				// handler, so a copy never depends on where in the block the
+				// click landed.
+				out.WriteString("</code></pre>" + copyButton + "</div>\n")
 			} else {
-				out.WriteString("<pre><code>")
+				out.WriteString(`<div class="code"><pre><code>`)
 			}
 			inCode = !inCode
 			continue
@@ -324,6 +327,12 @@ const Mark = `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">` +
 	`<path d="M28 35 L34 29" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/>` +
 	`<circle cx="40.5" cy="22.5" r="2.9" fill="currentColor"/>` +
 	`<circle cx="51" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="4.6" opacity=".8"/></svg>`
+
+// copyButton is the control on every code block. This site is a list of
+// commands to run on somebody else's machine, and selecting one by hand out
+// of a <pre> is exactly where a stray character enters a step.
+const copyButton = `<button class="copy" type="button" data-copy ` +
+	`aria-label="Copy this code"><span>Copy</span></button>`
 
 // Headings returns the H2s of a body, in order, as (id, text) pairs.
 //

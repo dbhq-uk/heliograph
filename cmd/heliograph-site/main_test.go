@@ -336,3 +336,113 @@ func TestOneH1PerPage(t *testing.T) {
 		}
 	}
 }
+
+// The site's own links to the repository carry the GitHub mark: the footer
+// on every page, and the header and hero on the home page. A word on its own
+// asks the reader to parse it; the mark is recognised before it is read.
+//
+// Links inside a page's prose are left alone. A mark mid-sentence is noise,
+// and the sentence already says where it goes.
+func TestTheChromeLinksToGitHubCarryTheMark(t *testing.T) {
+	out := buildSite(t)
+	re := regexp.MustCompile(`(?s)<a[^>]*href="https://github\.com/dbhq-uk/heliograph"[^>]*>(.*?)</a>`)
+	region := func(h, open, close string) string {
+		i := strings.Index(h, open)
+		if i < 0 {
+			return ""
+		}
+		j := strings.Index(h[i:], close)
+		if j < 0 {
+			return ""
+		}
+		return h[i : i+j]
+	}
+	for name, h := range htmlPages(t, out) {
+		regions := map[string]string{"footer": region(h, "<footer>", "</footer>")}
+		if name == "index.html" {
+			regions["header"] = region(h, `<header class="site-header">`, "</header>")
+			regions["hero"] = region(h, `<div class="cta">`, "</div>")
+		}
+		for where, frag := range regions {
+			links := re.FindAllStringSubmatch(frag, -1)
+			if len(links) == 0 {
+				t.Errorf("%s: the %s does not link to the repository", name, where)
+			}
+			for _, l := range links {
+				if !strings.Contains(l[1], `class="gh"`) {
+					t.Errorf("%s: the %s link has no GitHub mark: %s", name, where, l[1])
+				}
+			}
+		}
+	}
+}
+
+// This site is a list of commands to run somewhere else. Selecting one by
+// hand out of a <pre> is where a stray character enters a step.
+func TestEveryCodeBlockHasACopyButton(t *testing.T) {
+	out := buildSite(t)
+	for name, h := range htmlPages(t, out) {
+		pres := strings.Count(h, "<pre>")
+		if pres == 0 {
+			continue
+		}
+		if got := strings.Count(h, `<button class="copy"`); got != pres {
+			t.Errorf("%s: %d code blocks, %d copy buttons", name, pres, got)
+		}
+		if !strings.Contains(h, `<div class="code">`) {
+			t.Errorf("%s: code blocks are not wrapped, so the button has nothing to sit in", name)
+		}
+	}
+}
+
+// The markdown mirror was announced in a <link> and named once in the
+// footer. An agent finds it there; a person driving one never scrolls that
+// far. It belongs at the top of the page, next to the title.
+func TestDocsPagesOfferTheMarkdownMirrorAtTheTop(t *testing.T) {
+	out := buildSite(t)
+	for name, h := range htmlPages(t, out) {
+		if name == "index.html" || name == "404.html" {
+			continue
+		}
+		slug := strings.TrimSuffix(name, ".html")
+		head := h[:strings.Index(h, "<h1")]
+		if !strings.Contains(head, `data-copy-markdown="/`+slug+`.md"`) {
+			t.Errorf("%s has no copy-as-markdown control above its title", name)
+		}
+		if !strings.Contains(head, `href="/`+slug+`.md"`) {
+			t.Errorf("%s has no view-as-markdown link above its title", name)
+		}
+	}
+}
+
+// The JSON-LD has said there is a breadcrumb since the SEO work. Nothing on
+// the page did. A crawler was being told about navigation the reader could
+// not see, which is the sort of mismatch that is worth nothing at best.
+func TestDocsPagesShowTheBreadcrumbTheyClaim(t *testing.T) {
+	out := buildSite(t)
+	for name, h := range htmlPages(t, out) {
+		if name == "index.html" || name == "404.html" {
+			continue
+		}
+		if !strings.Contains(h, `<nav class="crumbs" aria-label="Breadcrumb">`) {
+			t.Errorf("%s claims a BreadcrumbList in JSON-LD and shows no breadcrumb", name)
+		}
+	}
+}
+
+// Google reads a favicon for the search result, and iOS wants a PNG for the
+// home screen. An SVG alone left both to guess.
+func TestTheSiteHasAFaviconEverythingCanRead(t *testing.T) {
+	out := buildSite(t)
+	for name, h := range htmlPages(t, out) {
+		for _, want := range []string{
+			`<link rel="icon" href="/assets/favicon.ico" sizes="48x48">`,
+			`<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">`,
+			`<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">`,
+		} {
+			if !strings.Contains(h, want) {
+				t.Errorf("%s is missing %s", name, want)
+			}
+		}
+	}
+}

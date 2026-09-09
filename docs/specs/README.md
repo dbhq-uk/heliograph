@@ -15,6 +15,8 @@ decisions and, more usefully, what they cost.
 | [`2026-09-09-analytics-and-seo-design.md`](2026-09-09-analytics-and-seo-design.md) | GA4 on the same stream as dbhq.uk, Search Console already covered, and the on-page defects the audit found |
 | [`2026-09-08-one-repo-many-stations-design.md`](2026-09-08-one-repo-many-stations-design.md) | one repository, many stations: the branch is already the channel, and the blast-radius rule that bounds it |
 
+| [`2026-09-09-site-affordances-design.md`](2026-09-09-site-affordances-design.md) | what a reader does once they arrive: copy buttons, the markdown mirror where a person can reach it, and what paseo.sh had that this did not |
+
 The master design and the relay spec were written in `heliograph-skill` and
 moved here when the two-repo split was decided. Their git history lives in that
 repository.
