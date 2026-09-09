@@ -108,6 +108,16 @@ func build(src, out string) error {
 	if err := os.WriteFile(filepath.Join(out, "style.css"), []byte(site.CSS), 0o644); err != nil {
 		return err
 	}
+	// GA4 and its consent prompt, as two files rather than one. analytics.js
+	// is denied by default and loads nothing on its own; consent.js is the
+	// only thing that can turn it on, and the page loads it second so
+	// __dbhqEnableGA is defined by document order rather than by luck.
+	if err := os.WriteFile(filepath.Join(out, "analytics.js"), []byte(site.AnalyticsJS), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(out, "consent.js"), []byte(site.ConsentJS), 0o644); err != nil {
+		return err
+	}
 	if err := os.WriteFile(filepath.Join(out, "sitemap.xml"), []byte(sitemap(pages)), 0o644); err != nil {
 		return err
 	}
@@ -342,10 +352,13 @@ func page(p site.Page, all []site.Page) string {
 <p>A free, open-source tool by <a href="https://dbhq.uk">DBHQ</a>.</p>
 <p><a href="https://github.com/dbhq-uk/heliograph">Source</a> &middot; <a href="/%[4]s.md">This page as markdown</a></p>
 </div></footer>
+%[14]s
 <script>%[10]s</script>
+<script src="/analytics.js"></script>
+<script src="/consent.js"></script>
 `, escAttr(title), escAttr(site.Summary(p.Body)), canonical, p.Slug,
 		site.Mark, nav.String(), hero, wide, site.RenderBody(p.Body), site.HeroJS,
-		shellOpen, shellClose, railHTML)
+		shellOpen, shellClose, railHTML, site.ConsentHTML)
 }
 
 // titles are written per page rather than derived from the H1.

@@ -315,12 +315,131 @@ footer .inner{max-width:min(76rem,92vw);margin:0 auto;display:flex;gap:1.6rem;
   flex-wrap:wrap;align-items:center;justify-content:space-between}
 footer p{margin:0}
 
+/* --------------------------------------------------------------- consent */
+/* A native <dialog> opened with showModal(), so it renders in the browser's
+   top layer - above the hero canvas with no z-index to argue with. Accept and
+   Decline are the same size and the same weight: the decline is not made
+   quieter than the accept, which is rather the point of asking. */
+.consent{
+  max-width:min(46rem,92vw);margin:auto;padding:1.7rem 1.9rem;
+  background:var(--dusk);color:var(--ink-2);
+  border:1px solid var(--ridge);border-radius:11px;
+  box-shadow:0 2px 6px rgba(0,0,0,.5),0 28px 60px -28px rgba(0,0,0,.95);
+  font:400 16px/1.6 'Archivo',ui-sans-serif,system-ui,sans-serif;
+}
+.consent[open]{display:flex;flex-direction:column;gap:1.15rem}
+.consent::backdrop{background:rgb(4 7 11 / .74)}
+.consent h2{margin:0;color:var(--ink-3);font-size:.78rem;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase}
+.consent p{margin:0}
+.consent-actions{display:flex;flex-wrap:wrap;gap:.75rem;justify-content:flex-end}
+/* A blanket border:0 here would beat .btn-ghost's own border on specificity
+   and leave Decline as bare text beside a solid Accept - exactly the lopsided
+   pair this is trying not to be. Only the primary, which draws with its
+   background, has its border removed. */
+.consent button{font:inherit;font-size:.97rem;font-weight:500;cursor:pointer}
+.consent .btn-primary{border:0}
+
 /* ---------------------------------------------------------------- motion */
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
     transition-duration:.001ms!important}
 }
 `
+
+// AnalyticsJS is GA4 with Consent Mode v2, denied by default.
+//
+// Nothing is loaded and no cookie is set until the visitor accepts. ConsentJS
+// owns the prompt and calls __dbhqEnableGA() on accept.
+//
+// The measurement ID is the estate-wide one: every *.dbhq.uk site reports to
+// the single "DBHQ" stream on property 544327698. A stream of this site's own
+// would mean a second _ga_<id> cookie on the shared .dbhq.uk parent, so a
+// visitor arriving from dbhq.uk would begin a fresh session here and the
+// journey between the two would be lost. One stream also matters for Search
+// Console: that link binds to exactly one data stream, so a site on its own ID
+// can never show search data in GA4. Split the sites at reporting time with
+// the Hostname dimension instead. See dbhq/docs/reference/analytics.md.
+//
+// A file rather than an inline block, so it is cacheable and reviewable on its
+// own and the page's own script stays about the hero.
+const AnalyticsJS = `
+window.dataLayer = window.dataLayer || [];
+function gtag(){ dataLayer.push(arguments); }
+window.gtag = gtag;
+gtag("consent", "default", {
+  ad_storage: "denied", analytics_storage: "denied",
+  ad_user_data: "denied", ad_personalization: "denied"
+});
+
+var gaId = "G-3H3NFGSX85";
+// Never measure a local build or a branch preview - only the real host.
+var prod = location.hostname === "heliograph.dbhq.uk";
+
+window.__dbhqEnableGA = function(){
+  if (!prod || window.__gaLoaded) return;
+  window.__gaLoaded = true;
+  gtag("consent", "update", { analytics_storage: "granted" });
+  gtag("js", new Date());
+  gtag("config", gaId);
+  var s = document.createElement("script");
+  s.async = true;
+  s.src = "https://www.googletagmanager.com/gtag/js?id=" + gaId;
+  document.head.appendChild(s);
+};
+
+// A visitor who accepted on a previous visit is not asked again. The key is
+// shared across *.dbhq.uk, so accepting on dbhq.uk carries over to here.
+try {
+  if (localStorage.getItem("dbhq-consent") === "granted") window.__dbhqEnableGA();
+} catch (e) {}
+`
+
+// ConsentJS is the prompt.
+//
+// A native <dialog> opened with showModal(), so the browser supplies focus
+// move-in, a focus trap, Escape handling and focus return. A hand-rolled
+// overlay has none of those.
+//
+// Escape counts as no answer, so the prompt returns next visit rather than
+// being read as consent.
+const ConsentJS = `
+(function(){
+  var dlg = document.querySelector("[data-consent]");
+  if (!dlg) return;
+
+  var choice = null;
+  try { choice = localStorage.getItem("dbhq-consent"); } catch (e) {}
+
+  function set(v){
+    try { localStorage.setItem("dbhq-consent", v); } catch (e) {}
+    if (dlg.open) dlg.close();
+    if (v === "granted" && typeof window.__dbhqEnableGA === "function") {
+      window.__dbhqEnableGA();
+    }
+  }
+
+  dlg.querySelector("[data-consent-accept]").addEventListener("click", function(){ set("granted"); });
+  dlg.querySelector("[data-consent-decline]").addEventListener("click", function(){ set("denied"); });
+
+  if (choice !== "granted" && choice !== "denied") dlg.showModal();
+})();
+`
+
+// ConsentHTML is the prompt's markup, on every page.
+//
+// The buttons reuse .btn/.btn-primary/.btn-ghost so the pair matches the rest
+// of the site rather than introducing a second button language for one dialog.
+const ConsentHTML = `<dialog class="consent" data-consent aria-labelledby="consent-title">
+  <h2 id="consent-title">Analytics</h2>
+  <p>We would like to count visits to these docs, using Google Analytics.
+  Cookies are only set if you accept, and every page works exactly the same
+  either way.</p>
+  <div class="consent-actions">
+    <button type="button" class="btn btn-ghost" data-consent-decline>Decline</button>
+    <button type="button" class="btn btn-primary" data-consent-accept autofocus>Accept</button>
+  </div>
+</dialog>`
 
 // HeroJS draws the signal.
 //
