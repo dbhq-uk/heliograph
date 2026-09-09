@@ -36,6 +36,37 @@
 #  refuses to trigger a workflow from a GITHUB_TOKEN push; Azure DevOps has no
 #  equivalent, so the path filter is the only structural guard and
 #  `***NO_CI***` in the commit message is the second. Do not remove either.
+
+#
+#  THIS ONE IS GIT-ONLY, AND THAT IS THE DESIGN RATHER THAN A GAP.
+#
+#  Every other host takes TRANSPORT and runs whatever channel it names. Here the
+#  git push IS the trigger, which is what makes the latency "however long an
+#  agent takes to start" rather than "however long until the next cron tick". A
+#  relay or a share has no push to fire on.
+#
+#  SO A NON-GIT STATION IN A PIPELINE IS NOT SHIPPED, and that is a statement
+#  rather than an omission. It would be a scheduled job costing a wait per step,
+#  and it needs five things this file cannot supply for you - three of them
+#  Azure DevOps specific and easy to get wrong:
+#
+#    1. `schedules:` AND `trigger: none`. Adding a schedule does not make a
+#       pipeline schedule-only: without `trigger: none` Azure keeps an implied
+#       CI trigger on every branch, so ordinary pushes would start the station
+#       as well.
+#    2. `always: true` on the schedule, or it runs only when the branch has
+#       changed - which for a station polling a relay is never.
+#    3. A SECRET VARIABLE IS NOT AUTOMATICALLY IN THE ENVIRONMENT. Marking
+#       RELAY_TOKEN secret in the UI leaves $RELAY_TOKEN empty in a script step
+#       unless it is mapped explicitly:  env: { RELAY_TOKEN: $(RELAY_TOKEN) }
+#    4. FOR THE RELAY: the two key files on disk, from secure files, with
+#       RELAY_IDENTITY and RELAY_PEER pointing at them - the transport reads
+#       paths, not values - and `heliograph-seal` on the agent. The container
+#       image carries that binary; a bare agent does not.
+#    5. The same loop guard as below, since a schedule can overlap itself.
+#
+#  None of that is exercised by any test here, so it is described rather than
+#  pasted: a recipe nobody has run is a recipe that does not work.
 # =============================================================================
 
 trigger:

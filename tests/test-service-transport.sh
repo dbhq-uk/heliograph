@@ -147,7 +147,20 @@ assert_eq "the LaunchAgent command carries no credential: a plist is world-reada
 assert_contains "it sources the file instead" ".station-env" "$PLIST_CMD"
 assert_contains "with set -a, or the exec below it would inherit nothing" "set -a" "$PLIST_CMD"
 
-# --- the credential check follows the TRANSPORT ------------------------------
+# --- service.sh delegates the rules, rather than carrying them ---------------
+#
+# The format, the transport name and whether that transport will initialise are
+# station-env.sh's, and tests/test-station-env.sh asserts them. This file had a
+# second copy of those rules, and service.ps1 had a third - in PowerShell, where
+# regexes are case-insensitive and Get-Content eats a BOM. Six disagreements
+# between two implementations of one file format is what ended that.
+assert_eq "service.sh no longer parses the env file itself" "0" \
+  "$(grep -c 'validate_env_file\|transport_needs\|env_file_value' "$ROOT/station/bash/service.sh")"
+assert_contains "it calls station-env.sh" "station-env.sh" \
+  "$(cat "$ROOT/station/bash/service.sh")"
+assert_eq "and station-env.sh ships with the payload" "1" \
+  "$([ -x "$TMP/relay/station-env.sh" ] && echo 1 || echo 0)"
+
 check() {  # check <repo> - runs credential_check, prints its output, sets RC
   RC=0
   OUT="$( cd "$1" && bash -c '
@@ -155,8 +168,9 @@ check() {  # check <repo> - runs credential_check, prints its output, sets RC
       say()  { printf "%s\n" "$*"; }
       warn() { printf "%s\n" "$*"; }
       STATION_ENV="$REPO_ROOT/.station-env"
+      STATION_ENV_CHECK="$REPO_ROOT/station-env.sh"
       # shellcheck disable=SC1091
-      source <(sed -n "/^env_file_lines()/,/^}/p;/^validate_env_file()/,/^}/p;/^env_file_value()/,/^}/p;/^station_transport()/,/^}/p;/^transport_needs()/,/^}/p;/^transport_env_check()/,/^}/p;/^credential_check()/,/^}/p" ./service.sh)
+      source <(sed -n "/^station_transport()/,/^}/p;/^credential_check()/,/^}/p" ./service.sh)
       credential_check
     ' 2>&1 )" || RC=$?
 }
@@ -166,102 +180,27 @@ check "$TMP/nogit"
 assert_eq "a git station with no remote is still refused, which is right" "1" "$RC"
 assert_contains "and told so in git's terms" "origin remote" "$OUT"
 
-# --- FAIL CLOSED: every variable the transport asks for ----------------------
-# Checking only that the file exists was fail-open in the worst way: a file
-# holding TRANSPORT=relay and nothing else installed cleanly and produced a
-# service that could not start, restarting on a timer, unwatched.
+# The refusal comes from station-env.sh and reaches the operator through this
+# file's own output. Without that it would be a silent exit code.
 payload "$TMP/thin"
 printf "TRANSPORT='relay'\n" > "$TMP/thin/.station-env"
 chmod 600 "$TMP/thin/.station-env"
 check "$TMP/thin"
-assert_eq "a relay env file with only TRANSPORT in it is refused" "1" "$RC"
-for want in RELAY_URL RELAY_TOKEN RELAY_IDENTITY RELAY_PEER; do
-  assert_contains "and it names $want, which transports/relay.sh asks for with cap_need" "$want" "$OUT"
-done
+assert_eq "an incomplete relay env file blocks the install" "1" "$RC"
+assert_contains "and the transport's own words reach the operator" "RELAY_URL" "$OUT"
 
-# The same file, complete. The names come out of the transport itself, so this
-# also proves transport_needs is reading the right thing.
 payload "$TMP/full"
 {
-  printf "TRANSPORT='relay'\n"
-  for v in $(sed -n 's/^[[:space:]]*cap_need[[:space:]]\{1,\}\([A-Z_][A-Z0-9_]*\).*/\1/p' \
-               "$TMP/full/transports/relay.sh" | sort -u); do
-    printf "%s='x'\n" "$v"
-  done
+  printf "TRANSPORT='share'\n"
+  printf "SHARE_DIR='%s'\n" "$TMP/full"
+  printf "SHARE_SCOPE='probe'\n"
 } > "$TMP/full/.station-env"
+mkdir -p "$TMP/full/probe"
 chmod 600 "$TMP/full/.station-env"
 check "$TMP/full"
-assert_eq "a complete relay env file installs" "0" "$RC"
-assert_contains "and says which transport it read" "relay" "$OUT"
+assert_eq "a complete non-git env file installs" "0" "$RC"
+assert_contains "and says which transport it read" "share" "$OUT"
 assert_eq "and never mentions a git remote it was never going to use" "" \
   "$(printf '%s' "$OUT" | grep -o 'origin remote')"
-
-# --- a transport that does not exist -----------------------------------------
-# A typo installs a service that cannot start and retries for ever.
-payload "$TMP/typo"
-printf "TRANSPORT='realy'\n" > "$TMP/typo/.station-env"
-chmod 600 "$TMP/typo/.station-env"
-check "$TMP/typo"
-assert_eq "a misspelt transport is refused before anything is installed" "1" "$RC"
-assert_contains "and it lists what this payload actually ships" "relay" "$OUT"
-
-# --- the file must be readable by BOTH parsers -------------------------------
-# systemd reads it with EnvironmentFile; launchd and setsid source it in a
-# shell. A line that means different things to the two is refused, quoted back.
-payload "$TMP/badsas"
-printf "TRANSPORT='blob'\nPIGEONHOLE_SAS=?sv=2021&ss=b&sig=abc\n" > "$TMP/badsas/.station-env"
-chmod 600 "$TMP/badsas/.station-env"
-check "$TMP/badsas"
-assert_eq "an unquoted value with an ampersand in it is refused" "1" "$RC"
-assert_contains "and the message shows how to write it" "PIGEONHOLE_SAS='...'" "$OUT"
-
-payload "$TMP/exported"
-printf "export TRANSPORT='relay'\n" > "$TMP/exported/.station-env"
-chmod 600 "$TMP/exported/.station-env"
-check "$TMP/exported"
-assert_eq "'export' is refused: valid shell, and invalid to systemd" "1" "$RC"
-assert_contains "and it says which of the two would reject it" "EnvironmentFile" "$OUT"
-
-payload "$TMP/spaces"
-printf "TRANSPORT = relay\n" > "$TMP/spaces/.station-env"
-chmod 600 "$TMP/spaces/.station-env"
-check "$TMP/spaces"
-assert_eq "spaces around the '=' are refused: valid to neither parser" "1" "$RC"
-
-# A file edited on Windows. Without the CR strip, TRANSPORT becomes 'relay\r',
-# which names no transport and produces a service that cannot start.
-payload "$TMP/crlf"
-printf "TRANSPORT='relay'\r\nRELAY_URL='https://r.invalid'\r\n" > "$TMP/crlf/.station-env"
-chmod 600 "$TMP/crlf/.station-env"
-check "$TMP/crlf"
-assert_eq "a CRLF file does not turn the transport name into one nothing ships" "" \
-  "$(printf '%s' "$OUT" | grep -o 'no /.*transports/relay..sh')"
-
-# --- the env file is read from the FILE, not from this shell -----------------
-# The service sees the file and not this shell, so the file is what the check
-# has to reason about.
-payload "$TMP/onlyshell"
-RC=0
-OUT="$( cd "$TMP/onlyshell" && TRANSPORT=relay bash -c '
-    REPO_ROOT="$PWD"
-    say()  { printf "%s\n" "$*"; }
-    warn() { printf "%s\n" "$*"; }
-    STATION_ENV="$REPO_ROOT/.station-env"
-    # shellcheck disable=SC1091
-    source <(sed -n "/^env_file_lines()/,/^}/p;/^validate_env_file()/,/^}/p;/^env_file_value()/,/^}/p;/^station_transport()/,/^}/p;/^transport_needs()/,/^}/p;/^transport_env_check()/,/^}/p;/^credential_check()/,/^}/p" ./service.sh)
-    credential_check
-  ' 2>&1 )" || RC=$?
-assert_eq "TRANSPORT exported in this shell alone still blocks: the service would not see it" "1" "$RC"
-assert_contains "and it says where the variables have to be" ".station-env" "$OUT"
-
-# --- a world-readable env file is reported -----------------------------------
-cp "$TMP/full/.station-env" "$TMP/full/.station-env.bak"
-chmod 644 "$TMP/full/.station-env"
-check "$TMP/full"
-assert_eq "a world-readable env file does not block the install" "0" "$RC"
-assert_contains "but it is reported, because it holds a token" "chmod 600" "$OUT"
-chmod 600 "$TMP/full/.station-env"
-check "$TMP/full"
-assert_eq "and a 600 file is not complained about" "" "$(printf '%s' "$OUT" | grep -o 'chmod 600')"
 
 t_summary

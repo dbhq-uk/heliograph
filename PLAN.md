@@ -56,14 +56,17 @@ in CI. The site documents the far side. There is no PowerShell station.
 
 | PR | |
 |---|---|
-| - | **analytics and search on the site** - GA4 behind consent, `lastmod`, descriptions, JSON-LD, `og.png`, a 404 page, and the two font preloads that 404ed on every page view. Spec: [`docs/specs/2026-09-09-analytics-and-seo-design.md`](docs/specs/2026-09-09-analytics-and-seo-design.md). Keyword research: [`docs/seo/2026-09-09-keyword-research.md`](docs/seo/2026-09-09-keyword-research.md) |
+| #43 | **analytics and search on the site** - GA4 behind consent, `lastmod`, descriptions, JSON-LD, `og.png`, a 404 page, and the two font preloads that 404ed on every page view. Spec: [`docs/specs/2026-09-09-analytics-and-seo-design.md`](docs/specs/2026-09-09-analytics-and-seo-design.md). Keyword research: [`docs/seo/2026-09-09-keyword-research.md`](docs/seo/2026-09-09-keyword-research.md) |
+| #44 | **Windows and the pipelines** - the scheduled task carries a transport |
 
 ## Next, in order
 
-1. **The hosts that are still git-only** (the rest of PR 6). Containers,
-   Kubernetes and the three service mechanisms carry a transport now. Still to
-   do: the five Azure templates, the two pipeline definitions, and
-   `service.ps1`
+1. **The five Azure templates are the last git-only hosts.** They take a
+   `repoUrl` and build a fixed environment, so selecting another transport means
+   editing the template. Nothing in CI runs `terraform validate` over them
+   either - only `infra/` is checked - so an edit to them is unverified today.
+   The pipelines are deliberately git-shaped and say so: the git push is the
+   trigger, and a non-git station there is a cron job that costs a wait per step
 2. **Conformance across every transport in CI** (PR 7). Property 9 only
    exercises git today, so a no-op `tp_put_log` on another transport would pass
 3. **Track B: the PowerShell station**, seven PRs, gated on 1. Windows
@@ -174,6 +177,29 @@ locks and two processes went in at once. Four takers wanting fifteen numbers
 each got 33 distinct numbers out of 60. It fails exactly like having no lock:
 intermittently, silently, under load. Ask `kill -0` whether the recorded pid is
 alive, which is what station.sh has always done.
+
+**One file format, two implementations, is six disagreements.** The
+`.station-env` rules were written in bash for `service.sh` and again in
+PowerShell for `service.ps1`, and an adversarial read found six ways they
+classified the same file differently - PowerShell regexes are case-insensitive
+by default, `Get-Content` eats a UTF-8 BOM that bash does not skip when
+sourcing, an empty file passed one and failed the other. A station that installs
+on Windows and is refused on Linux, from one file, is worse than either answer
+alone. `station-env.sh` is now the only implementation and both installers call
+it.
+
+**Ask the transport, do not keep a list of what it needs.** Scraping `cap_need`
+names out of a transport looked mechanical and was a floor: Azure Blob needs a
+SAS *or* a managed identity, which no `cap_need` line expresses, so a file with
+the two names it does declare passed the installer and was refused by
+`start.sh`. Running the transport's own `tp_init` - local by contract, no
+network - gets every case right and stays right when a transport changes.
+
+**Stripping a CR on read is not the same as stripping it on source.** The
+validator read `.station-env` with the CR removed and accepted a CRLF file;
+nothing strips it when a service SOURCES that file, so `SHARE_SCOPE` became
+`probe` plus a carriage return and the transport refused it after installation.
+The test asserting CRLF was accepted is what found it.
 
 **A `.dockerignore` is a file nobody re-reads, and it decides what ships.**
 `**/secrets/*` looked like prudence and was wrong: `station/bash/secrets/` is
