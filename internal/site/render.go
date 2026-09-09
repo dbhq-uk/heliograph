@@ -24,6 +24,9 @@ type Page struct {
 	Slug  string // "install"; "index" is the root
 	Title string // the first H1
 	Body  string // markdown
+	// Modified is the date of the last commit that touched the source, as
+	// YYYY-MM-DD, for the sitemap and the structured data.
+	Modified string
 }
 
 var (

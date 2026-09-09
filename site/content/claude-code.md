@@ -57,9 +57,9 @@ read the log that just came back and tell me what it measured
 What you decide is which question to ask next. Claude writes the step,
 publishes it, waits, and reads the captured log.
 
-## Why not just give the agent SSH
+## Claude Code without SSH
 
-Because in the estates this is for, there is no SSH to give. The machine is
+In the estates this is for, there is no SSH to give. The machine is
 behind a bastion you are not on, or in a client's estate where only their staff
 may log in, or the access is blocked by policy rather than capability:
 regulated, restricted, change-controlled.
@@ -69,6 +69,10 @@ does not try. It does not tunnel, proxy or hold a connection open, and there is
 nothing in it to punch through a firewall with. **Every command runs on the far
 side because somebody with legitimate access chose to run it.** What changes is
 that they run one command, once, and then stop being your terminal.
+
+This is also not Claude Code's Remote Control, which drives a session on your
+own machine from your phone. That is for a machine you can already reach.
+heliograph is for one that neither you nor the agent can log into.
 
 ## What the agent gets that a human relay does not
 

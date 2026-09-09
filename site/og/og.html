@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- The Open Graph image, 1200x630. Rendered by render.sh with headless Chrome
+     and committed as site/assets/og.png. It uses the site's own fonts and
+     palette (see internal/site/theme.go) so a shared link looks like the page
+     it points at. -->
+<html lang="en-GB">
+<meta charset="utf-8">
+<style>
+@font-face{font-family:'Archivo';src:url('../assets/fonts/Archivo.woff2')format('woff2');font-weight:300 800}
+@font-face{font-family:'JetBrains Mono';src:url('../assets/fonts/JetBrainsMono.woff2')format('woff2');font-weight:300 800}
+html,body{margin:0;width:1200px;height:630px;overflow:hidden}
+body{background:#080C12;color:#E7EDF4;font-family:'Archivo',sans-serif;position:relative}
+.bg{position:absolute;inset:0;
+  background:
+    radial-gradient(900px 420px at 88% 8%,rgba(123,167,212,.16),transparent 60%),
+    radial-gradient(700px 360px at 6% 100%,rgba(78,127,179,.14),transparent 60%)}
+.ridge{position:absolute;left:0;right:0;bottom:0;height:6px;background:linear-gradient(90deg,#4E7FB3,#7BA7D4 55%,#E6F1FB)}
+.wrap{position:absolute;inset:0;padding:64px 72px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:18px;font-weight:600;font-size:34px;letter-spacing:-.02em}
+.brand svg{width:56px;height:56px}
+h1{font-weight:600;font-size:66px;line-height:1.08;letter-spacing:-.025em;margin:0 0 22px;max-width:980px}
+h1 em{font-style:normal;color:#7BA7D4}
+.lede{font-size:27px;line-height:1.4;color:#A3B4C6;margin:0;max-width:940px}
+.log{font-family:'JetBrains Mono',monospace;font-size:20px;line-height:1.7;color:#A3B4C6;margin:0;
+  background:#0D141C;border:1px solid #18222E;border-radius:12px;padding:16px 22px;width:max-content}
+.t{color:#7A8CA0}.gap{color:#7BA7D4}
+.foot{display:flex;justify-content:space-between;align-items:flex-end}
+.by{font-size:22px;color:#7A8CA0}
+.by b{color:#A3B4C6;font-weight:600}
+</style>
+<div class="bg"></div>
+<div class="wrap">
+  <div class="brand">
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="16" cy="47" r="9.5" fill="#7BA7D4"/>
+      <path d="M28 35 L34 29" stroke="#E6F1FB" stroke-width="5.5" stroke-linecap="round"/>
+      <circle cx="40.5" cy="22.5" r="2.9" fill="#E6F1FB"/>
+      <circle cx="51" cy="12" r="6" fill="none" stroke="#4E7FB3" stroke-width="4.6"/>
+    </svg>
+    heliograph
+  </div>
+  <div>
+    <h1>Run it on a machine you <em>cannot log into</em>.</h1>
+    <p class="lede">Push a step. It runs on the far side. The whole run comes back as a log, every line timestamped, whether it passed or failed.</p>
+  </div>
+  <div class="foot">
+    <pre class="log"><span class="t">09:14:02</span> | Refreshing state...
+<span class="gap">           3m12s   nothing was produced here. This is the answer.</span>
+<span class="t">09:17:14</span> | Plan: 3 to add, 0 to change</pre>
+    <p class="by">Free and open source, by <b>DBHQ</b></p>
+  </div>
+</div>
+<div class="ridge"></div>
+</html>
