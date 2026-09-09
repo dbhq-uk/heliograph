@@ -134,20 +134,28 @@ Stated on the site rather than hidden, so nobody plans around a promise.
   same person chose the value and owns the VM, so it is a robustness problem
   rather than an escalation. The transport's environment block was added
   base64-encoded specifically so as not to widen it
-- **`test-launchd.sh` has now failed three times**, always on the same
-  assertion: *"launchd restarted the loop as pid N after a clean exit"*. The
-  test writes `stop: yes`, watches until launchd reports no pid, waits eight
-  seconds and asks again - and a pid was there.
-  `KeepAlive { SuccessfulExit: false }` should forbid exactly that.
-  Two readings, and they need opposite fixes: the loop exited NON-zero, so
-  launchd restarted it correctly and the defect is upstream of the assertion; or
-  launchd's respawn throttle raced the eight-second window, so the assertion is
-  what is wrong. `launchctl print` carries *last exit code*, which separates
-  them outright, and it cannot be read after the fact.
-  **The test now captures that itself on failure**, along with the station's
-  service log and the published status. Nobody had gathered it in three
-  occurrences because every one of them was somebody re-running a job. The next
-  failure carries its own diagnosis; do not re-run it without reading that
+**Fixed on 2026-09-09, and recorded because it was on this list: no station has
+ever run under launchd.** `test-launchd.sh` had failed four times on *"launchd
+restarted the loop as pid N after a clean exit"*, and every occurrence was
+re-run clean by somebody, so nobody read it. On the fourth the test captured
+`launchctl print` itself, and the answer was one line: `last exit code = 1`,
+with `PATH => /usr/bin:/bin:/usr/sbin:/sbin` above it and *"FAIL bash need 4 or
+newer, found 3.2.57"* in the station's log.
+
+macOS ships bash 3.2 at `/bin/bash`. A Mac that runs stations has a newer one
+from Homebrew and the operator's PATH finds it, so `service.sh install` passes
+every check it makes. A LaunchAgent does not inherit that PATH, so it found 3.2,
+the preflight refused it, the station exited 1, and `KeepAlive
+{ SuccessfulExit: false }` restarted it - correctly. The plist was blameless and
+the assertion was right. The station simply never started, and a poll for *"is a
+loop running"* kept finding one because a crash loop always has a pid.
+
+`service.sh` now resolves an absolute bash 4-or-newer at install time,
+`pick_bash`, writes it into `ProgramArguments`, and prepends its directory to
+the agent's PATH; with none on the machine it refuses to install rather than
+leaving a crash loop behind. `test-service.sh` asserts all of that on Linux, and
+`test-launchd.sh` now checks the plist's bash and the log for *"Not starting the
+station"* before believing a pid.
 
 **Fixed on 2026-09-08, and recorded because they were on this list:** the relay
 sequence collision between the loop and the runner is closed by a `mkdir` lock
@@ -170,6 +178,19 @@ Break every new assertion deliberately and watch it fail before keeping it.
 pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
+
+**A re-run that goes green is a diagnosis nobody made.** The launchd assertion
+failed four times and was re-run clean four times, and the fourth failure - the
+first to print `launchctl print` - said in one line that no station had ever
+started on a Mac. An intermittent failure is a race between a real bug and a
+poll, not an absence of one. Make a test carry its own evidence BEFORE it fails
+again, because the evidence that settles it is usually the kind the next run
+destroys.
+
+**A process is not a service.** *"the loop is running as pid N"* was true
+throughout a crash loop, because launchd kept making new ones. Assert on what
+the thing was installed to DO - it got past preflight, it published a status -
+never on the existence of a pid.
 
 **A template nobody has validated is a template nobody knows parses.** The very
 first CI run of `terraform validate` over `station/bash/azure`, added on

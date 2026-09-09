@@ -98,6 +98,53 @@ launchd_ok() {
   [ "$(uname -s 2>/dev/null)" = "Darwin" ] || return 1
   command -v launchctl >/dev/null 2>&1
 }
+
+# pick_bash - an ABSOLUTE path to a bash 4 or newer, printed, or nothing.
+#
+# THIS IS WHY A MAC STATION CRASH-LOOPED, and the failure was invisible for
+# four CI runs because it looks exactly like a flaky test.
+#
+# macOS still ships bash 3.2 at /bin/bash - the last GPLv2 release, from 2007 -
+# and start.sh's preflight refuses it, correctly: the station uses `declare -A`
+# and `${var^^}`, neither of which 3.2 has. Anybody running a station on a Mac
+# therefore has a newer bash from Homebrew or MacPorts, and their interactive
+# PATH finds it first, so `./service.sh install` runs under bash 5 and every
+# check it makes passes.
+#
+# launchd does NOT inherit that PATH. A LaunchAgent gets the bare
+# /usr/bin:/bin:/usr/sbin:/sbin, where the only bash is 3.2. So the install
+# reported success, launchd started the agent, preflight found bash 3.2,
+# refused to start, and exited 1 - which under KeepAlive/SuccessfulExit=false
+# is a restart, correctly. The station never ran a single step, and the plist
+# was blameless.
+#
+# So the bash is resolved HERE, at install time, to an absolute path, and both
+# written into ProgramArguments and put on the agent's PATH. An absolute path
+# in the plist is not a style choice: it is the only part of the environment
+# launchd cannot take away.
+pick_bash() {
+  local c v
+  # The running shell first. Whoever ran service.sh reached it somehow, and it
+  # is by definition the one their PATH resolves - so it is the least
+  # surprising answer when it qualifies.
+  for c in "${BASH:-}" "$(command -v bash 2>/dev/null)" \
+    /opt/homebrew/bin/bash /usr/local/bin/bash /opt/local/bin/bash /bin/bash; do
+    [ -n "$c" ] && [ -x "$c" ] || continue
+    v="$("$c" -c 'printf %s "${BASH_VERSINFO[0]}"' 2>/dev/null)"
+    case "$v" in
+    '' | *[!0-9]*) continue ;;
+    esac
+    if [ "$v" -ge 4 ]; then
+      # Absolute, because ProgramArguments is not resolved against a PATH.
+      case "$c" in
+      /*) printf '%s' "$c" ;;
+      *) command -v "$c" ;;
+      esac
+      return 0
+    fi
+  done
+  return 1
+}
 UNIT_PATH="$UNIT_DIR/$UNIT_NAME"
 PID_FILE="$REPO_ROOT/.agent-service.pid"
 LOG_FILE="$REPO_ROOT/.station-service.log"
@@ -410,8 +457,18 @@ cmd_install() {
     # `[ -r ... ] &&` rather than a bare source: a git station keeping its token
     # in ~/.git-token has no such file, and a launchd job that failed because a
     # file it never needed was absent would be a poor trade for the tidiness.
-    local args_xml="" a cmd
-    cmd="$(env_wrapped_prefix)exec bash $(sh_quote "$REPO_ROOT/start.sh")"
+    local args_xml="" a cmd sh bindir
+    sh="$(pick_bash)" || die "no bash 4 or newer on this Mac, and /bin/bash is 3.2.
+      A LaunchAgent gets PATH=/usr/bin:/bin:/usr/sbin:/sbin, so it would find only
+      3.2 and the station would refuse to start on every restart for ever.
+      Install one - brew install bash - and run this again."
+    bindir="$(dirname "$sh")"
+    # PATH first, and PREPENDED, so that everything start.sh goes on to spawn as
+    # plain 'bash' gets the same one the plist execs. The rest is launchd's own
+    # default, kept, because the station calls git, sed and date and dropping
+    # /usr/bin would break all three.
+    cmd="PATH=$(sh_quote "$bindir"):\"\${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}\"; export PATH; "
+    cmd="$cmd$(env_wrapped_prefix)exec $(sh_quote "$sh") $(sh_quote "$REPO_ROOT/start.sh")"
     for a in ${START_ARGS+"${START_ARGS[@]}"}; do
       cmd="$cmd $(sh_quote "$a")"
     done
@@ -426,7 +483,7 @@ cmd_install() {
     <key>Label</key><string>${LAUNCH_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
+        <string>$(xml_escape "$sh")</string>
 ${args_xml}    </array>
     <key>WorkingDirectory</key><string>$(xml_escape "$REPO_ROOT")</string>
     <key>RunAtLoad</key><true/>

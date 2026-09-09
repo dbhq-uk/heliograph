@@ -108,6 +108,25 @@ live_pid() {
     sed -n 's/^[[:space:]]*"PID"[[:space:]]*=[[:space:]]*\([0-9]*\).*/\1/p'
 }
 
+# THE BASH THE PLIST EXECS, checked before anything else is believed.
+#
+# A LaunchAgent gets PATH=/usr/bin:/bin:/usr/sbin:/sbin, where the only bash is
+# macOS's 3.2. start.sh's preflight refuses 3.2, so a plist naming a bare
+# `/bin/bash` produces a station that exits 1 on every start for ever - and
+# because launchd keeps restarting it, a poll for "is a loop running" keeps
+# finding one. That is how this went unnoticed for four CI runs: every other
+# assertion here passed, in the gaps of a crash loop.
+plist_bash="$(sed -n '/<key>ProgramArguments<\/key>/,/<\/array>/p' "$PLIST" 2>/dev/null |
+  sed -n 's/.*<string>\(\/[^<]*\)<\/string>.*/\1/p' | head -1)"
+if [ -n "$plist_bash" ] && [ -x "$plist_bash" ] &&
+  [ "$("$plist_bash" -c 'printf %s "${BASH_VERSINFO[0]}"' 2>/dev/null)" -ge 4 ] 2>/dev/null; then
+  t_ok "the plist execs $plist_bash, which is bash 4 or newer, so preflight can pass"
+else
+  t_no "the plist execs [$plist_bash], which is not a bash 4 or newer.
+     A LaunchAgent's PATH is /usr/bin:/bin:/usr/sbin:/sbin and macOS's /bin/bash
+     is 3.2, so the station will fail preflight and be restarted for ever."
+fi
+
 pid=""
 for _ in $(seq 1 20); do
   p="$(live_pid)"
@@ -120,6 +139,14 @@ done
 
 if [ -n "$pid" ]; then
   t_ok "the loop is running as pid $pid, started by launchd"
+  # A RUNNING PID IS NOT A RUNNING STATION. The line above is true of a crash
+  # loop too, which is what a Mac did until the plist stopped saying /bin/bash.
+  if grep -q 'Not starting the station' "$TR/.station-service.log" 2>/dev/null; then
+    t_no "the station refused its own preflight under launchd, so this pid is a crash loop:"
+    grep -m4 '^FAIL' "$TR/.station-service.log" | sed 's/^/     /'
+  else
+    t_ok "and it got past preflight, so it is a station rather than a restart"
+  fi
 else
   t_no "launchd loaded the agent but no loop is running"
   printf '     launchctl list said: %s\n' "$(launchctl list "$LABEL" 2>&1 | tr '\n' ' ')"
@@ -160,7 +187,19 @@ if [ -n "$pid" ]; then
     if [ -z "$newpid" ] || [ "$newpid" = "0" ]; then
       t_ok "launchd did NOT restart it: 'stop: yes' sticks, and the restart loop cannot happen"
     else
-      t_no "launchd restarted the loop as pid $newpid after a clean exit"
+      # WHICH FAILURE THIS IS, decided here rather than left to a reader.
+      # `last exit code` is the whole question: zero means launchd restarted a
+      # clean exit and KeepAlive is wrong; non-zero means launchd was right and
+      # the station is failing, which is a different bug in a different file.
+      lec="$(launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null |
+        sed -n 's/.*last exit code = \([0-9]*\).*/\1/p' | head -1)"
+      if [ -n "$lec" ] && [ "$lec" != 0 ]; then
+        t_no "the station exited $lec, so launchd was RIGHT to restart it.
+     KeepAlive is not the defect - the station is failing on every start.
+     The log below says why."
+      else
+        t_no "launchd restarted the loop as pid $newpid after a clean exit (last exit code ${lec:-unknown})"
+      fi
       # THE EVIDENCE, GATHERED HERE, because nobody has ever gathered it.
       #
       # This assertion has failed three times - 2026-09-08 twice, 2026-09-09
