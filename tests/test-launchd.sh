@@ -161,6 +161,33 @@ if [ -n "$pid" ]; then
       t_ok "launchd did NOT restart it: 'stop: yes' sticks, and the restart loop cannot happen"
     else
       t_no "launchd restarted the loop as pid $newpid after a clean exit"
+      # THE EVIDENCE, GATHERED HERE, because nobody has ever gathered it.
+      #
+      # This assertion has failed three times - 2026-09-08 twice, 2026-09-09
+      # once - always on a re-run-clean basis, and every time the only record
+      # was this one sentence. Two readings fit it and they need different
+      # fixes: the loop exited NON-ZERO, in which case launchd restarted it
+      # correctly and the defect is upstream of this assertion; or launchd's
+      # respawn throttle raced the eight-second window, in which case the
+      # assertion is what needs changing.
+      #
+      # `launchctl print` carries "last exit code", which separates those two
+      # outright. It cannot be captured after the fact - the next run replaces
+      # it - so it is captured now, on the failure, and printed.
+      printf '     --- launchctl print gui/%s/%s ---\n' "$(id -u)" "$LABEL"
+      launchctl print "gui/$(id -u)/$LABEL" 2>&1 |
+        grep -iE 'state|pid|last exit|runs|program|path' | sed 's/^/     /' | head -20
+      printf '     --- launchctl list %s ---\n' "$LABEL"
+      launchctl list "$LABEL" 2>&1 | sed 's/^/     /' | head -20
+      for f in "$TR/.station-service.log" "$TR/.agent-service.log"; do
+        [ -f "$f" ] || continue
+        printf '     --- %s (last 40) ---\n' "$f"
+        tail -40 "$f" | sed 's/^/     /'
+      done
+      # What the station published is the other half: a `stopped` status means
+      # it took the flag and left deliberately.
+      printf '     --- station/status on the transport ---\n'
+      git -C "$TR" show "origin/main:station/status" 2>&1 | sed 's/^/     /' | head -15
       printf '     This is the systemd Restart=always bug on a Mac. Every cycle is a\n'
       printf '     commit pushed to the transport repo, and it only ends when a rate\n'
       printf '     limit trips and leaves the agent looking broken.\n'
