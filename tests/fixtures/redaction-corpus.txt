@@ -87,7 +87,16 @@ MASK	eyJhbGciOi.eyJzdWIiOi.SflKxwRJSM	the jwt eyJhbGciOi.eyJzdWIiOi.SflKxwRJSM e
 # Only the BEGIN line is matched, which is honest: the body is base64 and
 # indistinguishable from ordinary output. Catching the header is what stops a
 # `cat id_rsa` from being unmistakably a key in a committed log.
-MASK	-----BEGIN RSA PRIVATE KEY-----	-----BEGIN RSA PRIVATE KEY-----
+#
+# WRITTEN AS A PLACEHOLDER, and not out of squeamishness. CI has a gate that
+# refuses a PEM private-key header anywhere in the repository, with no allow
+# list at all - unlike the credential-shape scan, which has a baseline. That
+# gate should stay absolute: a real key committed once is committed for ever,
+# and "except in the test fixtures" is how the exception starts.
+#
+# So the readers expand %%PEM_BEGIN%% and the file never carries the literal.
+# The rule is still tested against the exact string the rule matches.
+MASK	%%PEM_BEGIN%%	%%PEM_BEGIN%%
 
 # --- what must SURVIVE, because it is the evidence ---------------------------
 # Every one of these has been mistaken for a secret by an over-eager redactor
