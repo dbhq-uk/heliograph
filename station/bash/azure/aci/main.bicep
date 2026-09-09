@@ -30,8 +30,33 @@ param vnetName string
 @description('Existing subnet, delegated to Microsoft.ContainerInstance/containerGroups.')
 param subnetName string
 
-@description('The transport repo to clone, https:// or git@.')
-param repoUrl string
+@description('The transport repo to clone, https:// or git@. Empty for any transport but git, which has no repository to clone.')
+param repoUrl string = ''
+// REQUIRED WHEN transport IS git, and bicep has no way to say so: there is no
+// cross-parameter assertion in the language or in ARM. The Terraform twin
+// refuses it with a precondition. Here, an empty repoUrl on a git station
+// deploys a container that prints "no repository URL given" and exits 2 -
+// after the deployment reports success.
+// --- the transport -----------------------------------------------------------
+// EVERY OTHER HOST TAKES ONE, and this template did not: it required a repoUrl
+// and built a fixed environment, so a relay, share or blob station could not be
+// deployed here at all. station.sh has taken TRANSPORT since A3 and the image
+// carries the station payload, so the only thing missing was a way to say so.
+//
+// `env` AND `secureEnv` RATHER THAN A PARAMETER PER TRANSPORT. Each transport
+// declares its own requirements with cap_need and the station reads them from
+// the environment, so a template naming RELAY_URL, PIGEONHOLE_SAS and the rest
+// would need editing every time a transport gains a variable - and would be
+// five templates out of date at once.
+@description('Which channel the station uses: git, relay, share, blob. Anything but git needs no repoUrl - the image carries the payload - and the entrypoint REFUSES a repoUrl alongside a non-git transport rather than ignoring it.')
+param transport string = 'git'
+
+@description('Extra plain environment, for the selected transport\'s own variables. Visible in the resource definition: put anything secret in extraSecureEnv.')
+param extraEnv object = {}
+
+@description('Extra SECRET environment, for tokens. Goes through the platform\'s secureValue, the same treatment gitToken already gets.')
+@secure()
+param extraSecureEnv object = {}
 
 @description('Token for an https:// transport repo. Leave empty for a public repo or an ssh:// remote.')
 @secure()
@@ -96,10 +121,20 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
           // secureValue keeps the token out of the template, out of deployment
           // history and out of `az container show`. It is still readable by
           // anyone who can already read the container group's own definition.
-          environmentVariables: concat([
+          // REPO_URL ONLY FOR GIT. The entrypoint refuses a REPO_URL alongside
+          // a non-git TRANSPORT rather than ignoring it - a REPO_URL there
+          // means somebody believes this container is going to clone something,
+          // and it is not. Sending one anyway deploys a container that exits 2
+          // on every start.
+          environmentVariables: concat(transport == 'git' ? [
             {
               name: 'REPO_URL'
               value: repoUrl
+            }
+          ] : [
+            {
+              name: 'TRANSPORT'
+              value: transport
             }
           ], empty(gitTokenUser) ? [] : [
             {
@@ -111,7 +146,13 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
               name: 'GIT_TOKEN'
               secureValue: gitToken
             }
-          ])
+          ], map(items(extraEnv), e => {
+            name: e.key
+            value: e.value
+          }), map(items(extraSecureEnv), e => {
+            name: e.key
+            secureValue: e.value
+          }))
         }
       }
     ]

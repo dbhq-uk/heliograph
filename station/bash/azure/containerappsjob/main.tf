@@ -56,9 +56,40 @@ variable "containerAppsEnvironmentName" {
 }
 
 variable "repoUrl" {
-  description = "The transport repo to clone, https:// or git@."
+  description = "The transport repo to clone, https:// or git@. Empty for any transport but git, which has no repository to clone."
   type        = string
+  default     = ""
 }
+# --- the transport -------------------------------------------------------------
+# EVERY OTHER HOST TAKES ONE, and this template did not: it required a repoUrl
+# and built a fixed environment, so a relay, share or blob station could not be
+# deployed here at all. station.sh has taken TRANSPORT since A3 and the image
+# carries the station payload, so the only thing missing was a way to say so.
+#
+# `env` AND `secureEnv` RATHER THAN A VARIABLE PER TRANSPORT. Each transport
+# declares its own requirements with cap_need and the station reads them from
+# the environment, so a template that named RELAY_URL, PIGEONHOLE_SAS and the
+# rest would need editing every time a transport gains a variable - and would be
+# five templates out of date at once.
+variable "transport" {
+  description = "Which channel the station uses: git, relay, share, blob. Anything but git needs no repoUrl - the image carries the payload."
+  type        = string
+  default     = "git"
+}
+
+variable "extraEnv" {
+  description = "Extra plain environment, for the selected transport's own variables. Visible in the resource definition: put anything secret in extraSecureEnv."
+  type        = map(string)
+  default     = {}
+}
+
+variable "extraSecureEnv" {
+  description = "Extra SECRET environment, for tokens."
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
 
 variable "gitToken" {
   description = "Token for an https:// transport repo. Leave empty for a public repo or an ssh:// remote."
@@ -112,7 +143,43 @@ data "azurerm_container_app_environment" "this" {
   resource_group_name = var.resource_group_name
 }
 
+# A Container Apps secret name must be lowercase alphanumeric and dashes, so
+# RELAY_TOKEN becomes relay-token. That mapping is not injective and not always
+# valid, and both failures are worth refusing rather than deploying:
+#
+#   TOKEN and token   -> the same secret, one silently winning
+#   _TOKEN            -> "-token", which Azure rejects
+#   GIT_TOKEN         -> "git-token", colliding with the built-in one
+#
+# Checked here rather than left to the platform, because a deployment that fails
+# halfway has already created a resource group's worth of things.
+locals {
+  extra_secret_names = [for k, v in var.extraSecureEnv : lower(replace(k, "_", "-"))]
+}
+
 resource "azurerm_container_app_job" "this" {
+  lifecycle {
+    precondition {
+      # A DEPLOYMENT THAT VALIDATES AND THEN EXITS 2 IS THE WORST OF BOTH.
+      # Making repoUrl optional for the non-git transports also made it optional
+      # for git, where it is the one thing the entrypoint cannot do without.
+      condition     = var.transport != "git" || var.repoUrl != ""
+      error_message = "transport is git, so repoUrl is required: that is the repository the station clones. For any other transport leave it empty - the image carries the payload."
+    }
+    precondition {
+      condition     = length(local.extra_secret_names) == length(distinct(local.extra_secret_names))
+      error_message = "Two extraSecureEnv keys map to the same Container Apps secret name. Names are lowercased and underscores become dashes, so TOKEN and token collide. Rename one."
+    }
+    precondition {
+      condition     = alltrue([for n in local.extra_secret_names : can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", n))])
+      error_message = "An extraSecureEnv key does not produce a valid Container Apps secret name. Lowercased with underscores as dashes, it must be alphanumeric and dashes and must not start or end with a dash - so no leading or trailing underscore."
+    }
+    precondition {
+      condition     = !contains(local.extra_secret_names, "git-token")
+      error_message = "extraSecureEnv sets GIT_TOKEN, which collides with the built-in git-token secret. Use the gitToken variable instead."
+    }
+  }
+
   name                         = var.name
   location                     = var.location
   resource_group_name          = var.resource_group_name
@@ -137,6 +204,18 @@ resource "azurerm_container_app_job" "this" {
     }
   }
 
+  # One secret per secureEnv entry. A Container Apps secret name must be
+  # lowercase alphanumeric and dashes, so RELAY_TOKEN becomes relay-token and
+  # the env reference below derives the same name - which is why the derivation
+  # is a plain expression rather than anything the caller supplies.
+  dynamic "secret" {
+    for_each = var.extraSecureEnv
+    content {
+      name  = lower(replace(secret.key, "_", "-"))
+      value = secret.value
+    }
+  }
+
   template {
     container {
       name   = "agent"
@@ -158,7 +237,27 @@ resource "azurerm_container_app_job" "this" {
       # are unavoidable together here. Passing the URL positionally instead
       # avoids that refusal entirely and needs no new image tag. See
       # references/azure.md.
-      args = concat([var.repoUrl], var.startArgs)
+      # FOR GIT ONLY. A non-git station has nothing to clone, and the
+      # entrypoint refuses a repository URL - positional or REPO_URL - beside a
+      # non-git TRANSPORT rather than ignoring it. So the URL is simply not
+      # passed, and TRANSPORT goes in the environment like every other host.
+      args = concat(var.transport == "git" ? [var.repoUrl] : [], var.startArgs)
+
+      dynamic "env" {
+        for_each = var.transport == "git" ? [] : [1]
+        content {
+          name  = "TRANSPORT"
+          value = var.transport
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.extraEnv
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
 
       dynamic "env" {
         for_each = var.gitTokenUser == "" ? [] : [1]
@@ -173,6 +272,18 @@ resource "azurerm_container_app_job" "this" {
         content {
           name        = "GIT_TOKEN"
           secret_name = "git-token"
+        }
+      }
+
+      # A secret per entry, referenced by name, exactly as gitToken is. The
+      # secret NAME has to be a valid Container Apps secret name - lowercase
+      # alphanumeric and dashes - so it is derived from the variable name rather
+      # than being it.
+      dynamic "env" {
+        for_each = var.extraSecureEnv
+        content {
+          name        = env.key
+          secret_name = lower(replace(env.key, "_", "-"))
         }
       }
     }

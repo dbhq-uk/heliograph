@@ -43,7 +43,32 @@ param subnetName string = ''
 param containerAppsEnvironmentName string
 
 @description('The transport repo to clone, https:// or git@.')
-param repoUrl string
+param repoUrl string = ''
+// REQUIRED WHEN transport IS git, and bicep has no way to say so: there is no
+// cross-parameter assertion in the language or in ARM. The Terraform twin
+// refuses it with a precondition. Here, an empty repoUrl on a git station
+// deploys a container that prints "no repository URL given" and exits 2 -
+// after the deployment reports success.
+
+// --- the transport -----------------------------------------------------------
+// EVERY OTHER HOST TAKES ONE, and this template did not: it required a repoUrl
+// and built a fixed environment, so a relay, share or blob station could not be
+// deployed here at all. station.sh has taken TRANSPORT since A3 and the image
+// carries the station payload, so the only thing missing was a way to say so.
+//
+// `env` AND `secureEnv` RATHER THAN A PARAMETER PER TRANSPORT. Each transport
+// declares its own requirements with cap_need and the station reads them from
+// the environment, so a template naming RELAY_URL, PIGEONHOLE_SAS and the rest
+// would need editing every time a transport gains a variable.
+@description('Which channel the station uses: git, relay, share, blob. Anything but git needs no repoUrl - the image carries the payload.')
+param transport string = 'git'
+
+@description('Extra plain environment, for the selected transport\'s own variables.')
+param extraEnv object = {}
+
+@description('Extra SECRET environment, for tokens.')
+@secure()
+param extraSecureEnv object = {}
 
 @description('Token for an https:// transport repo. Leave empty for a public repo or an ssh:// remote.')
 @secure()
@@ -93,12 +118,26 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
       // and re-run the SAME request if the failure happened after the poll
       // but before the push updated its state.
       replicaRetryLimit: 0
-      secrets: empty(gitToken) ? [] : [
+      // CREATED HERE, or the secretRef below names a secret that does not
+      // exist and Azure rejects the whole deployment. The bicep emitted the
+      // references and not the secrets, which the Terraform twin got right -
+      // exactly the drift two implementations of one deployment produce.
+      //
+      // The name is derived, not supplied: a Container Apps secret name must be
+      // lowercase alphanumeric and dashes, so RELAY_TOKEN becomes relay-token.
+      // Keys that collide once lowercased - TOKEN and token - or that start or
+      // end with an underscore produce a duplicate or an invalid name, and Azure
+      // refuses the deployment rather than guessing. The Terraform twin refuses
+      // earlier, with a precondition that says which key.
+      secrets: concat(empty(gitToken) ? [] : [
         {
           name: 'git-token'
           value: gitToken
         }
-      ]
+      ], map(items(extraSecureEnv), e => {
+        name: toLower(replace(e.key, '_', '-'))
+        value: e.value
+      }))
     }
     template: {
       containers: [
@@ -126,12 +165,29 @@ resource job 'Microsoft.App/jobs@2024-03-01' = {
           // new image tag - see references/azure.md for the fix that exists
           // for this in a newer entrypoint.sh, not yet published, and for
           // the second option (publish first) this template does not take.
-          args: concat([repoUrl], startArgs)
+          // FOR GIT ONLY. A non-git station has nothing to clone, and the
+          // entrypoint refuses a repository URL - positional or REPO_URL -
+          // beside a non-git TRANSPORT rather than ignoring it.
+          args: concat(transport == 'git' ? [repoUrl] : [], startArgs)
           resources: {
             cpu: json(cpu)
             memory: memory
           }
           env: concat(
+            transport == 'git' ? [] : [
+              {
+                name: 'TRANSPORT'
+                value: transport
+              }
+            ],
+            map(items(extraEnv), e => {
+              name: e.key
+              value: e.value
+            }),
+            map(items(extraSecureEnv), e => {
+              name: e.key
+              secretRef: toLower(replace(e.key, '_', '-'))
+            }),
             empty(gitTokenUser) ? [] : [
               {
                 name: 'GIT_TOKEN_USER'

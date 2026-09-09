@@ -20,6 +20,7 @@ in CI. The site documents the far side. There is no PowerShell station.
 | control CLI over git | works, driven end to end in CI against a real station |
 | relay | **works end to end**, driven against the deployed relay at `heliograph-relay.dbhq.uk` on 2026-09-09 |
 | Azure Blob | works end to end via `drop.sh` and `pigeonhole.sh`, not via the CLI |
+| every host but a pipeline | carries a transport. Azure Blob works outright everywhere; the relay and the file share need a volume the templates do not mount |
 | file share | **works end to end**, proved by a CLI round trip in CI |
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
@@ -61,18 +62,17 @@ in CI. The site documents the far side. There is no PowerShell station.
 | - | **the breadcrumb says the nav label, not the H1** - `/compared` read "heliograph / heliograph compared with AWS SSM Run Command and Azure Run Command", found by driving the deployed page rather than by a test |
 | - | **the docs affordances, measured against paseo.sh** - a copy button on every code block, Copy/View as markdown above the title, a visible breadcrumb, a rail that marks where you are, `favicon.ico` and `apple-touch-icon.png`, and the GitHub mark on the site's own links to the repository. Spec: [`docs/specs/2026-09-09-site-affordances-design.md`](docs/specs/2026-09-09-site-affordances-design.md) |
 | - | **the content the research asked for** - `/air-gapped`, `/compared` (AWS SSM and Azure Run Command), and a permissions section on `/security`. Also: `heliograph send` on a bundle told people to run `./station.sh --bundle`, which has never existed; it now says the honest thing |
+| #49 | **the Azure templates carry a transport**, and CI validates them at all |
 
 ## Next, in order
 
-1. **The five Azure templates are the last git-only hosts.** They take a
-   `repoUrl` and build a fixed environment, so selecting another transport means
-   editing the template. Nothing in CI runs `terraform validate` over them
-   either - only `infra/` is checked - so an edit to them is unverified today.
-   The pipelines are deliberately git-shaped and say so: the git push is the
-   trigger, and a non-git station there is a cron job that costs a wait per step
-2. **Conformance across every transport in CI** (PR 7). Property 9 only
-   exercises git today, so a no-op `tp_put_log` on another transport would pass
-3. **Track B: the PowerShell station**, seven PRs, gated on 1. Windows
+1. **Conformance across every transport in CI** (roadmap A/PR 7). Property 9
+   only exercises git today, so a no-op `tp_put_log` on another transport would
+   pass. Every transport now has both halves and a host that can run it, which
+   is what makes this the next thing worth doing
+2. **Track B: the PowerShell station**, seven PRs. Windows PowerShell 5.1,
+   carrying git, share and relay. The conformance driver is the deliverable,
+   not the code Windows
    PowerShell 5.1, carrying git, share and relay. The conformance driver is the
    deliverable, not the code
 4. **The bundle's station side.** `/air-gapped` now says plainly that the
@@ -119,6 +119,21 @@ Stated on the site rather than hidden, so nobody plans around a promise.
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour
+- **The ACI templates are not twins.** `aci/main.tf` declares an `ip_address`
+  block with TCP 65000 and `aci/main.bicep` omits `ipAddress` entirely, so the
+  two produce different resources from the same inputs - network policy and
+  audit tooling see an exposed private port only under Terraform. Pre-existing,
+  found by an adversarial read on 2026-09-09, and NOT fixed here because which
+  of the two is right is a deployment question: the Terraform provider refuses a
+  VNet-injected group with no ports (that refusal is documented in azure.md),
+  and bicep does not. Deciding needs a deployment, not a diff
+- **A value an operator types reaches the VM's cloud-init unescaped.**
+  `repoUrl`, `gitToken` and `gitTokenUser` are substituted straight into
+  double-quoted shell assignments in a script that runs as root at first boot,
+  so a quote or a `$` in one is code rather than data. Pre-existing, and the
+  same person chose the value and owns the VM, so it is a robustness problem
+  rather than an escalation. The transport's environment block was added
+  base64-encoded specifically so as not to widen it
 - **`test-launchd.sh` has now failed three times**, always on the same
   assertion: *"launchd restarted the loop as pid N after a clean exit"*. The
   test writes `stop: yes`, watches until launchd reports no pid, waits eight
@@ -177,6 +192,15 @@ locks and two processes went in at once. Four takers wanting fifteen numbers
 each got 33 distinct numbers out of 60. It fails exactly like having no lock:
 intermittently, silently, under load. Ask `kill -0` whether the recorded pid is
 alive, which is what station.sh has always done.
+
+**`go:embed` reads the working tree, and .gitignore does not stop it.**
+`terraform init` in the Azure templates drops 200MB of provider binaries per
+template, and `bootstrap.sh` has pruned `.terraform` since it was written. The Go
+planter did not - so a release built on any machine where somebody had run
+terraform would have carried those binaries inside the `heliograph` binary,
+permanently, in every download. CI never saw it because a CI runner starts
+clean. Found by running `terraform test` locally, which is the thing the
+templates needed and nothing had ever done.
 
 **One file format, two implementations, is six disagreements.** The
 `.station-env` rules were written in bash for `service.sh` and again in

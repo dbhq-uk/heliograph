@@ -52,9 +52,40 @@ variable "planName" {
 }
 
 variable "repoUrl" {
-  description = "The transport repo to clone, https:// or git@."
+  description = "The transport repo to clone, https:// or git@. Empty for any transport but git, which has no repository to clone."
   type        = string
+  default     = ""
 }
+# --- the transport -------------------------------------------------------------
+# EVERY OTHER HOST TAKES ONE, and this template did not: it required a repoUrl
+# and built a fixed environment, so a relay, share or blob station could not be
+# deployed here at all. station.sh has taken TRANSPORT since A3 and the image
+# carries the station payload, so the only thing missing was a way to say so.
+#
+# `env` AND `secureEnv` RATHER THAN A VARIABLE PER TRANSPORT. Each transport
+# declares its own requirements with cap_need and the station reads them from
+# the environment, so a template that named RELAY_URL, PIGEONHOLE_SAS and the
+# rest would need editing every time a transport gains a variable - and would be
+# five templates out of date at once.
+variable "transport" {
+  description = "Which channel the station uses: git, relay, share, blob. Anything but git needs no repoUrl - the image carries the payload."
+  type        = string
+  default     = "git"
+}
+
+variable "extraEnv" {
+  description = "Extra plain environment, for the selected transport's own variables. Visible in the resource definition: put anything secret in extraSecureEnv."
+  type        = map(string)
+  default     = {}
+}
+
+variable "extraSecureEnv" {
+  description = "Extra SECRET environment, for tokens."
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
 
 variable "gitToken" {
   description = "Token for an https:// transport repo. Leave empty for a public repo or an ssh:// remote."
@@ -105,6 +136,19 @@ data "azurerm_subnet" "this" {
 }
 
 resource "azurerm_linux_web_app" "this" {
+  lifecycle {
+    precondition {
+      # A DEPLOYMENT THAT VALIDATES AND THEN EXITS 2 IS THE WORST OF BOTH. Making
+      # repoUrl optional for the non-git transports also made it optional for
+      # git, where it is the one thing the entrypoint cannot do without: the
+      # container came up, printed "no repository URL given", and stopped -
+      # after terraform reported success.
+      condition     = var.transport != "git" || var.repoUrl != ""
+      error_message = "transport is git, so repoUrl is required: that is the repository the station clones. For any other transport leave it empty - the image carries the payload."
+    }
+  }
+
+
   name                = var.name
   location            = var.location
   resource_group_name = var.resource_group_name
@@ -150,8 +194,8 @@ resource "azurerm_linux_web_app" "this" {
   }
 
   app_settings = merge(
+    var.transport == "git" ? { REPO_URL = var.repoUrl } : { TRANSPORT = var.transport },
     {
-      REPO_URL = var.repoUrl
       # Turns off the persistent Azure Files /home mount every Linux
       # container Web App gets by default, so the checkout stays exactly as
       # transient as it is on every other host in this PR: git is the
@@ -166,6 +210,10 @@ resource "azurerm_linux_web_app" "this" {
     # (`az webapp config appsettings list`) can read it back in plain text.
     # Same caveat as every other host's environment-variable credential.
     var.gitToken == "" ? {} : { GIT_TOKEN = var.gitToken },
+    var.extraEnv,
+    # App settings have no separate secure field, so secureEnv lands here too -
+    # the same caveat as gitToken above, stated once and applying to both.
+    var.extraSecureEnv,
   )
 }
 

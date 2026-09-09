@@ -62,7 +62,7 @@ the shell that installed it.
 | systemd, launchd, setsid | yes | **yes** | **yes** | **yes** | no station side |
 | Windows scheduled task | yes | **yes** | **yes** | **yes** | no station side |
 | pipelines | yes | not shipped | not shipped | not shipped | no station side |
-| Azure ACI, Web App, Apps Job, VM | yes | not plumbed | not plumbed | not plumbed | no station side |
+| Azure ACI, Web App, Apps Job, VM | yes | **yes** | needs the key files | needs the share mounted | no station side |
 | Azure Function App | no `git` in the image | **yes** | not plumbed | not plumbed | no station side |
 
 **"yes"** means: export `TRANSPORT` and the transport's variables, then run
@@ -87,10 +87,46 @@ none` on Azure, secret variables mapped explicitly into the environment, the
 relay's two key files materialised on disk, and `heliograph-seal` installed -
 and neither ships one, because nothing here has ever run it.
 
-**"not plumbed"** means the station can do it and the host recipe cannot carry
-it there. The five Azure templates still set up a git checkout and pass no
-`TRANSPORT` through, so selecting another transport there means editing the
-template. Nothing refuses it - it just is not wired yet.
+**The Azure templates take a transport too**, and they take it the same way in
+both languages:
+
+```
+transport      = "blob"
+extraEnv       = { PIGEONHOLE_ACCOUNT = "...", PIGEONHOLE_LANE = "..." }
+extraSecureEnv = { PIGEONHOLE_SAS = "..." }
+```
+
+Two maps rather than a parameter per transport, because each transport declares
+its own requirements with `cap_need` and the station reads them from the
+environment. A template naming `RELAY_URL`, `PIGEONHOLE_SAS` and the rest would
+need editing every time a transport gained a variable - and would be five
+templates out of date at once.
+
+`extraSecureEnv` goes through whatever secure field the platform has: ACI's
+`secureValue`, a Container Apps secret per entry. App Service has none, so there
+both maps land in app settings and carry the same caveat the git token already
+does.
+
+**Azure Blob is the transport these templates carry outright**, because it needs
+nothing but variables. The other two need a file:
+
+- **the relay** reads `RELAY_IDENTITY` and `RELAY_PEER` as *paths*, and none of
+  these templates mounts anything, so the two key files have to be put on the
+  host and the paths set in `extraEnv`. The image carries `heliograph-seal`; a
+  VM does not
+- **a file share** needs the share mounted, which is the same job
+
+Both are a volume and two settings rather than a change to the template, and
+`./start.sh --check` on the host says exactly which is missing. It is still less
+than "yes", which is why the table does not say it.
+
+**The VM is the exception, and for a real reason.** A container image ships the
+station payload, so its entrypoint refuses a repository URL beside a non-git
+transport - there is genuinely nothing to clone. A bare VM has no image: `git
+clone` is how the toolkit arrives, so `repoUrl` stays required whatever
+`transport` says, and it names where the **payload** comes from rather than
+where logs go. A relay station on a VM still needs a git host reachable once, at
+first boot.
 
 **"no station side"** means the CLI implements the transport and the station
 has no code to read it, so the combination cannot work at all.
