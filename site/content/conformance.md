@@ -86,6 +86,39 @@ disk every single time.
 That is the argument for the property, and for the suite: **the properties you
 have are the defects you catch.**
 
+## Every transport, not just git
+
+Property 9 answered that question on git alone for as long as it existed, which
+made it a much weaker property than it looked. Properties 1 to 8 look at the
+captured file, and the file is written correctly to local disk on every
+transport - so a `tp_put_log` that returned success and did nothing whatsoever
+would have passed the entire suite.
+
+The whole suite now runs once per transport:
+
+| | |
+|---|---|
+| **git** | a bare remote, and the log is read back out of it |
+| **share** | a directory, and the log is read back from the share rather than the working tree |
+| **relay** | a stub relay in memory, two keypairs, and the log is **unsealed with the control side's identity** - so a log sealed for somebody else, or signed by nobody, is not counted as delivered |
+
+The relay stub is a queue with an HTTP interface and a bearer token, which is
+the entire contract the station side depends on. It is deliberately ignorant of
+the payload: every body is an opaque sealed envelope, stored and handed back
+byte for byte. A stub that could read the messages would be one that could
+accept an envelope the real relay would mangle.
+
+And running it three times only proves three passes, so each transport is also
+checked for **teeth**: `tp_put_log` is replaced with `return 0` - a delivery
+that claims success and does nothing, the exact shape of the original defect -
+and property 9 must fail. If it does not, it is reading the local file again.
+
+**blob is not conformance-tested.** Its far side is an Azure storage account
+and there is no honest way to stand one up offline. That exclusion is asserted
+rather than assumed: the suite lists every transport in the toolkit and fails if
+one is on neither the covered list nor the excluded one, so a transport added
+later cannot go unnoticed.
+
 ## Two honest limits
 
 **A driver skips loudly rather than passing.** A driver that cannot observe the

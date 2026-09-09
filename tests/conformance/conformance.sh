@@ -356,6 +356,10 @@ EOS
       "exit code    : 7" "$p9_body"
     assert_contains "p9: a failed run is delivered too, and says so" \
       "RESULT       : FAILED" "$p9_body"
+    # A far side can be a live process - the relay's is - and the trap above
+    # only removes a directory. Optional, because a driver is not obliged to
+    # have anything to tear down.
+    if declare -F drv_teardown >/dev/null 2>&1; then drv_teardown "$P9"; fi
   else
     t_skip "p9: could not bootstrap a transport repo"
   fi

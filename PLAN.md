@@ -62,20 +62,17 @@ in CI. The site documents the far side. There is no PowerShell station.
 | - | **the breadcrumb says the nav label, not the H1** - `/compared` read "heliograph / heliograph compared with AWS SSM Run Command and Azure Run Command", found by driving the deployed page rather than by a test |
 | - | **the docs affordances, measured against paseo.sh** - a copy button on every code block, Copy/View as markdown above the title, a visible breadcrumb, a rail that marks where you are, `favicon.ico` and `apple-touch-icon.png`, and the GitHub mark on the site's own links to the repository. Spec: [`docs/specs/2026-09-09-site-affordances-design.md`](docs/specs/2026-09-09-site-affordances-design.md) |
 | - | **the content the research asked for** - `/air-gapped`, `/compared` (AWS SSM and Azure Run Command), and a permissions section on `/security`. Also: `heliograph send` on a bundle told people to run `./station.sh --bundle`, which has never existed; it now says the honest thing |
-| #49 | **the Azure templates carry a transport**, and CI validates them at all |
+| #49 | **the Azure templates carry a transport**, and CI validates them at all - which found that a sensitive value cannot drive `for_each`, so the Container Apps job had never parsed under the pinned terraform. Also: **no station had ever run under launchd**, because a LaunchAgent's PATH holds only macOS's bash 3.2 |
+| #50 | **conformance over every transport**, with a stub relay so it needs no Cloudflare account - and a teeth check per transport, because running the suite three times only proves three passes |
 
 ## Next, in order
 
-1. **Conformance across every transport in CI** (roadmap A/PR 7). Property 9
-   only exercises git today, so a no-op `tp_put_log` on another transport would
-   pass. Every transport now has both halves and a host that can run it, which
-   is what makes this the next thing worth doing
-2. **Track B: the PowerShell station**, seven PRs. Windows PowerShell 5.1,
+1. **Track B: the PowerShell station**, seven PRs. Windows PowerShell 5.1,
    carrying git, share and relay. The conformance driver is the deliverable,
-   not the code Windows
-   PowerShell 5.1, carrying git, share and relay. The conformance driver is the
-   deliverable, not the code
-4. **The bundle's station side.** `/air-gapped` now says plainly that the
+   not the code - and the suite it has to pass now runs over three transports,
+   so a PowerShell station that captures perfectly and delivers nothing cannot
+   be called done
+2. **The bundle's station side.** `/air-gapped` now says plainly that the
    bundle cannot be read by a station, and the CLI says the same. That page is
    the first thing to update when it lands
 
