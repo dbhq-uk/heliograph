@@ -223,10 +223,20 @@ else
 fi
 
 # --- the preflight passed inside the pod -------------------------------------
+# WAITED FOR THE LAST LINE OF THE BANNER, not the first.
+#
+# This waited for "polling every", which station.sh prints at the TOP of the
+# startup banner, and then asserted on lines printed below it - so the
+# assertions raced the station's own stdout and the gate line lost, once, in
+# CI, for no reason connected to anything under test.
+#
+# `request 'stop: yes'` is the last unconditional line of that banner. Waiting
+# for it means everything above has already been written, which is the only
+# thing that makes the assertions below deterministic.
 logs=""
 for _ in $(seq 1 30); do
   logs="$("${KC[@]}" logs -l app=heliograph --tail=200 2>/dev/null)"
-  printf '%s' "$logs" | grep -q "polling every" && break
+  printf '%s' "$logs" | grep -q "or Ctrl-C to finish" && break
   sleep 2
 done
 assert_contains "the station came up and is polling" "polling every" "$logs"
