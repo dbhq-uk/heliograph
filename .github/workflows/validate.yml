@@ -14,6 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The site's tests build the real site, and the build refuses a
+          # shallow clone (its sitemap dates pages from git history). This
+          # job failed on PR #43 on exactly that, one run after the site job
+          # had been given full history.
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:

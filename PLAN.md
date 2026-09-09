@@ -95,8 +95,9 @@ in CI. The site documents the far side. There is no PowerShell station.
   crawled. Check again in a week with the URL Inspection API before
   concluding anything from GA
 - **The site build refuses a shallow clone.** `lastmod` comes from git, and a
-  depth-1 checkout dates every page today. Both workflows that build the site
-  set `fetch-depth: 0`; a new one must too
+  depth-1 checkout dates every page today. Every job that builds the site OR
+  runs `go test ./...` needs `fetch-depth: 0`: the Pages deploy, the site job,
+  and the Go job. The Go job was missed first time and failed on PR #43
 - **The relay estate is `heliograph`**, on `heliograph-relay.dbhq.uk`. Its
   control and station tokens are in 1Password, DBHQ vault, *heliograph relay -
   estate tokens*. **That is the only copy**: Cloudflare secrets are write-only,
