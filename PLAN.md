@@ -24,7 +24,7 @@ in CI. The site documents the far side. There is no PowerShell station.
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
 | PowerShell station | `station.ps1` is a launcher. No native station |
-| site | 24 pages, near and far side |
+| site | 24 pages, near and far side. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
 
 ## Landed 2026-09-08
 
@@ -50,6 +50,13 @@ in CI. The site documents the far side. There is no PowerShell station.
 | #39 | proved over the deployed relay, and CI keeps asking |
 | #40 | **containers and services can select a transport** - and twelve defects a review found in it |
 | #41 | **`heliograph-seal` in the image** - a relay station runs in a container |
+| #42 | the launchd flake carries its own diagnosis |
+
+## Landed 2026-09-09
+
+| PR | |
+|---|---|
+| - | **analytics and search on the site** - GA4 behind consent, `lastmod`, descriptions, JSON-LD, `og.png`, a 404 page, and the two font preloads that 404ed on every page view. Spec: [`docs/specs/2026-09-09-analytics-and-seo-design.md`](docs/specs/2026-09-09-analytics-and-seo-design.md). Keyword research: [`docs/seo/2026-09-09-keyword-research.md`](docs/seo/2026-09-09-keyword-research.md) |
 
 ## Next, in order
 
@@ -69,6 +76,21 @@ in CI. The site documents the far side. There is no PowerShell station.
   2026-09-09.** The image carries `heliograph-seal` built from the same commit,
   and the log came back with a non-zero exit reported honestly. The station name
   used was `in-a-container`
+- **The site reports into the dbhq.uk GA4 property** (`544327698`, stream
+  `G-3H3NFGSX85`), not a property of its own. One web stream per site
+  including subdomains is Google's guidance; separate the docs in reports by
+  the **Hostname** dimension. The tag loads only after consent and only on
+  `heliograph.dbhq.uk`. Nothing was created in the GA4 account
+- **Search Console is the `sc-domain:dbhq.uk` Domain property**, which covers
+  every subdomain. `https://heliograph.dbhq.uk/sitemap.xml` was submitted
+  through the API on 2026-09-09 using the service account in
+  `~/.dbhq-seo/env.sh`. At that moment the home page was "unknown to Google"
+  and `/install` was "discovered, not indexed": the site had never been
+  crawled. Check again in a week with the URL Inspection API before
+  concluding anything from GA
+- **The site build refuses a shallow clone.** `lastmod` comes from git, and a
+  depth-1 checkout dates every page today. Both workflows that build the site
+  set `fetch-depth: 0`; a new one must too
 - **The relay estate is `heliograph`**, on `heliograph-relay.dbhq.uk`. Its
   control and station tokens are in 1Password, DBHQ vault, *heliograph relay -
   estate tokens*. **That is the only copy**: Cloudflare secrets are write-only,

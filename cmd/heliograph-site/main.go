@@ -9,11 +9,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dbhq-uk/heliograph/internal/site"
 )
@@ -33,10 +36,12 @@ const baseURL = "https://heliograph.dbhq.uk"
 func main() {
 	src := flagOr(1, "site/content")
 	out := flagOr(2, "site/dist")
-	if err := build(src, out); err != nil {
+	n, err := build(src, out)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "heliograph-site: "+err.Error())
 		os.Exit(1)
 	}
+	fmt.Printf("built %d pages into %s\n", n, out)
 }
 
 func flagOr(i int, def string) string {
@@ -46,10 +51,10 @@ func flagOr(i int, def string) string {
 	return def
 }
 
-func build(src, out string) error {
+func build(src, out string) (int, error) {
 	ents, err := os.ReadDir(src)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	var pages []site.Page
 	seen := map[string]bool{}
@@ -59,7 +64,7 @@ func build(src, out string) error {
 		}
 		b, err := os.ReadFile(filepath.Join(src, e.Name()))
 		if err != nil {
-			return err
+			return 0, err
 		}
 		slug := strings.TrimSuffix(e.Name(), ".md")
 		body := string(b)
@@ -67,62 +72,68 @@ func build(src, out string) error {
 		if title == "" {
 			// A page with no H1 has no title, no nav entry and no llms.txt
 			// line. Better to refuse the build than to publish it nameless.
-			return fmt.Errorf("%s has no H1, so it has no title", e.Name())
+			return 0, fmt.Errorf("%s has no H1, so it has no title", e.Name())
 		}
-		pages = append(pages, site.Page{Slug: slug, Title: title, Body: body})
+		mod, err := lastModified(src, e.Name())
+		if err != nil {
+			return 0, err
+		}
+		pages = append(pages, site.Page{Slug: slug, Title: title, Body: body, Modified: mod})
 		seen[slug] = true
 	}
 	if len(pages) == 0 {
-		return fmt.Errorf("no pages in %s", src)
+		return 0, fmt.Errorf("no pages in %s", src)
 	}
 
 	if err := validateNavigation(src, pages, seen); err != nil {
-		return err
+		return 0, err
 	}
 
 	sort.Slice(pages, func(a, b int) bool { return rank(pages[a].Slug) < rank(pages[b].Slug) })
 
 	if err := os.MkdirAll(out, 0o755); err != nil {
-		return err
+		return 0, err
 	}
 	for _, p := range pages {
 		if err := os.WriteFile(filepath.Join(out, p.Slug+".html"),
 			[]byte(page(p, pages)), 0o644); err != nil {
-			return err
+			return 0, err
 		}
 		// The markdown mirror, byte for byte the source.
 		if err := os.WriteFile(filepath.Join(out, p.Slug+".md"),
 			[]byte(p.Body), 0o644); err != nil {
-			return err
+			return 0, err
 		}
 	}
+	if err := os.WriteFile(filepath.Join(out, "404.html"), []byte(notFound(pages)), 0o644); err != nil {
+		return 0, err
+	}
 	if err := os.WriteFile(filepath.Join(out, "llms.txt"), []byte(llms(pages)), 0o644); err != nil {
-		return err
+		return 0, err
 	}
 	if err := os.WriteFile(filepath.Join(out, "llms-full.txt"), []byte(llmsFull(pages)), 0o644); err != nil {
-		return err
+		return 0, err
 	}
 	if err := os.WriteFile(filepath.Join(out, "style.css"), []byte(site.CSS), 0o644); err != nil {
-		return err
+		return 0, err
 	}
 	if err := os.WriteFile(filepath.Join(out, "sitemap.xml"), []byte(sitemap(pages)), 0o644); err != nil {
-		return err
+		return 0, err
 	}
 	// robots.txt names the sitemap and the markdown mirrors. Agents are the
 	// heavier readership here, and llms.txt is not discoverable on its own.
 	robots := "User-agent: *\nAllow: /\n\nSitemap: " + baseURL + "/sitemap.xml\n" +
 		"\n# Markdown mirrors of every page at <path>.md, and " + baseURL + "/llms.txt\n"
 	if err := os.WriteFile(filepath.Join(out, "robots.txt"), []byte(robots), 0o644); err != nil {
-		return err
+		return 0, err
 	}
 	// Fonts and the logo. Copied by the build rather than by a step in the
 	// deploy workflow: a site that renders locally and ships without its
 	// typeface is a failure nobody sees until it is live.
 	if err := copyTree(filepath.Join(filepath.Dir(src), "assets"), filepath.Join(out, "assets")); err != nil {
-		return fmt.Errorf("copying assets: %w", err)
+		return 0, fmt.Errorf("copying assets: %w", err)
 	}
-	fmt.Printf("built %d pages into %s\n", len(pages), out)
-	return nil
+	return len(pages), nil
 }
 
 // copyTree copies a directory, and refuses an empty one.
@@ -171,7 +182,7 @@ func sitemap(pages []site.Page) string {
 		if p.Slug == "index" {
 			loc = baseURL + "/"
 		}
-		fmt.Fprintf(&b, "  <url><loc>%s</loc></url>\n", loc)
+		fmt.Fprintf(&b, "  <url><loc>%s</loc><lastmod>%s</lastmod></url>\n", loc, p.Modified)
 	}
 	b.WriteString("</urlset>\n")
 	return b.String()
@@ -428,16 +439,25 @@ func rail(p site.Page) string {
 	return b.String()
 }
 
-func page(p site.Page, all []site.Page) string {
-	nav := headerNav(p)
-	canonical := baseURL + "/" + p.Slug
-	if p.Slug == "index" {
-		canonical = baseURL + "/"
-	}
+// pageOptions is what the 404 page needs that no content page does.
+type pageOptions struct {
+	// noindex marks a page search engines must not keep, and one with no
+	// markdown mirror to announce: the 404.
+	noindex bool
+}
 
-	// The index carries the hero and the log strip. Every other page is a
-	// reading surface and gets neither: a docs page competing with its own
-	// header is a docs page nobody finishes.
+func page(p site.Page, all []site.Page) string { return render(p, all, pageOptions{}) }
+
+func canonicalURL(p site.Page) string {
+	if p.Slug == "index" {
+		return baseURL + "/"
+	}
+	return baseURL + "/" + p.Slug
+}
+
+func render(p site.Page, all []site.Page, o pageOptions) string {
+	nav := headerNav(p)
+
 	// The index carries the hero, the log strip and its own three-link header.
 	// A docs page carries none of them: it gets the mobile bar, the drawer and
 	// the three-column shell instead.
@@ -484,15 +504,46 @@ func page(p site.Page, all []site.Page) string {
 		navJS = site.NavJS
 	}
 
+	mirror := ""
+	if !o.noindex {
+		mirror = fmt.Sprintf(` &middot; <a href="/%s.md">This page as markdown</a>`, p.Slug)
+	}
+
+	return head(p, o) + fmt.Sprintf(`<a class="skip-link" href="#main-content">Skip to content</a>
+%[1]s
+%[2]s
+%[3]s
+<main id="main-content" tabindex="-1" class="doc%[4]s">
+%[5]s
+</main>
+%[6]s
+%[7]s
+<footer><div class="inner">
+<p>A free, open-source tool by <a href="https://dbhq.uk">DBHQ</a>.</p>
+<p><a href="https://github.com/dbhq-uk/heliograph">Source</a>%[8]s</p>
+</div></footer>
+%[9]s
+<script>%[10]s
+%[11]s</script>
+%[12]s
+`, header, hero, shellOpen, wide, site.RenderBody(p.Body), shellClose, railHTML,
+		mirror, consentHTML, site.HeroJS, consentJS, navJS)
+}
+
+// head is everything before the body: the words a search result and a shared
+// link are built from, the fonts, and the analytics tag held behind consent.
+func head(p site.Page, o pageOptions) string {
+	canonical := canonicalURL(p)
 	title := titles[p.Slug]
 	if title == "" {
 		title = p.Title + " - heliograph"
 	}
-
-	return fmt.Sprintf(`<!doctype html>
-<html lang="en-GB" class="no-js">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+	var b strings.Builder
+	b.WriteString("<!doctype html>\n<html lang=\"en-GB\" class=\"no-js\">\n<meta charset=\"utf-8\">\n")
+	if o.noindex {
+		b.WriteString("<meta name=\"robots\" content=\"noindex\">\n")
+	}
+	fmt.Fprintf(&b, `<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%[1]s</title>
 <meta name="description" content="%[2]s">
 <meta name="theme-color" content="#080C12">
@@ -501,36 +552,226 @@ func page(p site.Page, all []site.Page) string {
 <meta property="og:type" content="website">
 <meta property="og:url" content="%[3]s">
 <meta property="og:site_name" content="heliograph">
-<meta name="twitter:card" content="summary">
+<meta property="og:locale" content="en_GB">
+<meta property="og:image" content="%[4]s/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="heliograph: run it on a machine you cannot log into">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="%[3]s">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-<!-- The markdown mirror, announced so an agent does not have to guess. -->
-<link rel="alternate" type="text/markdown" href="/%[4]s.md">
-<link rel="preload" href="/assets/fonts/InstrumentSerif-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="/assets/fonts/InstrumentSans.woff2" as="font" type="font/woff2" crossorigin>
+`, escAttr(title), escAttr(description(p)), canonical, baseURL)
+	if !o.noindex {
+		// The markdown mirror, announced so an agent does not have to guess.
+		fmt.Fprintf(&b, "<link rel=\"alternate\" type=\"text/markdown\" href=\"/%s.md\">\n", p.Slug)
+	}
+	// The two fonts the CSS actually names. This list once preloaded two files
+	// that had been renamed away, and every page view 404ed twice for weeks.
+	b.WriteString(`<link rel="preload" href="/assets/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/JetBrainsMono.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
-<!-- Flipped before first paint, so a no-JS reader never sees a control that
-     cannot work. The drawer needs a real dialog; the sidebar does not. -->
-<script>document.documentElement.classList.replace('no-js','js')</script>
-<a class="skip-link" href="#main-content">Skip to content</a>
-%[5]s
-%[7]s
-%[11]s
-<main id="main-content" tabindex="-1" class="doc%[8]s">
-%[9]s
-</main>
-%[12]s
-%[13]s
-<footer><div class="inner">
-<p>A free, open-source tool by <a href="https://dbhq.uk">DBHQ</a>.</p>
-<p><a href="https://github.com/dbhq-uk/heliograph">Source</a> &middot; <a href="/%[4]s.md">This page as markdown</a></p>
-</div></footer>
-<script>%[10]s</script>
-%[14]s
-`, escAttr(title), escAttr(site.Summary(p.Body)), canonical, p.Slug,
-		header, nav, hero, wide, site.RenderBody(p.Body), site.HeroJS,
-		shellOpen, shellClose, railHTML, navJS)
+`)
+	b.WriteString(structuredData(p))
+	b.WriteString(analyticsJS)
+	// Flipped before first paint, so a no-JS reader never sees a control that
+	// cannot work. The drawer needs a real dialog; the sidebar does not.
+	b.WriteString("<script>document.documentElement.classList.replace('no-js','js')</script>\n")
+	return b.String()
 }
+
+// description is the sentence a search result shows under the title.
+//
+// Hand-written like the titles, and for the same reason: the first paragraph
+// of a page was doing this job, and it ran to 349 characters on one page and
+// opened with "Two different questions get confused here" on another. Pages
+// without an entry fall back to the first paragraph, which llms.txt keeps
+// regardless, because that is the right summary for an agent.
+func description(p site.Page) string {
+	if d := descriptions[p.Slug]; d != "" {
+		return d
+	}
+	return site.Summary(p.Body)
+}
+
+// structuredData is the JSON-LD: the product on the home page, an article
+// and its breadcrumb on every other. Built with encoding/json rather than a
+// template because Marshal escapes < and >, so nothing in a page's title can
+// close the script tag early.
+func structuredData(p site.Page) string {
+	canonical := canonicalURL(p)
+	org := map[string]any{"@type": "Organization", "name": "DBHQ", "url": "https://dbhq.uk"}
+	var blocks []map[string]any
+	if p.Slug == "index" {
+		blocks = append(blocks, map[string]any{
+			"@context":            "https://schema.org",
+			"@type":               "SoftwareApplication",
+			"name":                "heliograph",
+			"url":                 baseURL + "/",
+			"description":         description(p),
+			"applicationCategory": "DeveloperApplication",
+			"operatingSystem":     "Linux, macOS, Windows",
+			"license":             "https://opensource.org/license/mit",
+			"isAccessibleForFree": true,
+			"offers":              map[string]any{"@type": "Offer", "price": "0", "priceCurrency": "GBP"},
+			"downloadUrl":         "https://github.com/dbhq-uk/heliograph/releases/latest",
+			"sameAs":              []string{"https://github.com/dbhq-uk/heliograph"},
+			"image":               baseURL + "/assets/og.png",
+			"author":              org,
+			"publisher":           org,
+		}, map[string]any{
+			"@context": "https://schema.org",
+			"@type":    "Organization",
+			"name":     "DBHQ",
+			"url":      "https://dbhq.uk",
+			"sameAs":   []string{"https://github.com/dbhq-uk"},
+		})
+	} else {
+		blocks = append(blocks, map[string]any{
+			"@context":     "https://schema.org",
+			"@type":        "TechArticle",
+			"headline":     p.Title,
+			"description":  description(p),
+			"url":          canonical,
+			"dateModified": p.Modified,
+			"inLanguage":   "en-GB",
+			"image":        baseURL + "/assets/og.png",
+			"author":       org,
+			"publisher":    org,
+			"isPartOf":     map[string]any{"@type": "WebSite", "name": "heliograph", "url": baseURL + "/"},
+		}, map[string]any{
+			"@context": "https://schema.org",
+			"@type":    "BreadcrumbList",
+			"itemListElement": []map[string]any{
+				{"@type": "ListItem", "position": 1, "name": "heliograph", "item": baseURL + "/"},
+				{"@type": "ListItem", "position": 2, "name": p.Title, "item": canonical},
+			},
+		})
+	}
+	var b strings.Builder
+	for _, blk := range blocks {
+		j, err := json.Marshal(blk)
+		if err != nil {
+			panic(err) // a map of strings cannot fail to marshal
+		}
+		fmt.Fprintf(&b, "<script type=\"application/ld+json\">%s</script>\n", j)
+	}
+	return b.String()
+}
+
+// notFound is what GitHub Pages serves for a missing path. It sits in the
+// docs shell so the reader is one click from every page, and is noindex so a
+// mistyped link never becomes a page Google keeps.
+func notFound(all []site.Page) string {
+	p := site.Page{Slug: "404", Title: "Page not found", Body: "# Page not found\n\n" +
+		"There is no page at this address. The sidebar lists every page, and the " +
+		"[home page](/) has the short version.\n\n" +
+		"Every page is also available as markdown at its own address plus `.md`, " +
+		"and all of them together at [/llms.txt](/llms.txt).\n"}
+	return render(p, all, pageOptions{noindex: true})
+}
+
+// lastModified is the date of the last commit that touched name, for the
+// sitemap and the structured data.
+//
+// A shallow checkout is refused rather than tolerated. `git log -1` on one
+// still answers, with the one commit it has, so every page would carry the
+// deploy date and the sitemap would announce that everything changed today.
+// That is worse than no date at all, and it is what actions/checkout does
+// unless told otherwise.
+func lastModified(dir, name string) (string, error) {
+	shallow, err := git(dir, "rev-parse", "--is-shallow-repository")
+	if err != nil {
+		// Not a repository at all: a tarball, or a copy. The file's own
+		// mtime is the only date there is, and the build says so.
+		fi, serr := os.Stat(filepath.Join(dir, name))
+		if serr != nil {
+			return "", serr
+		}
+		fmt.Fprintf(os.Stderr, "heliograph-site: %s is not in a git checkout, using the file's mtime for lastmod\n", name)
+		return fi.ModTime().UTC().Format("2006-01-02"), nil
+	}
+	if shallow == "true" {
+		return "", fmt.Errorf("the checkout is shallow, so every page would carry today's date; " +
+			"clone with full history (actions/checkout: fetch-depth: 0)")
+	}
+	date, err := git(dir, "log", "-1", "--format=%cs", "--", name)
+	if err != nil {
+		return "", err
+	}
+	if date == "" {
+		// Never committed: a page being written. Today is the honest answer.
+		return time.Now().UTC().Format("2006-01-02"), nil
+	}
+	return date, nil
+}
+
+func git(dir string, args ...string) (string, error) {
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+	if err != nil {
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// analyticsJS is the GA4 tag, held behind consent exactly as dbhq.uk holds
+// it, because the dbhq.uk privacy policy promises that analytics "loads only
+// after you accept". Consent Mode starts with everything denied; gtag/js is
+// not fetched until a reader accepts, and never off the production hostname,
+// so a preview or a local build reports nothing. The measurement id is the
+// dbhq.uk stream's: one web stream per site including its subdomains is
+// Google's own guidance, and the docs are separated in reports by hostname.
+const analyticsJS = `<script>
+(function () {
+  var id = "G-3H3NFGSX85";
+  window.dataLayer = window.dataLayer || [];
+  function gtag() { dataLayer.push(arguments); }
+  window.gtag = gtag;
+  gtag("consent", "default", { ad_storage: "denied", analytics_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
+  var prod = location.hostname === "heliograph.dbhq.uk";
+  window.__hgEnableGA = function () {
+    if (!prod || window.__gaLoaded) return;
+    window.__gaLoaded = true;
+    gtag("consent", "update", { analytics_storage: "granted" });
+    gtag("js", new Date());
+    gtag("config", id);
+    var s = document.createElement("script");
+    s.async = true; s.src = "https://www.googletagmanager.com/gtag/js?id=" + id;
+    document.head.appendChild(s);
+  };
+  try { if (localStorage.getItem("dbhq-consent") === "granted") window.__hgEnableGA(); } catch (e) {}
+})();
+</script>
+`
+
+// consentHTML is the banner. Not modal, unlike dbhq.uk's: somebody arriving
+// at /install from a search result wants the command, and a dialog in front
+// of it costs more readers than the measurement is worth. Hidden until the
+// script opens it, so a no-JS reader, which is most agents, sees nothing and
+// is tracked by nothing.
+const consentHTML = `<dialog class="consent" id="consent" aria-labelledby="consent-text">
+  <p id="consent-text">We use Google Analytics to see how the docs are used. Analytics cookies are only set if you accept. See the <a href="https://dbhq.uk/privacy/">privacy policy</a>.</p>
+  <div class="consent-actions">
+    <button class="btn btn-ghost" type="button" data-consent-decline>Decline</button>
+    <button class="btn btn-primary" type="button" data-consent-accept>Accept</button>
+  </div>
+</dialog>`
+
+const consentJS = `(function () {
+  var d = document.getElementById("consent");
+  if (!d) return;
+  var choice = null;
+  try { choice = localStorage.getItem("dbhq-consent"); } catch (e) {}
+  function set(v) {
+    try { localStorage.setItem("dbhq-consent", v); } catch (e) {}
+    if (d.open) d.close();
+    if (v === "granted" && typeof window.__hgEnableGA === "function") window.__hgEnableGA();
+  }
+  d.querySelector("[data-consent-accept]").addEventListener("click", function () { set("granted"); });
+  d.querySelector("[data-consent-decline]").addEventListener("click", function () { set("denied"); });
+  // The open attribute rather than show(): show() moves focus into the
+  // banner on every page load, and a reader's keyboard belongs to the page.
+  if (!choice && location.hostname === "heliograph.dbhq.uk") d.setAttribute("open", "");
+})();`
 
 // titles are written per page rather than derived from the H1.
 //
@@ -565,7 +806,35 @@ var titles = map[string]string{
 	"relay":       "The relay - zero-infrastructure heliograph over ordinary HTTPS",
 	"secrets":     "Secrets - redaction, and getting a value to the far side",
 	"security":    "Security - the gates, the blast radius, and what this refuses to do",
-	"intercom":    "Intercom - submitting a step over HTTPS, when you can reach the station",
+	"intercom":    "Intercom - submit a step over HTTPS when you can reach the station",
+}
+
+// descriptions are the search-result sentence for each page. See description().
+var descriptions = map[string]string{
+	"index":       "Run a command on a machine you cannot SSH into and get back a log with every line timestamped in UTC. Free and open source: CLI, MCP server, Claude Code skill.",
+	"install":     "Install the heliograph CLI on Linux, macOS or Windows from a single static binary, or as a Claude Code plugin. Nothing is ever installed on the far side.",
+	"quickstart":  "From nothing to a captured, timestamped log in five steps: plant a station on the far side, push a step, and read the whole run back, passed or failed.",
+	"claude-code": "Give Claude Code a way to run commands on a machine it cannot reach. Install the heliograph skill and it publishes steps and reads back timestamped logs.",
+	"codex":       "Use heliograph from Codex as a skill or through its MCP server, so Codex can drive a machine it cannot log into and read every run back as a timestamped log.",
+	"mcp":         "heliograph mcp exposes send, watch and logs as typed tools, so any MCP-capable agent can run steps on a machine it cannot reach and read the captured log back.",
+	"station":     "The station is a directory of plain bash planted in a private transport repo. It polls for steps, runs them, and pushes back every line with a UTC timestamp.",
+	"bootstrap":   "Two ways to plant a heliograph station on the far side: heliograph bootstrap from your machine, or station/bootstrap.sh run by an operator with no CLI at all.",
+	"steps":       "A step is one file that answers one question. How to write one, declare it read-only or an action, and avoid the traps that make a captured run useless.",
+	"runner":      "Reference for start.sh, station.sh, run.sh and caprun.sh: every environment variable and flag the heliograph station honours, and what each one defaults to.",
+	"conformance": "The capture contract: nine properties every heliograph runner must pass, from a UTC timestamp on every line to a log that still ships when the step fails.",
+	"hosts":       "Where a heliograph station can run when no human will keep a terminal open: containers, systemd, launchd, Azure, pipelines and Windows, and what is proven.",
+	"containers":  "Run a heliograph station in Docker or Kubernetes: the published image, the entrypoint that clones and hands over to start.sh, and the manifests proven in CI.",
+	"service":     "Keep a heliograph station running after the operator logs out: a systemd user service with lingering, launchd on macOS, or a scheduled task on Windows.",
+	"azure":       "Azure templates that run a heliograph station with no human at a terminal, Container Apps and App Service among them, and what deploying each one taught us.",
+	"pipelines":   "Run a heliograph station on a GitHub Actions or Azure DevOps agent, which is often the one machine in an estate that can already reach the far side.",
+	"windows":     "heliograph on Windows: hosting the station loop through Git for Windows, and writing steps in PowerShell that are still captured line by line with timestamps.",
+	"transports":  "A transport carries a step out and a log back. heliograph supports git, an HTTPS relay, a file share, a bundle and object store, behind one interface and gates.",
+	"relay":       "The relay runs heliograph over ordinary HTTPS with no git host and no storage account, encrypted end to end so the relay can read nothing and run nothing.",
+	"intercom":    "Intercom submits a step to a heliograph station over HTTPS, for the rarer case where you can reach the machine's network but still cannot log into it.",
+	"cli":         "Every heliograph command: init, bootstrap, plant, send, logs --gaps, station add, mcp and doctor, with the reasoning behind the ones that are not obvious.",
+	"secrets":     "Captured logs are committed to history, so heliograph redacts what it can. How redaction works, where it stops, and how to get a secret to the far side safely.",
+	"security":    "What heliograph refuses to do, what it gates, and what it cannot promise: read-only by default, no root, no credentials, and the account as the blast radius.",
+	"method":      "How to debug across a gap you cannot cross: one question per step, never truncate, keep a control, and change one thing between runs.",
 }
 
 // heroHTML is the index's opening: the signal crossing the valley, then a real

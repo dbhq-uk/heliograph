@@ -26,6 +26,11 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The sitemap's lastmod is the last commit that touched each page.
+          # A shallow clone would date every page today, so the build refuses
+          # one; this is the remedy it names.
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27'
