@@ -1,0 +1,68 @@
+# TWO images build from this directory: the control side's (./Dockerfile) and
+# the station's (station/bash/docker/Dockerfile). The station image plants the
+# station payload with bootstrap.sh and builds heliograph-seal from source, so
+# what is NOT sent is a security question rather than a tidiness one: whatever
+# arrives here can be copied into a PUBLISHED image.
+#
+# THE DANGEROUS ONES ARE THE FILES GIT ALREADY HIDES. `.git-token`, `*.key`,
+# `*.pem` and `.env` are in the repository's .gitignore precisely because they
+# hold credentials, which means they never show up in `git status` and a
+# developer working in station/bash/ can have any of them sitting there without
+# noticing. bootstrap.sh copies every regular file it finds, so without these
+# lines a local token would be planted into the payload and pushed to a public
+# registry.
+.env
+*.local
+*.key
+*.pem
+.git-token
+**/.git-token
+*credential*
+*secret*.txt
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+kubeconfig
+*.kubeconfig
+*.tfvars
+*.tfvars.json
+
+# .terraform is the one that matters for SIZE, and bootstrap.sh already
+# documents why: `terraform init` drops a provider binary next to each Azure
+# template, and azurerm alone is over 300MB. A bootstrapped repo went from about
+# 200KB to 913MB before that prune existed. bootstrap.sh prunes it when it
+# COPIES, but the docker build would still have uploaded every byte as context.
+# .terraform ONLY, not the lock file beside it.
+#
+# `.terraform.lock.hcl` is a pinned lock and it SHIPS: the control image embeds
+# station/bash with `go:embed all:bash`, and excluding the locks here would make
+# `heliograph bootstrap` from that image plant a payload whose Azure templates
+# re-resolve their provider versions instead of carrying the repository's pins -
+# silently different from what the released binary and bootstrap.sh plant.
+**/.terraform
+**/terraform.tfstate*
+
+**/.git
+**/node_modules
+site/dist
+site/.astro
+
+# Build artefacts of a developer's own machine. A .pyc records the ABSOLUTE
+# path it was compiled from, so one that reaches the payload puts somebody's
+# worktree path into a published image - and makes the image not derivable from
+# the commit. station/bash/azure/function/ has one right now.
+**/__pycache__
+**/*.pyc
+
+# Captured logs and local station state. A build context is not where anybody's
+# evidence should end up, and none of it belongs in a published image.
+#
+# NARROW ON PURPOSE. `**/secrets/*` was here and it was wrong:
+# station/bash/secrets/ is PART OF THE PAYLOAD - it ships a README explaining
+# the secret store - and excluding it made the image plant a different payload
+# from bootstrap.sh, which nothing would have noticed. The credential patterns
+# above catch actual secrets by shape; a whole shipped directory is not one.
+**/ops-logs/*.txt
+**/.station-*
+**/.agent-*

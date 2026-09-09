@@ -51,6 +51,26 @@ jobs:
               -trimpath \
               -ldflags "-s -w -X main.version=${TAG}" \
               -o "$out" ./cmd/heliograph
+
+            # heliograph-seal, the ONE binary the far side is ever given.
+            #
+            # PUBLISHED BECAUSE THE PIN DEPENDS ON IT. transports/relay.sh
+            # refuses to start unless RELAY_SEAL_SHA256 matches, and the whole
+            # value of that check is that the operator gets the number from
+            # somewhere other than the machine holding the binary. Without an
+            # asset here, that instruction was one nobody could follow - the
+            # documentation said "the checksum published with the release" and
+            # there was no such thing.
+            #
+            # No version stamp: it has none to print, and a byte-identical
+            # binary across releases is a feature for something a station
+            # verifies by hash.
+            sealout="dist/heliograph-seal-${os}-${arch}"
+            [ "$os" = windows ] && sealout="${sealout}.exe"
+            echo "building $sealout"
+            GOOS="$os" GOARCH="$arch" go build \
+              -trimpath -ldflags "-s -w" \
+              -o "$sealout" ./cmd/heliograph-seal
           done
           cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
 

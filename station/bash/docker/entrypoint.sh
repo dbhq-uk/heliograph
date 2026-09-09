@@ -473,6 +473,80 @@ payload_id() {
     sha256sum 2>/dev/null | cut -c1-12
 }
 
+# heliograph-seal, for the one transport that needs a binary.
+#
+# The image carries it, built from the same commit as the payload. This points
+# the station at it and offers the checksum recorded beside it at build time -
+# WITHOUT OVERRIDING AN OPERATOR WHO SET EITHER. Theirs is worth more, and the
+# difference is worth stating rather than leaving to be inferred:
+#
+#   RELAY_SEAL_SHA256 SET BY THE OPERATOR, from the checksum published beside
+#   the release, is a real check: a value they did not build compared against a
+#   binary they did not build.
+#
+#   THE IMAGE'S OWN RECORD proves the binary has not changed since the image was
+#   built - a mangled mount, a tampered running container, a corrupt layer - and
+#   nothing about whether the right one was built, because anyone who could
+#   replace one could replace both.
+#
+# Both are better than the third state, which is what happened before this
+# existed: no binary at all, and a relay station that refused to start.
+offer_seal() {
+  [ "$TRANSPORT" = "relay" ] || return 0
+  local mine=0
+  if [ -n "${RELAY_SEAL:-}" ]; then
+    echo "$(stamp) entrypoint: RELAY_SEAL is set, using $RELAY_SEAL"
+  elif [ -x /usr/local/bin/heliograph-seal ]; then
+    export RELAY_SEAL=/usr/local/bin/heliograph-seal
+    mine=1
+    echo "$(stamp) entrypoint: heliograph-seal: this image's, at $RELAY_SEAL"
+  else
+    echo "entrypoint: TRANSPORT is relay and this image carries no heliograph-seal." >&2
+    echo "  The relay is the one transport that needs it, and refuses to start" >&2
+    echo "  without it. Mount one and set RELAY_SEAL, or use an image that has it." >&2
+    exit 1
+  fi
+
+  if [ -n "${RELAY_SEAL_SHA256:-}" ]; then
+    echo "$(stamp) entrypoint: RELAY_SEAL_SHA256 is yours, which is the pin worth having"
+    return 0
+  fi
+  # ONLY FOR THE BINARY IT DESCRIBES. Offering the image's checksum alongside a
+  # MOUNTED RELAY_SEAL pairs a number with the wrong file, and relay.sh then
+  # refuses a binary that was perfectly good - a mismatch the operator did not
+  # cause and cannot explain.
+  [ "$mine" = "1" ] || {
+    echo "$(stamp) entrypoint: RELAY_SEAL is yours and unpinned. This image's own"
+    echo "$(stamp) entrypoint:   checksum describes a different binary, so it is not"
+    echo "$(stamp) entrypoint:   offered. Set RELAY_SEAL_SHA256 for that one."
+    return 0
+  }
+  [ -r /opt/heliograph/heliograph-seal.sha256 ] || return 0
+
+  local recorded
+  recorded="$(tr -d '[:space:]' < /opt/heliograph/heliograph-seal.sha256)"
+  # VALIDATED, because an empty value FAILS OPEN: relay.sh treats an empty
+  # RELAY_SEAL_SHA256 as unset, warns that the binary is unverified, and starts.
+  # So an unreadable or truncated record would have turned "pinned" into
+  # "unpinned" while this script announced that it had pinned it.
+  case "$recorded" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*)
+      [ "${#recorded}" = "64" ] || recorded="" ;;
+    *) recorded="" ;;
+  esac
+  if [ -z "$recorded" ]; then
+    echo "entrypoint: this image's heliograph-seal checksum record is not a sha256." >&2
+    echo "  Not offering it: an empty RELAY_SEAL_SHA256 reads as UNSET, and the" >&2
+    echo "  station would start unverified while this said it was pinned." >&2
+    return 0
+  fi
+  export RELAY_SEAL_SHA256="$recorded"
+  echo "$(stamp) entrypoint: RELAY_SEAL_SHA256 from this image's own record."
+  echo "$(stamp) entrypoint:   That proves the binary has not changed since the image"
+  echo "$(stamp) entrypoint:   was built, and nothing about which binary was built. Set"
+  echo "$(stamp) entrypoint:   it yourself from the release to get the check worth having."
+}
+
 plant_payload() {
   local here_id image_id
   image_id="$(payload_id "$PAYLOAD_DIR")"
@@ -574,6 +648,7 @@ main() {
         exit 2
       fi
     done
+    offer_seal
     mkdir -p "$WORKDIR" || { echo "entrypoint: cannot create $WORKDIR" >&2; exit 1; }
     plant_payload
     cd "$WORKDIR" || { echo "entrypoint: cannot enter $WORKDIR" >&2; exit 1; }

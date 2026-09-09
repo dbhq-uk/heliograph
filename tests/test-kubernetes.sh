@@ -130,13 +130,12 @@ fi
 
 # --- images -------------------------------------------------------------------
 say "building images with $RUNTIME"
-# THE CONTEXT IS station/, not the Dockerfile's directory. The image plants the
-# station payload with bootstrap.sh, so that a transport with nothing to clone -
-# the file share, the blob - has one, and bootstrap.sh and the toolkit it copies
-# both live a level above the Dockerfile.
+# THE CONTEXT IS THE REPOSITORY ROOT, not the Dockerfile's directory. The image
+# plants the station payload with bootstrap.sh and builds heliograph-seal from
+# the Go module, and both live above station/bash/docker.
 if ! "$RUNTIME" build -q -t heliograph-toolkit:test \
       -f "$REPO/station/bash/docker/Dockerfile" \
-      "$REPO/station" >/dev/null 2>&1; then
+      "$REPO" >/dev/null 2>&1; then
   t_no "the toolkit image would not build"; t_summary; exit 1
 fi
 t_ok "the toolkit image builds"

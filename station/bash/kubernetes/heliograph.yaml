@@ -93,15 +93,59 @@ spec:
             # - name: SHARE_SCOPE
             #   value: "dns-timeouts"
             #
-            # THE RELAY DOES NOT WORK IN THIS IMAGE YET, and it is stated here
-            # rather than shown as a recipe that fails. transports/relay.sh
-            # refuses to start without `heliograph-seal`, the crypto helper it
-            # is the one transport to need, and this image does not carry it -
-            # it is published with the releases and would have to be added to
-            # the image or mounted. When it is, the variables are RELAY_URL,
-            # RELAY_ESTATE, RELAY_STATION, RELAY_TOKEN, RELAY_IDENTITY,
-            # RELAY_PEER and RELAY_SEAL_SHA256, with the two key files from a
-            # mounted Secret and the token from secretKeyRef.
+            # THE RELAY. The image carries heliograph-seal - the one transport
+            # that needs a binary - and the entrypoint points the station at it.
+            # What is left is the two key files and a token, and those are
+            # yours, so they are Secrets you create.
+            #
+            # THE ORDER MATTERS, because the station's identity does not exist
+            # until the station makes it. Both Secrets must exist before this
+            # pod starts:
+            #
+            #   # on the control node
+            #   heliograph init payments --transport relay \
+            #     --dir https://relay.example.com --relay-estate payments --scope db-a
+            #   heliograph plant -e payments      # prints the CONTROL public line
+            #
+            #   # anywhere with heliograph-seal - your laptop will do; this is
+            #   # the station's own key and its secret half never leaves here
+            #   heliograph-seal keygen --out ./identity
+            #   heliograph-seal public --identity ./identity > ./public
+            #   printf '%s' '<the control public line from plant>' > ./peer
+            #
+            #   kubectl create secret generic heliograph-relay-keys \
+            #     --from-file=identity=./identity --from-file=peer=./peer
+            #   kubectl create secret generic heliograph-relay \
+            #     --from-literal=token='<the STATION token>'
+            #
+            #   # back on the control node, close the exchange
+            #   heliograph relay peer -e payments "$(cat ./public)"
+            #   # then COMPARE THE FINGERPRINTS by voice. Nothing else here
+            #   # stops a relay substituting its own key.
+            #
+            # - name: TRANSPORT
+            #   value: "relay"
+            # - name: RELAY_URL
+            #   value: "https://relay.example.com"
+            # - name: RELAY_ESTATE
+            #   value: "payments"
+            # - name: RELAY_STATION
+            #   value: "db-a"
+            # - name: RELAY_IDENTITY
+            #   value: "/etc/heliograph/identity"
+            # - name: RELAY_PEER
+            #   value: "/etc/heliograph/peer"
+            # - name: RELAY_TOKEN
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: heliograph-relay
+            #       key: token
+            # # Optional, and the pin worth having: the checksum published
+            # # beside the release as heliograph-seal-linux-<arch>. Without it
+            # # the entrypoint offers the image's own record, which proves only
+            # # that the binary has not changed since the image was built.
+            # - name: RELAY_SEAL_SHA256
+            #   value: "<from SHA256SUMS in the release>"
           resources:
             requests:
               cpu: "100m"
@@ -119,10 +163,13 @@ spec:
             capabilities:
               drop: ["ALL"]
 
-          # --- with TRANSPORT=share, uncomment this and the volume below ------
+          # --- with TRANSPORT=share or relay, uncomment what you need --------
           # volumeMounts:
           #   - name: ops-share
           #     mountPath: /mnt/ops
+          #   - name: relay-keys
+          #     mountPath: /etc/heliograph
+          #     readOnly: true
 
 
       # --- with TRANSPORT=share ---------------------------------------------
@@ -134,3 +181,16 @@ spec:
       #   - name: ops-share
       #     persistentVolumeClaim:
       #       claimName: heliograph-ops-share
+      #   - name: relay-keys
+      #     secret:
+      #       # Created by hand, before this pod starts - see the commands in
+      #       # the env block above. `heliograph plant` prints the CONTROL
+      #       # side's public line only; the station's own identity does not
+      #       # exist until somebody runs keygen for it.
+      #       secretName: heliograph-relay-keys
+      #       items:
+      #         - key: identity
+      #           path: identity
+      #         - key: peer
+      #           path: peer
+      #       defaultMode: 0400

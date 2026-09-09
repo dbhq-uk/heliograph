@@ -49,6 +49,46 @@
 # instead of GNU sed does not even buy the size back: Alpine's own git
 # package pulls in perl for the same reason Debian's does, so the ~30 MB cost
 # below is not a saving Alpine actually offers.
+# --- heliograph-seal, the one binary the far side is ever given -----------------
+# THE RELAY IS THE ONLY TRANSPORT THAT NEEDS ONE, and it is argued for explicitly
+# in the relay spec rather than smuggled in: `openssl enc` refuses AEAD ciphers
+# outright, so a shell implementation would have to hand-assemble
+# encrypt-then-MAC and X25519 key agreement across two openssl generations. That
+# is where crypto bugs live, and a crypto bug here is silent. git, blob, share
+# and bundle remain pure bash and always will.
+#
+# Without it in the image, a relay station could not run in a container at all -
+# transports/relay.sh refuses to start when heliograph-seal is missing, and it is
+# right to. Everything else about a relay station already worked.
+#
+# BUILT FROM THIS COMMIT, not fetched. `go install ...@main` would have needed no
+# build context and would have built a DIFFERENT commit from the one under test,
+# which is precisely the drift the payload is planted from source to avoid.
+#
+# GOARCH FROM TARGETARCH, because buildx sets it and a cross-built image that
+# silently carried an amd64 binary on arm64 would fail at the first seal with
+# "exec format error" - on a machine nobody can log into.
+#
+# --platform=$BUILDPLATFORM pins this STAGE to the machine doing the building,
+# so the Go toolchain runs natively and cross-compiles. Without it the whole
+# stage is emulated under QEMU for every non-native target, which turns a
+# two-second compile into minutes for nothing: Go cross-compiles perfectly well.
+# FULLY QUALIFIED, and that is not pedantry. podman has no unqualified-search
+# registry configured by default, so a bare `golang:1.27-alpine` fails with
+# "short-name did not resolve to an alias" before a single layer is pulled -
+# and this repository's own container suite builds with podman as well as
+# docker. `debian:bookworm-slim` below resolves on this host through an alias
+# and is left alone; a new line has no such history to rely on.
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-alpine AS seal
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd/heliograph-seal ./cmd/heliograph-seal
+COPY internal ./internal
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOARCH="${TARGETARCH:-amd64}" go build -trimpath \
+      -ldflags "-s -w" -o /heliograph-seal ./cmd/heliograph-seal
+
 FROM debian:bookworm-slim
 
 # --- pinned by tag, not by digest ----------------------------------------------
@@ -155,17 +195,17 @@ RUN useradd --create-home --uid "${HELIOGRAPH_UID}" --shell /bin/bash heliograph
 # start.sh. It owns none of start.sh's job - the preflight, the credential
 # table, the branch checkout, the handover to station.sh - only the clone that
 # has to happen before start.sh (and caplib.sh with it) exists to be run.
-COPY bash/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY station/bash/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 # The status server. Perl is already here - git pulls it in - so this adds no
 # package and no measurable size. It only runs when HELIOGRAPH_STATUS_PORT is
 # set, which is off unless a host needs it. Azure Web App for Containers does:
 # it probes a port and stops the site after 230s if nothing answers.
-COPY bash/docker/status-server.pl /usr/local/bin/status-server.pl
+COPY station/bash/docker/status-server.pl /usr/local/bin/status-server.pl
 RUN chmod 0755 /usr/local/bin/entrypoint.sh
 
 # --- the station payload, for the transports with nothing to clone --------------
-# THE BUILD CONTEXT IS station/, not station/bash/docker/, and this is why.
+# THE BUILD CONTEXT IS THE REPOSITORY ROOT, and this is why.
 #
 # For git, this image clones a transport repo and that clone is the one
 # authoritative copy of start.sh. Nothing here competes with it and the payload
@@ -178,6 +218,10 @@ RUN chmod 0755 /usr/local/bin/entrypoint.sh
 # transport rather than assuming git, but the entrypoint had nothing to put at
 # $WORKDIR.
 #
+# It was station/ until heliograph-seal had to be built from source as well, and
+# the Go module is at the root. The root Dockerfile - the CONTROL side's image -
+# has always built from there, so this is the same context, not a new one.
+#
 # PLANTED BY bootstrap.sh, not by a COPY, so the image's payload is exactly what
 # a transport repo gets - the same file list, the same gitignore rename, and CI
 # already asserts that `heliograph bootstrap` and this script agree. "Which
@@ -188,12 +232,48 @@ RUN chmod 0755 /usr/local/bin/entrypoint.sh
 # than running from it, because the station writes into its own payload
 # directory - ops-logs, the delivery record, the relay's sequence state - and a
 # container that consumed the image's copy would work exactly once.
-COPY bootstrap.sh /tmp/heliograph/bootstrap.sh
-COPY bash /tmp/heliograph/bash
+COPY station/bootstrap.sh /tmp/heliograph/bootstrap.sh
+COPY station/bash /tmp/heliograph/bash
 RUN bash /tmp/heliograph/bootstrap.sh /opt/heliograph/payload >/dev/null \
     && rm -rf /tmp/heliograph \
     && chmod -R a+rX /opt/heliograph/payload \
     && test -x /opt/heliograph/payload/start.sh
+
+# --- the seal binary, and a record of what it was ------------------------------
+# The checksum is written down at build time, and the entrypoint offers it as
+# RELAY_SEAL_SHA256 when the operator has not set one of their own.
+#
+# BE CLEAR ABOUT WHAT THAT IS WORTH. A checksum recorded beside the binary it
+# describes proves the binary has not changed SINCE THE IMAGE WAS BUILT - a
+# mangled volume mount, a tampered running container, a corrupt layer. It proves
+# nothing at all about whether the right binary was built, because anyone who
+# could replace one could replace both.
+#
+# The pin that is worth something is the operator's: RELAY_SEAL_SHA256 set from
+# the checksum published beside the release, compared against a binary they did
+# not build. That one always wins over this, and the entrypoint says which it
+# used.
+COPY --from=seal /heliograph-seal /usr/local/bin/heliograph-seal
+# `bash -o pipefail` is not decoration here, and the default shell is dash,
+# which has no pipefail at all. `sha256sum ... | cut` reports the
+# exit status of `cut`, so a failing sha256sum wrote an EMPTY checksum file and
+# the build succeeded - and an empty RELAY_SEAL_SHA256 is treated as unset by
+# relay.sh, which warns and starts UNVERIFIED. The check is confirmed to be 64
+# hex characters before the layer is allowed to exist.
+#
+# The version call is not a smoke test either: on a cross-built image it is the
+# one thing that would catch a binary for the wrong architecture, which
+# otherwise fails at the first seal on a machine nobody can log into. It only
+# runs when the target is the build platform; buildx skips the RUN's execution
+# on an emulated stage only if QEMU is absent, and the publish workflow installs
+# it precisely so this executes.
+RUN bash -o pipefail -c '\
+      chmod 0755 /usr/local/bin/heliograph-seal \
+      && /usr/local/bin/heliograph-seal version >/dev/null \
+      && sha256sum /usr/local/bin/heliograph-seal | cut -d" " -f1 \
+           > /opt/heliograph/heliograph-seal.sha256 \
+      && grep -qE "^[0-9a-f]{64}$" /opt/heliograph/heliograph-seal.sha256'
+
 
 USER heliograph
 WORKDIR /home/heliograph

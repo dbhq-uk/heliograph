@@ -14,9 +14,18 @@ it into place instead of cloning. The git path is unchanged and the clone is
 still authoritative there; the baked payload is a fallback for the transports
 with no repo, not a second opinion about the ones that have one.
 
-The relay is the exception, and not for want of plumbing: it is the one
-transport that needs `heliograph-seal`, and this image does not carry that
-binary. See [the relay](/relay) for why it exists at all.
+The relay needs one more thing and the image has it: `heliograph-seal`, the one
+binary the far side is ever given, built from the same commit as the payload.
+The entrypoint points a relay station at it.
+
+**Which checksum it used is printed, because the two are worth different
+things.** `RELAY_SEAL_SHA256` set by you - from `SHA256SUMS` in the release,
+where `heliograph-seal-linux-amd64` and its arm64 twin are published beside the
+CLI - compares a binary you did not build against a number you did not choose. The image's own record - offered only when you set none - proves the
+binary has not changed *since the image was built*, and nothing about whether
+the right one was built, since anyone who could replace one could replace both.
+Both beat the third state, which is the one that existed until now: no binary,
+and a relay station that refused to start.
 
 `entrypoint.sh` resolves the repo URL, clones or reuses a checkout, and
 `exec ./start.sh`. Everything past the clone is `start.sh`'s alone. That

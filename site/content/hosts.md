@@ -58,7 +58,7 @@ the shell that installed it.
 | host | git | Azure Blob | relay | file share | bundle, object store |
 |---|---|---|---|---|---|
 | operator's terminal | yes | **yes** | **yes** | **yes** | no station side |
-| Docker, Kubernetes | yes | **yes** | no `heliograph-seal` in the image | **yes** | no station side |
+| Docker, Kubernetes | yes | **yes** | **yes** | **yes** | no station side |
 | systemd, launchd, setsid | yes | **yes** | **yes** | **yes** | no station side |
 | Windows scheduled task | yes | not plumbed | not plumbed | not plumbed | no station side |
 | pipelines | yes | not plumbed | not plumbed | not plumbed | no station side |
@@ -70,11 +70,11 @@ the shell that installed it.
 `heliograph-seal` present and a key exchange completed, and `./start.sh --check`
 says so if either is missing.
 
-**The relay in a container is the one gap left here.** `transports/relay.sh`
-refuses to start without `heliograph-seal` - the crypto helper it is the one
-transport to need - and the published image does not carry it. Everything else
-about a relay station works in a container; that binary has to be added to the
-image or mounted, and until it is, the honest answer is no.
+**The relay in a container needs no extra step.** It is the one transport that
+needs a binary - `heliograph-seal`, argued for in [the relay page](/relay) - and
+the image carries it, built from the same commit as the payload. The entrypoint
+points the station at it and says which checksum it used. Only the two key files
+have to be mounted, because those are yours.
 
 **"not plumbed"** means the station can do it and the host recipe cannot carry
 it there. The Azure templates, the pipeline definitions and `service.ps1` still

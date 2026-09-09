@@ -79,7 +79,16 @@ tp_init() {
   # station that cannot verify must not start rather than start and accept.
   cap_need RELAY_IDENTITY "this station's key file" || return 1
   cap_need RELAY_PEER     "the control side's public identity, which is what a request is verified against" || return 1
-  [ -r "$RELAY_IDENTITY" ] || { echo "station: cannot read $RELAY_IDENTITY" >&2; return 1; }
+  # NAMES THE VARIABLE, not only the path. "cannot read /nonexistent" leaves the
+  # operator to work out which of the two key files it was, and they are set by
+  # different people at different times: the identity is made on this machine,
+  # the peer arrives from the control side.
+  [ -r "$RELAY_IDENTITY" ] || {
+    echo "station: cannot read RELAY_IDENTITY at $RELAY_IDENTITY." >&2
+    echo "         That is this station's own key, made here with" >&2
+    echo "         'heliograph-seal keygen --out <file>'." >&2
+    return 1
+  }
   # BOTH of them. Only the identity was checked, and a station with an
   # unreadable or absent RELAY_PEER started perfectly: tp_describe turned the
   # failed fingerprint into "<unreadable>" and tp_check only ever tested HTTP.
@@ -87,7 +96,7 @@ tp_init() {
   # machine nobody can log into, for a reason the preflight had already been
   # told and swallowed.
   [ -r "$RELAY_PEER" ] || {
-    echo "station: cannot read $RELAY_PEER, and that file is what a request is verified against." >&2
+    echo "station: cannot read RELAY_PEER at $RELAY_PEER, and that file is what a request is verified against." >&2
     echo "         Without it this station can neither accept a request nor seal a log." >&2
     return 1
   }
