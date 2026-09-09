@@ -37,7 +37,17 @@ drv_name() { printf 'bash toolkit (caplib.sh, run.sh) over %s' "$CONF_TRANSPORT"
 
 drv_supports() {
   case "$1" in
-    capture|gates|cancel) return 0 ;;
+    capture|gates) return 0 ;;
+    # A CANCEL CAN ONLY KEEP A PARTIAL LOG WHERE sed HAS -u.
+    #
+    # cap_run stamps each line before any sed runs, so the timestamps are
+    # honest either way. Redaction is a sed stage and cannot be skipped or
+    # reordered - publishing unredacted output to a log that gets committed is
+    # not a trade available at any price - so where sed buffers, a run killed
+    # mid-flight loses whatever was in that buffer. That is busybox, and it is
+    # this implementation's fact to report rather than the specification's to
+    # assume.
+    cancel) printf 'x\n' | sed -u 's/x/y/' >/dev/null 2>&1 ;;
     deliver) _drv_deliverable ;;
     *) return 1 ;;
   esac
@@ -104,10 +114,18 @@ drv_deliver() {
 drv_delivered() { _drv_read "$1"; }
 
 # Start a capture in its own process group, so a cancel can signal the whole
-# group the way station.sh does rather than only the wrapper. Echoes the pid,
-# which is also the process group id because setsid made it a leader.
+# group the way station.sh does rather than only the wrapper.
+#
+# THE PID GOES TO A FILE, not to stdout. Printing it meant the caller ran this
+# in a command substitution, which put the background process under a subshell
+# nobody could `wait` for - so a cancel that failed was indistinguishable from
+# one that worked, and the suite carried on after a fixed sleep. The handle
+# file also gives a Windows driver somewhere to put a job object.
+#
+# The process group id is what is written, negated at kill time by drv_cancel.
+# setsid makes the child a group leader, so its pid IS the group.
 drv_capture_bg() {
-  local out="$1" script="$2"
+  local out="$1" script="$2" handle="$3"
   setsid bash -c '
     # shellcheck disable=SC1091
     . "$1/caplib.sh"
@@ -115,7 +133,58 @@ drv_capture_bg() {
     cap_run "$2" "$3"
     cap_footer "$2" $?
   ' _ "$_D_TOOLKIT" "$out" "$script" >/dev/null 2>&1 &
-  printf '%s' "$!"
+  printf '%s' "$!" > "$handle"
+}
+
+# Cancel it, and PROVE it is gone.
+#
+# A kill that is merely sent proves nothing: a capture that ignored the signal
+# would keep writing into a directory the suite is about to delete, and every
+# assertion after it would be racing. So this waits, escalates, and returns
+# non-zero if the run is still there - which is a finding, not a tidy-up.
+drv_cancel() {
+  local handle="$1" pid waited=0
+  pid="$(cat "$handle" 2>/dev/null)" || return 1
+  [ -n "$pid" ] || return 1
+
+  # The GROUP first, the way station.sh cancels: the step is a child of the
+  # capture, and signalling only the wrapper leaves the step running.
+  kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
+
+  while kill -0 "$pid" 2>/dev/null; do
+    waited=$((waited + 1))
+    if [ "$waited" -gt 50 ]; then
+      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null
+      sleep 0.5
+      kill -0 "$pid" 2>/dev/null && return 1
+      break
+    fi
+    sleep 0.1
+  done
+  wait "$pid" 2>/dev/null
+  return 0
+}
+
+# Run a declared step as the platform's PRIVILEGED account, without being one.
+#
+# A fake `id` answering 0 to `id -u`, deferring to the real one otherwise.
+# caplib's cap_refuse_root calls `id -u` rather than reading $EUID precisely so
+# this is possible - that seam is documented, and a PowerShell station will
+# need one of its own for S-1-5-18.
+drv_step_privileged() {
+  local dir="$1" step="$2" fakebin real_id
+  fakebin="$(mktemp -d)" || return 1
+  real_id="$(command -v id)"
+  cat > "$fakebin/id" <<EOF
+#!/usr/bin/env bash
+[ "\$*" = "-u" ] && { echo 0; exit 0; }
+exec "$real_id" "\$@"
+EOF
+  chmod +x "$fakebin/id"
+  ( cd "$dir" && PATH="$fakebin:$PATH" PUSH=0 ./run.sh "$step" ) >/dev/null 2>&1
+  local rc=$?
+  rm -rf "$fakebin"
+  return "$rc"
 }
 
 # --- the transport-specific three --------------------------------------------

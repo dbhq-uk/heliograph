@@ -53,9 +53,16 @@ declare itself, which must run. Without that, the property would pass just as
 well if the runner refused everything.
 
 **6. Running as the privileged account refuses, exit 5.**
-Simulated rather than actually run as root. `cap_refuse_root` calls `id -u`
-rather than reading `$EUID` specifically so a test can put a fake `id` on
-`PATH` - a deliberate seam, not an accident.
+Simulated rather than actually run as root, and **the driver supplies the
+simulation** - the suite asks the question and the platform answers it. On Unix
+that is a fake `id` on `PATH`: `cap_refuse_root` calls `id -u` rather than
+reading `$EUID` specifically so a test can, a deliberate seam. Windows has no
+root; it has SYSTEM, `S-1-5-18` and an Administrator role, and how you pretend
+to be one is a property of the platform rather than of the capture.
+
+The refusal must also **precede the step**. Exit 5 after running it is the whole
+defect wearing the right exit code, so the step writes a marker and the marker
+must be absent.
 
 **7. Redaction is wired into the capture.**
 Weaker than the redaction unit tests, on purpose, and asserting something
@@ -64,9 +71,19 @@ implementation*. A correct redactor a second implementation forgets to call is
 exactly the drift this suite is for, and a unit test of the function cannot see
 it. Over-masking is asserted too.
 
+The cases live in [`tests/fixtures/redaction-corpus.txt`](https://github.com/dbhq-uk/heliograph/blob/main/tests/fixtures/redaction-corpus.txt),
+one file both implementations are measured against. Neither redactor is the
+specification; that file is.
+
 **8. A cancelled run keeps what it captured.**
 A log that stops mid-sentence is still evidence, and usually the evidence you
 wanted: the last line names the probe that was in flight.
+
+The cancel has to be **proved**, and the proof is asked of the file rather than
+of the driver: after the cancel the log must stop growing. Three seconds into a
+ten-second step, a log that is merely unfinished looks exactly like a cancelled
+one - a driver that cancelled nothing at all passed every other assertion here
+until the suite started watching the size.
 
 **9. The finished log reaches the far side.**
 Read back from the receiving end, never from the working tree that wrote it.
@@ -151,5 +168,12 @@ argument against a port was always about *untested* drift, and the suite makes
 it testable.
 
 Write a driver implementing `drv_name`, `drv_supports`, `drv_capture`,
-`drv_bootstrap`, `drv_step`, `drv_capture_bg`, `drv_deliver` and
-`drv_delivered`. Then make the suite pass without touching the suite.
+`drv_bootstrap`, `drv_step`, `drv_capture_bg`, `drv_cancel`, `drv_deliver` and
+`drv_delivered`, plus `drv_step_privileged` if the platform can simulate one
+and `drv_teardown` if the far side is a process. Then make the suite pass
+without touching the suite.
+
+Nothing platform-specific belongs in the suite. Two things were in it and are
+not now: the fake `id`, and the `sed -u` probe that decides whether a cancel can
+keep anything. That probe is a fact about busybox, not about the property, and
+it moved into `drv_supports cancel` where the implementation can state it.

@@ -243,30 +243,33 @@ EOS
       t_no "p5: exit 0, but the step never ran - the gate is passing without executing"
     fi
 
-    # A fake `id` answering 0 to `id -u`, deferring to the real one otherwise.
-    # caplib's cap_refuse_root calls `id -u` rather than reading $EUID
-    # specifically so this is possible without being root.
-    mkdir -p "$WORK/fakebin"
-    p6_real_id="$(command -v id)"
-    cat > "$WORK/fakebin/id" <<EOF
-#!/usr/bin/env bash
-[ "\$*" = "-u" ] && { echo 0; exit 0; }
-exec "$p6_real_id" "\$@"
-EOF
-    chmod +x "$WORK/fakebin/id"
-
+    # THE PRIVILEGED ACCOUNT IS THE DRIVER'S TO SIMULATE.
+    #
+    # This used to build a fake `id` returning 0 and put it first on PATH, and
+    # then call `./run.sh` directly - which is Unix spelled twice over, and a
+    # reference to one implementation's runner in a file whose whole job is to
+    # avoid that. Windows has no `id` and no root; it has SYSTEM, S-1-5-18, and
+    # an Administrator role, and how you pretend to be one is a property of the
+    # platform rather than of the capture.
+    #
+    # So the suite asks the question - "refuse the privileged account with 5" -
+    # and the driver answers it however its platform allows. A driver that
+    # cannot simulate one says so and p6 skips, loudly, rather than passing.
     rm -f "$WORK/p5-declared-ran"
-    ( cd "$P5" && PATH="$WORK/fakebin:$PATH" PUSH=0 ./run.sh steps/declared.sh \
-    ) >/dev/null 2>&1
-    assert_eq "p6: the same step refuses with 5 when the account is root" \
-      "5" "$?"
-    # THE REFUSAL HAS TO PRECEDE THE STEP. Exit 5 after running it is the whole
-    # defect wearing the right exit code: the destructive thing has already
-    # happened as root by the time anybody reads the number.
-    if [ -f "$WORK/p5-declared-ran" ]; then
-      t_no "p6: it exited 5, but the step RAN AS ROOT first - the refusal is too late"
+    if declare -F drv_step_privileged >/dev/null 2>&1; then
+      drv_step_privileged "$P5" steps/declared.sh
+      assert_eq "p6: the same step refuses with 5 when the account is privileged" \
+        "5" "$?"
+      # THE REFUSAL HAS TO PRECEDE THE STEP. Exit 5 after running it is the
+      # whole defect wearing the right exit code: the destructive thing has
+      # already happened with privilege by the time anybody reads the number.
+      if [ -f "$WORK/p5-declared-ran" ]; then
+        t_no "p6: it exited 5, but the step RAN PRIVILEGED first - the refusal is too late"
+      else
+        t_ok "p6: and the step did not run at all, so the refusal precedes it"
+      fi
     else
-      t_ok "p6: and the step did not run at all, so the refusal precedes it"
+      t_skip "p6: this driver cannot simulate a privileged account, so the root gate is UNCHECKED here"
     fi
   else
     t_skip "p5/p6: could not bootstrap a transport repo"
@@ -284,28 +287,68 @@ fi
 #
 # Over-masking is asserted too. These logs are the only evidence anybody gets,
 # and a redactor that eats ordinary output is its own failure.
-if drv_supports capture; then
-  cat > "$WORK/leaky.sh" <<'EOS'
-#!/usr/bin/env bash
-echo "password=hunter2correct"
-echo "Authorization: Bearer eyJleUJTRUNSRVQi"
-echo "cloning https://ci-user:glpat-LEAKEDTOKENVALUE@git.invalid/x.git"
-echo "listening on port 8443 and exit code 0"
-EOS
+CORPUS="$HERE/../fixtures/redaction-corpus.txt"
+
+if ! drv_supports capture; then
+  t_skip "p7: driver does not support capture"
+elif [ ! -r "$CORPUS" ]; then
+  t_no "p7: the redaction corpus is missing from $CORPUS"
+else
+  # THE CORPUS IS EMITTED THROUGH THE IMPLEMENTATION'S OWN CAPTURE PATH, once,
+  # and the whole log is then asserted against. Emitting it line by line would
+  # be a different and weaker test: several rules are anchored to what else is
+  # on the line, and a redactor applied per-line by the harness rather than by
+  # the implementation is not the thing under test.
+  {
+    printf '#!/usr/bin/env bash\n'
+    while IFS="$(printf '\t')" read -r verdict needle line; do
+      case "$verdict" in
+        MASK | KEEP) ;;
+        *) continue ;;
+      esac
+      [ -n "$line" ] || continue
+      # printf %s with the line as an ARGUMENT, never as the format: a corpus
+      # line contains % and \ by design, and putting it in the format string
+      # would let the fixture rewrite itself on the way through.
+      printf 'printf "%%s\\n" %s\n' "$(printf "'%s'" "$(printf '%s' "$line" | sed "s/'/'\\\\''/g")")"
+    done < "$CORPUS"
+  } > "$WORK/leaky.sh"
   chmod +x "$WORK/leaky.sh"
   drv_capture "$WORK/p7.log" "$WORK/leaky.sh" >/dev/null 2>&1
   p7_body="$(cat "$WORK/p7.log" 2>/dev/null)"
 
-  assert_eq "p7: a password= value does not survive the capture" "0" \
-    "$(printf '%s\n' "$p7_body" | grep -c 'hunter2correct')"
-  assert_eq "p7: a Bearer token does not survive the capture" "0" \
-    "$(printf '%s\n' "$p7_body" | grep -c 'eyJleUJTRUNSRVQi')"
-  assert_eq "p7: a credential in a URL does not survive the capture" "0" \
-    "$(printf '%s\n' "$p7_body" | grep -c 'glpat-LEAKEDTOKENVALUE')"
-  assert_contains "p7: ordinary output is NOT masked, so evidence survives" \
-    "listening on port 8443 and exit code 0" "$p7_body"
-else
-  t_skip "p7: driver does not support capture"
+  p7_leaked=0 p7_eaten=0 p7_masks=0 p7_keeps=0
+  while IFS="$(printf '\t')" read -r verdict needle line; do
+    [ -n "$needle" ] || continue
+    case "$verdict" in
+      MASK)
+        p7_masks=$((p7_masks + 1))
+        case "$p7_body" in
+          *"$needle"*) p7_leaked=$((p7_leaked + 1)); printf '     LEAKED: %s\n' "$line" ;;
+        esac
+        ;;
+      KEEP)
+        p7_keeps=$((p7_keeps + 1))
+        case "$p7_body" in
+          *"$needle"*) ;;
+          *) p7_eaten=$((p7_eaten + 1)); printf '     EATEN: %s\n' "$line" ;;
+        esac
+        ;;
+    esac
+  done < "$CORPUS"
+
+  # The counts are asserted too. A corpus that failed to parse - a tab turned
+  # into spaces by an editor is all it takes - would give zero of each and
+  # report two clean passes over nothing at all.
+  if [ "$p7_masks" -ge 15 ] && [ "$p7_keeps" -ge 5 ]; then
+    t_ok "p7: the corpus parsed - $p7_masks secrets and $p7_keeps must-keep lines"
+  else
+    t_no "p7: the corpus barely parsed: $p7_masks MASK and $p7_keeps KEEP records"
+    printf '     A tab turned into spaces is enough. This assertion is what stops\n'
+    printf '     an unparsed corpus reporting a clean run over nothing.\n'
+  fi
+  assert_eq "p7: no secret in the corpus survives the capture" "0" "$p7_leaked"
+  assert_eq "p7: and no ordinary output is eaten, so evidence survives" "0" "$p7_eaten"
 fi
 
 # --- property 8: a cancelled run keeps what it captured ----------------------
@@ -318,24 +361,20 @@ fi
 # publishes state `cancelled` with exit 130. That needs a transport driver to
 # observe a published status and is asserted in A6. This is the half that
 # belongs to the capture.
-# Needs an unbuffered sed. cap_run stamps each line before any sed runs, so the
-# TIMESTAMPS are honest either way - that is what A7 fixed. But redaction is
-# still a sed stage, and redaction cannot be skipped or reordered: publishing
-# unredacted output to a log that gets committed is not a trade available at
-# any price. So where sed buffers, a run killed mid-flight loses whatever was
-# in that buffer.
+# WHETHER A CANCEL CAN KEEP ANYTHING IS THE DRIVER'S TO ANSWER.
 #
-# Stated rather than hidden. A busybox station captures honest logs and loses
-# the partial one on a cancel, and somebody choosing that platform should know
-# which half they are giving up.
-CAN_CANCEL=1
-if ! printf 'x\n' | sed -u 's/x/y/' >/dev/null 2>&1; then
-  CAN_CANCEL=0
-fi
-
-if [ "$CAN_CANCEL" = "0" ]; then
-  t_skip "p8: this sed has no -u, so a cancelled run cannot keep its partial log (timestamps are unaffected)"
-elif drv_supports cancel; then
+# This used to probe `sed -u` here, which is the bash implementation's business
+# spelled in the specification. The reason is real and worth keeping - cap_run
+# stamps each line before any sed runs, so the TIMESTAMPS are honest either
+# way, but redaction is a sed stage and cannot be skipped or reordered, because
+# publishing unredacted output to a log that gets committed is not a trade
+# available at any price. So where sed buffers, a run killed mid-flight loses
+# whatever was in that buffer.
+#
+# That is a fact about busybox, not about the property. The driver reports it
+# through `drv_supports cancel`, and a station that cannot do this skips loudly
+# - somebody choosing that platform should know which half they are giving up.
+if drv_supports cancel; then
   cat > "$WORK/slow.sh" <<'EOS'
 #!/usr/bin/env bash
 echo starting the long probe
@@ -344,10 +383,46 @@ echo finished
 EOS
   chmod +x "$WORK/slow.sh"
 
-  p8_pid="$(drv_capture_bg "$WORK/p8.log" "$WORK/slow.sh")"
+  # A PIDFILE, not a captured stdout.
+  #
+  # `pid="$(drv_capture_bg ...)"` starts the driver in a command substitution,
+  # so the background process is a child of a SUBSHELL this one cannot `wait`
+  # for. Both kill attempts could fail and the suite would carry on after a
+  # fixed sleep, leaving a run that ignored cancellation alive and still
+  # writing into a directory about to be deleted. It also cannot work on
+  # Windows, where the thing to kill is a job object rather than a pid.
+  #
+  # So the driver writes an identifier to a file and takes it back to cancel.
+  # What is in that file is the driver's business; the suite only hands it over.
+  P8_HANDLE="$WORK/p8.handle"
+  drv_capture_bg "$WORK/p8.log" "$WORK/slow.sh" "$P8_HANDLE"
   sleep 3
-  kill -TERM -- "-$p8_pid" 2>/dev/null || kill -TERM "$p8_pid" 2>/dev/null
-  sleep 2
+
+  drv_cancel "$P8_HANDLE"
+  p8_reported=$?
+
+  # THE LOG MUST STOP GROWING, and this is asked of the FILE rather than of the
+  # driver. A driver that returns 0 without cancelling anything passes every
+  # other assertion here: three seconds into a ten-second step the log is
+  # partial and has no `finished` line, exactly as a cancelled one would be.
+  # The two are told apart by what happens next - a cancelled run's log is
+  # frozen and a running one is not - and that is observable without trusting
+  # the driver's word for anything.
+  p8_size1="$(wc -c < "$WORK/p8.log" 2>/dev/null || echo 0)"
+  sleep 3
+  p8_size2="$(wc -c < "$WORK/p8.log" 2>/dev/null || echo 0)"
+  if [ "$p8_size1" = "$p8_size2" ]; then
+    t_ok "p8: the log stopped growing, so the run is genuinely gone"
+  else
+    t_no "p8: the log grew from $p8_size1 to $p8_size2 bytes AFTER the cancel"
+    printf '     The run is still going. Every assertion below would have passed\n'
+    printf '     anyway, on a log that is partial only because it is unfinished.\n'
+  fi
+  if [ "$p8_reported" = "0" ]; then
+    t_ok "p8: and the driver reported the cancel delivered"
+  else
+    t_no "p8: the driver could not confirm the run was cancelled"
+  fi
 
   p8_body="$(cat "$WORK/p8.log" 2>/dev/null)"
   assert_contains "p8: the partial log survives a cancel" \
@@ -362,7 +437,7 @@ EOS
     t_no "p8: expected at least 2 captured lines, got $p8_lines"
   fi
 else
-  t_skip "p8: driver does not support cancel"
+  t_skip "p8: this driver cannot cancel and keep a partial log (timestamps are unaffected)"
 fi
 
 # --- property 9: the FINISHED log reaches the far side -----------------------

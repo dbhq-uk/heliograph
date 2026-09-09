@@ -1,0 +1,102 @@
+# =============================================================================
+#  redaction-corpus.txt - what a captured log must never carry, and must keep
+# =============================================================================
+# The corpus exists because redaction is about to have a SECOND implementation.
+# `cap_redact` is a stack of sed expressions; a PowerShell station will have a
+# stack of regexes, and the two will drift the moment one of them gains a rule
+# the other does not. Neither is the specification. This file is.
+#
+# It is read by conformance property 7, which emits every line through the
+# implementation's own capture path and then asserts on the log. That is a
+# weaker test than a unit test of the redactor and deliberately so: what it
+# proves is that the redactor is actually WIRED IN. A correct redactor a second
+# implementation forgets to call is exactly the drift this suite exists for,
+# and no unit test can see it.
+#
+# BOTH DIRECTIONS ARE ASSERTED. These logs are the only evidence anybody gets
+# from a machine they cannot reach, and a redactor that eats ordinary output is
+# its own failure - one that costs a round trip through an operator to
+# discover. So every KEEP line here is a line a real log needs.
+#
+# FORMAT - three TAB-separated fields:
+#
+#   MASK<TAB><the exact string that must NOT survive><TAB><the line to emit>
+#   KEEP<TAB><the exact string that MUST survive><TAB><the line to emit>
+#
+# Tab, because a credential contains every other punctuation character there
+# is. Blank lines and lines starting with # are ignored.
+#
+# Every secret below is fictional and shaped like the real thing, because the
+# shape is what the rule matches on. Do not shorten them: several rules have a
+# minimum length precisely so that `Bearer yes` is not mistaken for a token.
+# =============================================================================
+
+# --- key=value, the form most steps print by accident ------------------------
+MASK	hunter2correct	password=hunter2correct
+MASK	s3cr3t-value-here	PASSWORD: "s3cr3t-value-here"
+MASK	abc123def456ghi	api_key = abc123def456ghi
+MASK	zzz-client-secret-zzz	client_secret='zzz-client-secret-zzz'
+MASK	AccountKeyValue123456	AccountKey=AccountKeyValue123456;EndpointSuffix=core.windows.net
+MASK	sp=racwd-sas-token	connectionstring=sp=racwd-sas-token
+
+# --- credentials inside a URL ------------------------------------------------
+# Two rules cover these. The first needs a colon; the second catches the bare
+# `https://<token>@host` form, which is the commonest GitHub PAT clone URL
+# there is and would otherwise print in full.
+MASK	glpat-LEAKEDTOKENVALUE	cloning https://ci-user:glpat-LEAKEDTOKENVALUE@git.invalid/x.git
+MASK	ghp_0123456789abcdefghij	remote: https://ghp_0123456789abcdefghij@github.com/org/repo.git
+# A userinfo that is NOT a recognisable vendor token and carries no colon. Every
+# other bare-userinfo line here happened to start `ghp_`, so the GitHub rule
+# caught them and this one - the rule that exists for exactly this shape - could
+# be deleted unnoticed. Found by deleting it.
+MASK	OPAQUEUSERINFOTOKEN12345	fetching https://OPAQUEUSERINFOTOKEN12345@git.invalid/x.git
+MASK	appuserpassword	postgres://appuser:appuserpassword@db.invalid:5432/app
+
+# --- headers -----------------------------------------------------------------
+MASK	eyJleUJTRUNSRVQiLCJhbGciOiJIUzI1NiJ9	Authorization: Bearer eyJleUJTRUNSRVQiLCJhbGciOiJIUzI1NiJ9
+MASK	dXNlcjpwYXNzd29yZDEyMzQ1Ng==	Authorization: Basic dXNlcjpwYXNzd29yZDEyMzQ1Ng==
+# AND WITHOUT THE `Authorization:` PREFIX, which is not a duplicate of the two
+# above. There is a rule for the header and separate rules for the two schemes,
+# and while every Bearer in the corpus sat behind an `Authorization:` the
+# header rule caught them all - so both scheme rules could be deleted and this
+# file reported a clean run. Found by deleting them. A token turns up in a
+# curl trace and a config dump as often as in a header.
+MASK	AbCdEf0123456789ghijklmnopqrs	retrying with Bearer AbCdEf0123456789ghijklmnopqrs
+MASK	dXNlcm5hbWU6c2VjcmV0cGFzc3dk	proxy credential Basic dXNlcm5hbWU6c2VjcmV0cGFzc3dk
+# A SCHEME THAT IS NEITHER Bearer NOR Basic. The generic `Authorization:` rule
+# is what covers the schemes nobody enumerated - and while every header here
+# used one of the two named schemes, that rule could be deleted with nothing
+# noticing. Found by deleting it.
+MASK	abcdefghijklmnopqrstuv	Authorization: Token abcdefghijklmnopqrstuv
+
+# --- vendor-shaped tokens, recognised by their own prefix --------------------
+# EVERY ONE OF THESE APPEARS BARE, outside a URL and outside a key=value, and
+# that is the whole point of the section. The first draft had `glpat-` only
+# inside a clone URL, where the URL rule catches it - so the GitLab rule could
+# be deleted outright and this corpus reported a clean run. Found by deleting
+# it. A rule that is only ever exercised through another rule is not tested.
+MASK	glpat-BARETOKENNOTINAURL1	leaked glpat-BARETOKENNOTINAURL1 to the log
+MASK	ghp_aaaabbbbccccddddeeee	found ghp_aaaabbbbccccddddeeee in the environment
+MASK	github_pat_11ABCDEFG0abcdefghijkl	github_pat_11ABCDEFG0abcdefghijkl was exported
+MASK	AKIAIOSFODNN7EXAMPLE	aws_access_key_id AKIAIOSFODNN7EXAMPLE
+MASK	xoxb-1234567890-abcdefghij	slack webhook xoxb-1234567890-abcdefghij failed
+MASK	sk-abcdefghijklmnopqrstuvwxyz012345	openai key sk-abcdefghijklmnopqrstuvwxyz012345 rejected
+MASK	eyJhbGciOi.eyJzdWIiOi.SflKxwRJSM	the jwt eyJhbGciOi.eyJzdWIiOi.SflKxwRJSM expired
+
+# --- a private key's opening line --------------------------------------------
+# Only the BEGIN line is matched, which is honest: the body is base64 and
+# indistinguishable from ordinary output. Catching the header is what stops a
+# `cat id_rsa` from being unmistakably a key in a committed log.
+MASK	-----BEGIN RSA PRIVATE KEY-----	-----BEGIN RSA PRIVATE KEY-----
+
+# --- what must SURVIVE, because it is the evidence ---------------------------
+# Every one of these has been mistaken for a secret by an over-eager redactor
+# at some point, and each is something a reader actually needs.
+KEEP	listening on port 8443 and exit code 0	listening on port 8443 and exit code 0
+KEEP	token bucket refill rate is 5/s	token bucket refill rate is 5/s
+KEEP	no password set for this account	no password set for this account
+KEEP	https://docs.invalid/guide/authentication	see https://docs.invalid/guide/authentication
+KEEP	Bearer	Authorization: Bearer short
+KEEP	sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08	image digest sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+KEEP	user=deploybot	connected as user=deploybot
+KEEP	ERROR: disk /dev/sda1 is 98% full	ERROR: disk /dev/sda1 is 98% full
