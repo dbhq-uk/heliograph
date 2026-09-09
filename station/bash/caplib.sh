@@ -372,7 +372,7 @@ cap_section() {
 cap_run() {
   local out="$1"; shift
   "$@" 2>&1 \
-    | while IFS= read -r l; do l="${l%$'\r'}"; printf '%s | %s\n' "$(date -u +%H:%M:%S)" "$l"; done \
+    | while IFS= read -r l || [ -n "$l" ]; do l="${l%$'\r'}"; printf '%s | %s\n' "$(date -u +%H:%M:%S)" "$l"; done \
     | $CAP_SED 's/\x1b\[[0-9;]*[mGKHF]//g' \
     | cap_redact \
     | tee -a "$out"

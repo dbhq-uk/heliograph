@@ -59,12 +59,8 @@ stamps_of() { grep ' | ' "$1" | sed 's/ | .*//'; }
 # progress become indistinguishable, which is the single property these logs
 # exist for.
 if drv_supports capture; then
-  cat > "$WORK/three-slow.sh" <<'EOS'
-#!/usr/bin/env bash
-echo first; sleep 1.1; echo second; sleep 1.1; echo third
-EOS
-  chmod +x "$WORK/three-slow.sh"
-  drv_capture "$WORK/p1.log" "$WORK/three-slow.sh" >/dev/null 2>&1
+  drv_step_file three-slow "$WORK/three-slow"
+  drv_capture "$WORK/p1.log" "$WORK/three-slow" >/dev/null 2>&1
 
   p1_all="$(stamps_of "$WORK/p1.log" | wc -l | tr -d ' ')"
   p1_uniq="$(stamps_of "$WORK/p1.log" | sort -u | wc -l | tr -d ' ')"
@@ -85,7 +81,7 @@ EOS
   # UTC, asked by running the capture in a timezone that is NOT UTC and
   # checking the hour against one taken here. Anything reading local time comes
   # out hours away and fails; a capture that ignores TZ agrees.
-  TZ="Pacific/Kiritimati" drv_capture "$WORK/p1tz.log" "$WORK/three-slow.sh" >/dev/null 2>&1
+  TZ="Pacific/Kiritimati" drv_capture "$WORK/p1tz.log" "$WORK/three-slow" >/dev/null 2>&1
   p1_hour="$(stamps_of "$WORK/p1tz.log" | head -1 | cut -d: -f1)"
   p1_utc_hour="$(date -u +%H)"
   if [ "$p1_hour" = "$p1_utc_hour" ]; then
@@ -108,12 +104,8 @@ fi
 # produced. A hang shows up as a gap in the timestamp column or it does not
 # show up at all, so the gap has to be measured, not assumed.
 if drv_supports capture; then
-  cat > "$WORK/gap.sh" <<'EOS'
-#!/usr/bin/env bash
-echo before; sleep 3; echo after
-EOS
-  chmod +x "$WORK/gap.sh"
-  drv_capture "$WORK/p2.log" "$WORK/gap.sh" >/dev/null 2>&1
+  drv_step_file gap "$WORK/gap"
+  drv_capture "$WORK/p2.log" "$WORK/gap" >/dev/null 2>&1
 
   p2_first="$(stamps_of "$WORK/p2.log" | sed -n 1p)"
   p2_last="$(stamps_of "$WORK/p2.log" | sed -n 2p)"
@@ -147,21 +139,12 @@ fi
 # publishes every failed run as a success, which is the most expensive possible
 # defect here: a wasted round trip through someone who cannot debug the machine.
 if drv_supports capture; then
-  cat > "$WORK/rc42.sh" <<'EOS'
-#!/usr/bin/env bash
-echo working
-exit 42
-EOS
-  chmod +x "$WORK/rc42.sh"
-  drv_capture "$WORK/p3.log" "$WORK/rc42.sh" >/dev/null 2>&1
+  drv_step_file rc42 "$WORK/rc42"
+  drv_capture "$WORK/p3.log" "$WORK/rc42" >/dev/null 2>&1
   assert_eq "p3: exit 42 survives the capture pipeline" "42" "$?"
 
-  cat > "$WORK/rc0.sh" <<'EOS'
-#!/usr/bin/env bash
-echo working
-EOS
-  chmod +x "$WORK/rc0.sh"
-  drv_capture "$WORK/p3ok.log" "$WORK/rc0.sh" >/dev/null 2>&1
+  drv_step_file rc0 "$WORK/rc0"
+  drv_capture "$WORK/p3ok.log" "$WORK/rc0" >/dev/null 2>&1
   assert_eq "p3: exit 0 is still 0, so the check is not stuck on failure" \
     "0" "$?"
 else
@@ -173,7 +156,7 @@ fi
 # none may be wasted by tooling that only reports success. A failed run has to
 # read as clearly as a passing one: same footer, real exit code, RESULT FAILED.
 if drv_supports capture; then
-  drv_capture "$WORK/p4.log" "$WORK/rc42.sh" >/dev/null 2>&1
+  drv_capture "$WORK/p4.log" "$WORK/rc42" >/dev/null 2>&1
   p4_body="$(cat "$WORK/p4.log" 2>/dev/null)"
 
   assert_contains "p4: a failed run still writes the footer" \
@@ -185,7 +168,7 @@ if drv_supports capture; then
   assert_contains "p4: the output produced before the failure is kept" \
     "working" "$p4_body"
 
-  drv_capture "$WORK/p4ok.log" "$WORK/rc0.sh" >/dev/null 2>&1
+  drv_capture "$WORK/p4ok.log" "$WORK/rc0" >/dev/null 2>&1
   assert_contains "p4: a passing run says OK, so RESULT is not hardcoded" \
     "RESULT       : OK" "$(cat "$WORK/p4ok.log" 2>/dev/null)"
 else
@@ -206,25 +189,16 @@ if drv_supports gates; then
   P5="$WORK/repo"
   if drv_bootstrap "$P5"; then
 
-    cat > "$P5/steps/undeclared.sh" <<'EOS'
-#!/usr/bin/env bash
-echo this step declares nothing
-EOS
+    drv_step_file undeclared "$P5/steps/undeclared"
     # A MARKER, because an exit code is not evidence that anything ran. Both
     # gates are asserted by their exit status alone, and a runner that returned
     # 0 without executing the step - or one that executed it and THEN refused
     # with 5 - would satisfy every assertion below while violating the property
     # outright. The marker is what tells those apart.
-    cat > "$P5/steps/declared.sh" <<EOS
-#!/usr/bin/env bash
-# heliograph-mode: read-only
-echo this step declares itself and measures nothing
-: > "$WORK/p5-declared-ran"
-EOS
-    chmod +x "$P5/steps/undeclared.sh" "$P5/steps/declared.sh"
+    drv_step_file declared "$P5/steps/declared" "$WORK/p5-declared-ran"
 
     p5_before="$(find "$P5/ops-logs" -name '*.txt' 2>/dev/null | wc -l | tr -d ' ')"
-    drv_step "$P5" steps/undeclared.sh
+    drv_step "$P5" "$(drv_step_name undeclared)"
     assert_eq "p5: an undeclared step exits 3" "3" "$?"
     p5_after="$(find "$P5/ops-logs" -name '*.txt' 2>/dev/null | wc -l | tr -d ' ')"
     assert_eq "p5: an undeclared step writes no log at all" \
@@ -234,7 +208,7 @@ EOS
     # declare itself. Without this, p5 would pass just as well if the runner
     # refused everything.
     rm -f "$WORK/p5-declared-ran"
-    drv_step "$P5" steps/declared.sh
+    drv_step "$P5" "$(drv_step_name declared)"
     assert_eq "p5: a declared step runs, so the gate is not refusing everything" \
       "0" "$?"
     if [ -f "$WORK/p5-declared-ran" ]; then
@@ -257,7 +231,7 @@ EOS
     # cannot simulate one says so and p6 skips, loudly, rather than passing.
     rm -f "$WORK/p5-declared-ran"
     if declare -F drv_step_privileged >/dev/null 2>&1; then
-      drv_step_privileged "$P5" steps/declared.sh
+      drv_step_privileged "$P5" "$(drv_step_name declared)"
       assert_eq "p6: the same step refuses with 5 when the account is privileged" \
         "5" "$?"
       # THE REFUSAL HAS TO PRECEDE THE STEP. Exit 5 after running it is the
@@ -306,23 +280,23 @@ else
   # be a different and weaker test: several rules are anchored to what else is
   # on the line, and a redactor applied per-line by the harness rather than by
   # the implementation is not the thing under test.
-  {
-    printf '#!/usr/bin/env bash\n'
-    while IFS="$(printf '\t')" read -r verdict needle line; do
-      case "$verdict" in
-        MASK | KEEP) ;;
-        *) continue ;;
-      esac
-      [ -n "$line" ] || continue
-      line="$(corpus_expand "$line")"
-      # printf %s with the line as an ARGUMENT, never as the format: a corpus
-      # line contains % and \ by design, and putting it in the format string
-      # would let the fixture rewrite itself on the way through.
-      printf 'printf "%%s\\n" %s\n' "$(printf "'%s'" "$(printf '%s' "$line" | sed "s/'/'\\\\''/g")")"
-    done < "$CORPUS"
-  } > "$WORK/leaky.sh"
-  chmod +x "$WORK/leaky.sh"
-  drv_capture "$WORK/p7.log" "$WORK/leaky.sh" >/dev/null 2>&1
+  #
+  # The suite writes the LINES; the driver writes the step that prints them.
+  # Building the step here would mean writing shell, which is the one thing a
+  # specification with two implementations may not do.
+  : > "$WORK/p7.lines"
+  while IFS="$(printf '\t')" read -r verdict _needle line; do
+    case "$verdict" in
+      MASK | KEEP) ;;
+      *) continue ;;
+    esac
+    [ -n "$line" ] || continue
+    corpus_expand "$line" >> "$WORK/p7.lines"
+    printf '\n' >> "$WORK/p7.lines"
+  done < "$CORPUS"
+
+  drv_step_echo "$WORK/leaky" "$WORK/p7.lines"
+  drv_capture "$WORK/p7.log" "$WORK/leaky" >/dev/null 2>&1
   p7_body="$(cat "$WORK/p7.log" 2>/dev/null)"
 
   p7_leaked=0 p7_eaten=0 p7_masks=0 p7_keeps=0
@@ -384,13 +358,7 @@ fi
 # through `drv_supports cancel`, and a station that cannot do this skips loudly
 # - somebody choosing that platform should know which half they are giving up.
 if drv_supports cancel; then
-  cat > "$WORK/slow.sh" <<'EOS'
-#!/usr/bin/env bash
-echo starting the long probe
-for i in 1 2 3 4 5 6 7 8 9 10; do echo "probe $i"; sleep 1; done
-echo finished
-EOS
-  chmod +x "$WORK/slow.sh"
+  drv_step_file slow "$WORK/slow"
 
   # A PIDFILE, not a captured stdout.
   #
@@ -404,11 +372,22 @@ EOS
   # So the driver writes an identifier to a file and takes it back to cancel.
   # What is in that file is the driver's business; the suite only hands it over.
   P8_HANDLE="$WORK/p8.handle"
-  drv_capture_bg "$WORK/p8.log" "$WORK/slow.sh" "$P8_HANDLE"
+  drv_capture_bg "$WORK/p8.log" "$WORK/slow" "$P8_HANDLE"
   sleep 3
 
   drv_cancel "$P8_HANDLE"
   p8_reported=$?
+
+  # THERE HAS TO BE A LOG BEFORE ANY OF THIS MEANS ANYTHING.
+  #
+  # A capture that never started leaves no file, and a missing file has size 0
+  # both times - so "the log stopped growing" passed, and so did "the driver
+  # reported the cancel delivered". Two absences agreeing is not agreement.
+  # Found on a Windows runner, where the driver had no `setsid` and started
+  # nothing at all, and this property reported two of its four assertions green.
+  if [ ! -s "$WORK/p8.log" ]; then
+    t_no "p8: no log exists, so the capture never started - nothing below is meaningful"
+  fi
 
   # THE LOG MUST STOP GROWING, and this is asked of the FILE rather than of the
   # driver. A driver that returns 0 without cancelling anything passes every
@@ -476,15 +455,9 @@ fi
 if drv_supports deliver; then
   P9="$WORK/deliver"
   if drv_bootstrap "$P9"; then
-    cat > "$P9/steps/ships.sh" <<'EOS'
-#!/usr/bin/env bash
-# heliograph-mode: read-only
-echo the evidence
-exit 7
-EOS
-    chmod +x "$P9/steps/ships.sh"
+    drv_step_file ships "$P9/steps/ships"
 
-    drv_deliver "$P9" steps/ships.sh
+    drv_deliver "$P9" "$(drv_step_name ships)"
     p9_body="$(drv_delivered "$P9")"
 
     assert_contains "p9: the delivered log carries the output" \
@@ -500,6 +473,57 @@ EOS
   fi
 else
   t_skip "p9: driver cannot observe the far side, so delivery is unchecked here"
+fi
+
+# --- property 10: the log carries TEXT, not a terminal ------------------------
+# Everything above is about timing, exit codes, gates and delivery. None of it
+# asks what actually lands in the file when a step behaves the way real steps
+# behave, and both implementations had untested behaviour here - one of them
+# wrong.
+#
+# Four things, each of which has cost somebody time somewhere:
+#
+#   ANSI      a step that colours its output leaves escape sequences in a file
+#             that gets committed. Unreadable, and unsearchable with grep.
+#   CRLF      `read` keeps everything before the newline, so a CRLF stream
+#             leaves a CR on every line: invisible in a terminal, and it
+#             silently breaks any grep anchored with $.
+#   stderr    a step that fails usually says why on stderr. A capture that
+#             takes only stdout keeps the output and loses the diagnosis.
+#   the last  a step killed mid-write, or one ending in `printf` without a
+#     line    newline, has a final line with no terminator. THE BASH SIDE
+#             DROPPED IT: `while read` returns non-zero at EOF and the loop
+#             ended, discarding the partial. That line is the probe that was in
+#             flight, which is the single most valuable line in the file.
+#             Found by writing this property, not by reading the code.
+if drv_supports capture; then
+  drv_step_file messy "$WORK/messy"
+  drv_capture "$WORK/p10.log" "$WORK/messy" >/dev/null 2>&1
+  p10_body="$(cat "$WORK/p10.log" 2>/dev/null)"
+
+  assert_eq "p10: no ANSI escape survives into the log" "0" \
+    "$(printf '%s' "$p10_body" | grep -c "$(printf '\033')" || true)"
+  assert_eq "p10: no carriage return survives into the log" "0" \
+    "$(printf '%s' "$p10_body" | grep -c "$(printf '\r')" || true)"
+  assert_contains "p10: the coloured line itself is kept, only its escapes go" \
+    "red line" "$p10_body"
+  assert_contains "p10: stderr is captured, or a failure keeps its output and loses its reason" \
+    "to stderr" "$p10_body"
+  assert_contains "p10: the final line survives even with no newline after it" \
+    "no trailing newline" "$p10_body"
+
+  # And it is STAMPED like any other line, not appended raw. A partial line
+  # bolted on after the loop is the obvious fix and it produces a line the
+  # reader cannot place in time.
+  p10_last="$(printf '%s\n' "$p10_body" | grep 'no trailing newline' | head -1)"
+  case "$p10_last" in
+    [0-9][0-9]:[0-9][0-9]:[0-9][0-9]" | "*)
+      t_ok "p10: and it is stamped like every other line" ;;
+    *)
+      t_no "p10: the final line arrived unstamped: [$p10_last]" ;;
+  esac
+else
+  t_skip "p10: driver does not support capture"
 fi
 
 t_summary

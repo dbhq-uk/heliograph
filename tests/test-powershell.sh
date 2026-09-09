@@ -201,6 +201,35 @@ else
   t_ok "the parse check actually found .ps1 files to read"
 fi
 
+# AND EVERY .psm1 AND .ps1 IN THE REPOSITORY, which the check above does not
+# reach: it reads a bootstrapped transport repo, and station/powershell/ is not
+# planted into one yet. So caplib.psm1 - the whole second implementation of the
+# capture - could have shipped with a syntax error and only failed on a Windows
+# box, which is precisely the failure this file exists to prevent.
+repo_parse="$("$PS_BIN" -NoProfile -Command '
+  $bad = 0
+  $files = @(Get-ChildItem -Path $args[0] -Include *.ps1,*.psm1 -Recurse -File |
+             Where-Object { $_.FullName -notmatch "[\\/]\.git[\\/]" })
+  # Broken deliberately once, to watch it fail: a filter that matched nothing
+  # reported bad=0 over an empty list, which reads identically to a clean run.
+  foreach ($f in $files) {
+    $errors = $null
+    [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors)
+    if ($errors -and $errors.Count -gt 0) { $bad++; Write-Output "BAD $($f.Name): $($errors[0].Message)" }
+  }
+  Write-Output "count=$($files.Count) bad=$bad"
+' "$HERE/.." 2>&1)"
+assert_contains "every .ps1 and .psm1 in the repository parses" "bad=0" "$repo_parse"
+# The count, asserted, because -Include silently matches nothing when -Path has
+# no wildcard and -Recurse is absent - a shape that reports a clean sweep over
+# an empty list.
+repo_count="$(printf '%s' "$repo_parse" | sed -n 's/.*count=\([0-9]*\).*/\1/p')"
+if [ -n "$repo_count" ] && [ "$repo_count" -ge 5 ]; then
+  t_ok "the repository sweep found $repo_count PowerShell files to read"
+else
+  t_no "the repository sweep found ${repo_count:-no} PowerShell files, so it checked nothing"
+fi
+
 # --- a real capture through the real runner ---------------------------------
 cat > "$TR/steps/t-clean.ps1" <<'EOF'
 # heliograph-mode: read-only

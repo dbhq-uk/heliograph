@@ -23,7 +23,7 @@ becomes a second copy of one implementation.
 `drivers/mutant.sh` is deliberately broken and the suite asserts that it
 **fails**. A test suite nobody has watched fail is a suite nobody knows works.
 
-## The nine properties
+## The ten properties
 
 **1. Every captured line carries a distinct UTC timestamp.**
 Three lines a second apart must produce three different stamps. This is the
@@ -87,6 +87,13 @@ until the suite started watching the size.
 
 **9. The finished log reaches the far side.**
 Read back from the receiving end, never from the working tree that wrote it.
+
+**10. The log carries text, not a terminal.**
+ANSI escapes stripped, carriage returns gone, stderr captured, and **the final
+line kept even with no newline after it**. That last one found a real defect:
+the bash capture dropped it, because `while read` returns non-zero at EOF and
+the loop ended - and the line a step was mid-way through writing is the probe
+that was in flight, which is the most valuable line in the file.
 
 ## Property 9 is the one worth explaining
 
@@ -160,6 +167,74 @@ lower bound is the property; the upper one guards against stamps applied at
 flush rather than at read, and a badly stalled CI worker could produce a
 legitimate gap larger than 8 seconds. It has not yet.
 
+## The second implementation
+
+`station/powershell/caplib.psm1` is the capture in PowerShell. It exists for the
+estate that has no bash and will not be given any, where the alternative is not
+a bash station but no station. A Windows box that *does* have Git for Windows
+should keep running the bash station: one implementation is better than two
+wherever there is a choice.
+
+It passes properties 1-4, 7 and 10 today, and **skips 5, 6 and 9 by name** - the
+gates live in `run.ps1` and delivery in the transports, neither of which exists
+yet. On Windows it skips 8 as well: Git-Bash has no `setsid`, and a Windows
+cancel needs a Job Object, which is a later PR.
+
+The suite checks **which** properties skipped, not how many. A count was the
+first version and it was wrong on Windows; loosening it to "two or three" would
+have accepted a third skip anywhere, including a capture property quietly
+dropping out. So the skippable ones are named, and every capture property the
+implementation claims must be *answered*.
+
+**It is tested on Windows PowerShell 5.1, not only on 7.** That matters more
+than it sounds: the driver used to prefer `pwsh`, so on a runner with both
+editions the 5.1 path was never taken - and that is exactly how a first version
+shipped using `ProcessStartInfo.ArgumentList`, which .NET Framework does not
+have and which would have thrown on every real 5.1 station. Windows CI now runs
+the suite once per edition.
+
+Two more things are asserted that no property covers:
+
+- **Both implementations write a log of the same shape.** The control side
+  parses these logs and it parses one format. Two captures can each pass every
+  property and still disagree about a header. The properties assert what a log
+  *means*; this asserts what it *looks like*.
+- **Every `.ps1` and `.psm1` in the repository parses.** Nothing else in CI
+  reads them, so without it a syntax error ships and fails on a Windows box.
+
+### What must never appear on the PowerShell capture path
+
+The busybox failure, respelled. Each of these collects the stream before handing
+it on, so every line of a block gets the timestamp of the flush:
+
+`$( )`, `Out-String` without `-Stream`, `Select-Object`, `Sort-Object`,
+`Group-Object`, and `-Wait`.
+
+Two traps cost real time here and are worth knowing before writing any
+PowerShell that reads a process:
+
+- **A scriptblock attached to `OutputDataReceived` has no runspace.** It runs on
+  a threadpool thread, and PowerShell terminates the entire process with *"There
+  is no Runspace available to run scripts in this thread"* - not an exception a
+  caller can catch. A capture that crashes the station is worse than one that
+  buffers.
+- **`Register-ObjectEvent` has a runspace but the wrong clock.** Its `-Action`
+  runs when the engine gets round to it, so the stamp says when PowerShell was
+  free rather than when the line arrived. That is the buffering defect exactly,
+  just relocated.
+
+Neither is that the answer, and the second attempt was wrong too. **One
+`ReadLineAsync` per pipe with `Task.WaitAny`** looks correct and is not: a line
+that arrives while the loop is busy with the other stream sits in a *completed*
+task, unstamped, until the loop comes back for it. Under steady output on one
+stream the other starves - its stamp drifts from its arrival, and the child can
+block writing to it.
+
+What works is what bash does: **the child merges the two streams**, and the
+parent reads one pipe with a blocking `ReadLine`. `cmd /d /s /c` on Windows,
+`sh -c` elsewhere. The ordering is the child's own, and nothing gets between the
+read and the clock.
+
 ## Adding an implementation
 
 A second implementation of the capture is permitted **only while it passes this
@@ -168,12 +243,18 @@ argument against a port was always about *untested* drift, and the suite makes
 it testable.
 
 Write a driver implementing `drv_name`, `drv_supports`, `drv_capture`,
-`drv_bootstrap`, `drv_step`, `drv_capture_bg`, `drv_cancel`, `drv_deliver` and
-`drv_delivered`, plus `drv_step_privileged` if the platform can simulate one
-and `drv_teardown` if the far side is a process. Then make the suite pass
-without touching the suite.
+`drv_step_file`, `drv_step_echo`, `drv_step_name`, `drv_bootstrap`, `drv_step`,
+`drv_capture_bg`, `drv_cancel`, `drv_deliver` and `drv_delivered`, plus
+`drv_step_privileged` if the platform can simulate one and `drv_teardown` if the
+far side is a process. Then make the suite pass without touching the suite.
 
-Nothing platform-specific belongs in the suite. Two things were in it and are
-not now: the fake `id`, and the `sed -u` probe that decides whether a cancel can
-keep anything. That probe is a fact about busybox, not about the property, and
-it moved into `drv_supports cancel` where the implementation can state it.
+Nothing platform-specific belongs in the suite. Three things were in it and are
+not now:
+
+- the fake `id` that simulated root
+- the `sed -u` probe that decides whether a cancel can keep anything - a fact
+  about busybox, not about the property
+- **every step fixture.** They were heredocs beginning `#!/usr/bin/env bash`, so
+  a PowerShell driver could not have run a single property. The suite now names
+  a step by *kind* and the driver writes it; for redaction the suite hands over
+  the lines and the driver writes a step that prints them.

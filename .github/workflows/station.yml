@@ -517,6 +517,42 @@ jobs:
           Write-Output "registered, reported and removed"
           Pop-Location
 
+      # THE FLOOR, EXERCISED. Windows PowerShell 5.1 is what caplib.psm1
+      # targets, and until this ran nothing had ever tested it: the driver
+      # preferred pwsh, so on a runner with both editions the 5.1 path was
+      # never taken. That is precisely how a first version shipped using
+      # ProcessStartInfo.ArgumentList, which .NET Framework does not have and
+      # which would have thrown on every real 5.1 station.
+      #
+      # Both editions, separately, because "it works on 7" says nothing about
+      # the platform this exists for.
+      - name: The capture passes conformance on Windows PowerShell 5.1 AND on 7
+        shell: bash
+        run: |
+          set -uo pipefail
+          rc=0
+          for ps in powershell pwsh; do
+            command -v "$ps" >/dev/null 2>&1 || {
+              echo "::error::$ps is not on this runner, so that edition was NOT tested"; rc=1; continue; }
+            echo "--- $ps"
+            CONF_PS_SHELL="$ps" ./tests/conformance/conformance.sh \
+              tests/conformance/drivers/powershell.sh 2>&1 | tee "/tmp/conf-$ps.out"
+            [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::conformance failed under $ps"; rc=1; }
+            # WHICH skipped, not how many. On Windows the cancel property
+            # legitimately skips too - Git-Bash has no setsid and a Job Object
+            # is PR 11 - so a count would either fail here or be loosened to
+            # the point where a capture property could drop out unnoticed.
+            bad="$(grep '^SKIP' "/tmp/conf-$ps.out" | grep -vE 'SKIP (p5/p6|p8|p9):' || true)"
+            [ -z "$bad" ] || { echo "::error::$ps skipped something it may not:"; echo "$bad"; rc=1; }
+            for prop in p1 p2 p3 p4 p7 p10; do
+              grep -qE "^ok +$prop:" "/tmp/conf-$ps.out" || {
+                echo "::error::$ps did not answer $prop"; rc=1; }
+            done
+            grep -q "^--- conformance: caplib.psm1" "/tmp/conf-$ps.out" || {
+              echo "::error::$ps did not report which interpreter it ran"; rc=1; }
+          done
+          exit $rc
+
       - name: The suite's Windows-relevant files, unskipped
         shell: bash
         run: |
