@@ -10,6 +10,7 @@ people who wrote it have shipped.
 |---|---|
 | [bbs.dbhq.uk](https://bbs.dbhq.uk) | The world wide web, as a bulletin board. Rust compiled to WebAssembly, CP437, 80x25 |
 | [modem.dbhq.uk](https://modem.dbhq.uk) | An acoustic modem simulator. Two machines, one sound card each, a real Bell 103 connection over the air, preceded by a faithfully performed dial-up overture |
+| [skills.dbhq.uk](https://skills.dbhq.uk) | Install agent skills for Claude Code and Codex. A page for each of the nine, and every one of them states what its skill does not do |
 
 ## Skills for Claude Code and Codex
 
@@ -21,7 +22,8 @@ heliograph itself ships as one of them.
 ```
 
 The [marketplace](https://github.com/dbhq-uk/marketplace) carries the full set,
-and [dbhq.uk/skills](https://dbhq.uk/skills/) describes what each one is for.
+and [skills.dbhq.uk](https://skills.dbhq.uk) describes what each one is for, a
+page per skill.
 Among them: research that says when it cannot settle a question, a repository
 coherence checker, Microsoft 365 mail and calendar, Trello, Garmin, and
 compiler-exact .NET code search.

@@ -518,7 +518,7 @@ func TestTheDBHQPageLinksToTheProjectsItNames(t *testing.T) {
 	}
 	for _, want := range []string{
 		"https://dbhq.uk", "https://bbs.dbhq.uk", "https://modem.dbhq.uk",
-		"https://github.com/dbhq-uk/marketplace", "https://dbhq.uk/skills/",
+		"https://github.com/dbhq-uk/marketplace", "https://skills.dbhq.uk",
 	} {
 		if !strings.Contains(h, `href="`+want+`"`) {
 			t.Errorf("the DBHQ page does not link to %s", want)

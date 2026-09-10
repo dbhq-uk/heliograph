@@ -445,7 +445,11 @@ const orgMenu = `<details class="org-menu">` +
 	`<div class="org-panel">` +
 	`<a href="https://bbs.dbhq.uk"><b>bbs</b><span>The web, as a bulletin board</span></a>` +
 	`<a href="https://modem.dbhq.uk"><b>modem</b><span>A real Bell 103 connection, over the air</span></a>` +
-	`<a href="https://dbhq.uk/skills/"><b>Skills</b><span>Free skills for Claude Code and Codex</span></a>` +
+	// skills.dbhq.uk, not dbhq.uk/skills. The skills moved to their own
+	// hostname on 10 Sep 2026 - a page each, because one page could not carry
+	// nine distinct titles - and dbhq.uk/skills is a 301 to it now. Pointing at
+	// the redirect still works and still costs the reader a hop.
+	`<a href="https://skills.dbhq.uk"><b>Skills</b><span>Free skills for Claude Code and Codex</span></a>` +
 	`<a class="org-all" href="/dbhq">All DBHQ projects</a>` +
 	`</div></details>`
 
