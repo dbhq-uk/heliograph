@@ -575,10 +575,13 @@ jobs:
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the preflight or cancel failed under $ps"; rc=1; }
             grep -q '^SKIP' "/tmp/pre-$ps.out" && {
               echo "::error::the preflight or cancel skipped under $ps"; rc=1; }
-            # And it must have used the Windows mechanism, not fallen through
-            # to something that happens to work here.
-            grep -qE 'cancel .*(Job Object|taskkill)' "/tmp/pre-$ps.out" || {
-              echo "::error::$ps did not report a Windows cancel strategy"; rc=1; }
+            # And it must have used a WINDOWS mechanism, not fallen through to
+            # something that happens to work here. This greps the ASSERTION the
+            # test prints, not the preflight table - the table is only echoed
+            # on failure, so the first version of this check could never match
+            # and failed a run in which every test had passed.
+            grep -qE 'established a Job Object|fell back to taskkill' "/tmp/pre-$ps.out" || {
+              echo "::error::$ps did not report which Windows cancel mechanism it used"; rc=1; }
           done
           exit $rc
 
