@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/dbhq-uk/heliograph/internal/site"
 )
 
 // buildSite builds the real content into a temporary directory once per test.
@@ -521,5 +523,27 @@ func TestTheDBHQPageLinksToTheProjectsItNames(t *testing.T) {
 		if !strings.Contains(h, `href="`+want+`"`) {
 			t.Errorf("the DBHQ page does not link to %s", want)
 		}
+	}
+}
+
+// The client-side navigation replaces main and the rail wholesale, which
+// leaves anything bound to the old elements pointing at nodes that are no
+// longer in the document. The rail stopped marking the current section after
+// one soft navigation, and only a browser could see it: every page was
+// correct on a hard load.
+//
+// The contract is an event. swap() announces; whatever needs rebinding
+// listens, so the next thing that needs it does not have to edit swap().
+func TestTheNavigationAnnouncesASwapAndTheRailListens(t *testing.T) {
+	if !strings.Contains(site.NavJS, `dispatchEvent(new CustomEvent('hg:swap'`) &&
+		!strings.Contains(site.NavJS, `hg:swap`) {
+		t.Error("swap() does not announce that it replaced the page")
+	}
+	if !strings.Contains(site.RailJS, `'hg:swap'`) {
+		t.Error("the rail does not rebind after a swap")
+	}
+	// And it must be able to run twice without stacking observers.
+	if !strings.Contains(site.RailJS, "disconnect()") {
+		t.Error("the rail does not disconnect its previous observer, so they stack")
 	}
 }
