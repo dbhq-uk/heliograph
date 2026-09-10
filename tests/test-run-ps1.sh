@@ -417,14 +417,23 @@ if "$HERE/../station/bootstrap.sh" "$BASHREPO" >/dev/null 2>&1; then
     > "$BASHREPO/steps/twin.sh"
   chmod +x "$BASHREPO/steps/twin.sh"
   printf '\xef\xbb\xbf# heliograph-mode: read-only\nWrite-Output "ran"\n' > "$WORK/steps/twin.ps1"
-  ( cd "$BASHREPO" && PUSH=0 ALLOW_ROOT=1 ./run.sh ./steps/twin.sh ) >/dev/null 2>&1
+  ( cd "$BASHREPO" && PUSH=0 ALLOW_ROOT=1 ./run.sh ./steps/twin.sh ) >/dev/null 2>"$WORK/bomb.err"
   bomb=$?
-  ( cd "$WORK" && PUSH=0 ALLOW_ROOT=1 "$PS_BIN" -NoProfile -File ./run.ps1 ./steps/twin.ps1 ) >/dev/null 2>&1
+  ( cd "$WORK" && PUSH=0 ALLOW_ROOT=1 "$PS_BIN" -NoProfile -File ./run.ps1 ./steps/twin.ps1 ) \
+    >/dev/null 2>"$WORK/bomp.err"
   bomp=$?
   if [ "$bomb" = "3" ] && [ "$bomp" = "3" ]; then
     t_ok "twins agree on a byte-order mark: both refuse with 3"
   else
     t_no "twins disagree on a BOM: run.sh exits $bomb, run.ps1 exits $bomp"
+    # THE EVIDENCE, HERE, because this failed once on a Windows runner and
+    # nowhere else, and an exit code alone does not say which check fired.
+    printf '     --- run.sh said ---\n'; sed 's/^/     /' "$WORK/bomb.err" | head -5
+    printf '     --- run.ps1 said ---\n'; sed 's/^/     /' "$WORK/bomp.err" | head -5
+    printf '     --- first 8 bytes of the bash step ---\n'
+    head -c 8 "$BASHREPO/steps/twin.sh" | od -An -tx1 | sed 's/^/     /'
+    printf '     --- is it executable? ---\n'
+    ls -l "$BASHREPO/steps/twin.sh" | sed 's/^/     /'
   fi
 else
   t_no "could not bootstrap a bash payload, so the twins were NOT compared"
