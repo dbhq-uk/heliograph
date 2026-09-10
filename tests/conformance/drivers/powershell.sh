@@ -8,9 +8,10 @@
 # WHAT THIS DRIVER CAN AND CANNOT ANSWER TODAY, and it says so by skipping
 # rather than by passing:
 #
-#   1-4, 7, 8   caplib.psm1 exists. These are its properties.
-#   5, 6        the gates live in run.ps1, which does not exist yet
-#   9           delivery lives in the transports, which do not exist yet
+#   1-4, 7, 8, 10   caplib.psm1 exists. These are its properties.
+#   5, 6            run.ps1 carries gates 1, 2 and 4, the same three run.sh
+#                   carries, with the same exit codes
+#   9               delivery lives in the transports, which do not exist yet
 #
 # A driver that claimed `gates` and returned 0 would report the root gate as
 # proven on a station that has no gate at all, which is the most expensive
@@ -68,8 +69,9 @@ drv_supports() {
     # so and p8 SKIPS on Windows, rather than starting nothing and letting the
     # property report on a log that does not exist.
     cancel) command -v setsid >/dev/null 2>&1 ;;
-    # NOT YET, and said out loud. run.ps1 and the transports are PR 10 and 12.
-    gates | deliver) return 1 ;;
+    gates) return 0 ;;
+    # NOT YET, and said out loud. The transports are PR 12.
+    deliver) return 1 ;;
     *) return 1 ;;
   esac
 }
@@ -175,6 +177,40 @@ foreach ($l in [System.IO.File]::ReadAllLines((Join-Path $here ($name + '.lines'
     Write-Output $l
 }
 PS
+}
+
+# A payload with the runner in it. bootstrap.ps1 will do this properly in a
+# later PR; until then the driver plants the two files run.ps1 needs, which is
+# exactly what it will plant - so when bootstrap arrives, this stops being the
+# thing under test rather than changing what is tested.
+drv_bootstrap() {
+  local dir="$1"
+  mkdir -p "$dir/steps" "$dir/ops-logs" || return 1
+  cp "$_P_HERE/../../../station/powershell/run.ps1" \
+     "$_P_HERE/../../../station/powershell/caplib.psm1" "$dir/" || return 1
+  return 0
+}
+
+drv_step() {
+  local dir="$1" step="$2"
+  ( cd "$dir" && PUSH=0 "$_P_SHELL" -NoProfile -File ./run.ps1 "./$step" ) >/dev/null 2>&1
+}
+
+# WITHOUT BEING ADMINISTRATOR, and without a way to become one.
+#
+# The bash side puts a fake `id` on PATH, which works because cap_refuse_root
+# asks an external program. There is no external program here: the check is
+# WindowsPrincipal.IsInRole plus an explicit S-1-5-18, and neither can be
+# shadowed by a PATH entry.
+#
+# So caplib.psm1 has a seam, and it is ONE-DIRECTIONAL:
+# HELIOGRAPH_ASSUME_PRIVILEGED=1 can only make the gate REFUSE. There is no
+# value of it that permits a run, which is what stops a test hook being a
+# backdoor with a test's name on it.
+drv_step_privileged() {
+  local dir="$1" step="$2"
+  ( cd "$dir" && PUSH=0 HELIOGRAPH_ASSUME_PRIVILEGED=1 \
+      "$_P_SHELL" -NoProfile -File ./run.ps1 "./$step" ) >/dev/null 2>&1
 }
 
 drv_capture() {

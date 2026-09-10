@@ -13,7 +13,7 @@ for the 19-PR breakdown. This file says where we are and what is next.
 ## Where we are
 
 Git, the file share and the relay work end to end, each with its own round trip
-in CI. The site documents the far side. There is no PowerShell station.
+in CI. The site documents the far side. The PowerShell station has its capture and its runner; it has no loop and no transports.
 
 | | |
 |---|---|
@@ -24,7 +24,7 @@ in CI. The site documents the far side. There is no PowerShell station.
 | file share | **works end to end**, proved by a CLI round trip in CI |
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
-| PowerShell station | **the capture exists** - `caplib.psm1` passes the conformance properties it claims. No runner, no gates, no transports yet |
+| PowerShell station | **the capture and the runner exist** - `caplib.psm1` and `run.ps1` pass properties 1-7 and 10, with gates 1, 2 and 4. No loop, no transports yet |
 | site | 26 pages, near and far side. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
 
 ## Landed 2026-09-08
@@ -66,16 +66,17 @@ in CI. The site documents the far side. There is no PowerShell station.
 | #50 | **conformance over every transport**, with a stub relay so it needs no Cloudflare account - and a teeth check per transport, because running the suite three times only proves three passes |
 | #51 | **the conformance harness stops being Unix** (Track B/PR 8) - p6's privileged account and p8's cancel move into the driver, p8 proves the cancel by watching the log stop growing, and the redaction corpus lands with a test that every rule is load-bearing |
 | #52 | **`caplib.psm1`** (Track B/PR 9) - the capture in PowerShell, passing properties 1-4, 7 and 8, skipping the gates and delivery by name. The step fixtures moved into the driver too, which was the last Unix left in the suite |
+| #53 | **`run.ps1`** (Track B/PR 10) - the runner and its three gates, a `probe.psm1` and a shipped `env` step. Found three case-sensitivity divergences from `run.sh`, two of them in a security gate, and added a twin comparison that would have caught all three |
 
 ## Next, in order
 
-1. **Track B: the PowerShell station**, PR 10 onwards. `run.ps1` next - the
-   runner and all four gates, which is what turns properties 5 and 6 from a
-   named skip into an answer. The privileged check is
-   `WindowsPrincipal.IsInRole(Administrator)` plus an explicit `S-1-5-18`, and
-   keeps the name `ALLOW_ROOT` rather than gaining a Windows synonym.
-   Then `station.ps1`/`start.ps1` (PR 11), the three transports (PR 12),
-   bootstrap (PR 13) and Windows CI (PR 14)
+1. **Track B: the PowerShell station**, PR 11 onwards. `station.ps1` and
+   `start.ps1` next - the loop and the preflight, which is where gate 3
+   (`--allow-actions`) lives and what a Windows cancel needs: a Win32 **Job
+   Object** with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, with `taskkill /T /F`
+   as a genuine fallback because a hardened estate may block `Add-Type`. That
+   is also what turns property 8 from a Windows skip into an answer.
+   Then the three transports (PR 12), bootstrap (PR 13) and Windows CI (PR 14)
 2. **The bundle's station side.** `/air-gapped` now says plainly that the
    bundle cannot be read by a station, and the CLI says the same. That page is
    the first thing to update when it lands
@@ -188,6 +189,15 @@ Break every new assertion deliberately and watch it fail before keeping it.
 pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
+
+**Two implementations of one rule need a test that compares them, not two
+tests.** `run.ps1` and `run.sh` were each tested and each passed, and three
+things still meant different things to the two of them - `CONFIRM=YES`,
+`# heliograph-mode: READ-ONLY`, and the step name `ENV` - because PowerShell
+compares case-insensitively everywhere bash does not. Two of those were security
+gates: a state-changing step ran on one and was refused by the other, from the
+same request. The guard that holds is running the SAME declaration through both
+and comparing the exit codes.
 
 **A corpus is only testing the rules it is the ONLY thing catching.** The
 redaction corpus was written case by case, each one realistic - a GitLab token

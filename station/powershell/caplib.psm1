@@ -384,6 +384,63 @@ function Get-CapGit {
     }
 }
 
+# --- the account IS the blast radius -----------------------------------------
+# This toolkit holds no credentials: no cloud auth, no API keys, nothing but
+# the transport's. So the honest answer to "what could this do to the estate"
+# is "whatever the account running it could do", and that answer is only useful
+# if the account is not a privileged one.
+#
+# WINDOWS HAS NO ROOT, so the question is asked twice:
+#
+#   the Administrators role   an elevated shell, which is what an operator
+#                             actually has when they "run as administrator"
+#   S-1-5-18                  LOCAL SYSTEM, explicitly, because a service or a
+#                             scheduled task set to run as SYSTEM is NOT in the
+#                             Administrators group and would sail past a role
+#                             check alone. It is also the most privileged
+#                             account on the machine.
+#
+# Off Windows it asks the same question the bash side does, so a station on
+# PowerShell 7 on Linux behaves identically to one on run.sh.
+function Test-CapPrivileged {
+    if (Test-CapWindows) {
+        try {
+            $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            if ($id.User -and $id.User.Value -eq 'S-1-5-18') { return $true }
+            $p = New-Object System.Security.Principal.WindowsPrincipal($id)
+            return $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+        } catch {
+            # UNKNOWN IS TREATED AS PRIVILEGED. A gate that fails open is not a
+            # gate, and this one is cheap to switch off deliberately.
+            return $true
+        }
+    }
+    try {
+        $uid = & id -u 2>$null
+        if ($LASTEXITCODE -ne 0) { return $true }
+        return ([string]$uid).Trim() -eq '0'
+    } catch {
+        return $true
+    }
+}
+
+# Whether the run may proceed. Separated from the question above so the ANSWER
+# and the POLICY are not tangled: ALLOW_ROOT is the policy.
+#
+# HELIOGRAPH_ASSUME_PRIVILEGED is how a test pretends to be Administrator
+# without being one, and it is deliberately one-directional: it can only ever
+# make this function return $false - refuse - and there is no value of it that
+# permits a run. A test hook that could open a gate would be a backdoor with a
+# test's name on it. The bash side's equivalent seam is `cap_refuse_root`
+# calling `id -u` rather than reading $EUID, so a fake `id` can be put on PATH.
+function Test-CapPrivilegedAllowed {
+    if ($env:HELIOGRAPH_ASSUME_PRIVILEGED -eq '1') {
+        return ($env:ALLOW_ROOT -eq '1')
+    }
+    if (-not (Test-CapPrivileged)) { return $true }
+    return ($env:ALLOW_ROOT -eq '1')
+}
+
 # --- writing ------------------------------------------------------------------
 # UTF-8 WITHOUT A BOM, and this is not cosmetic.
 #
@@ -416,5 +473,7 @@ Export-ModuleMember -Function @(
     'Write-CapFooter',
     'Invoke-CapRun',
     'Get-CapHostname',
-    'Get-CapUser'
+    'Get-CapUser',
+    'Test-CapPrivileged',
+    'Test-CapPrivilegedAllowed'
 )

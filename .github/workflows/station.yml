@@ -86,6 +86,16 @@ jobs:
         run: |
           hits=$(grep -nE '^[[:space:]]*probe(_opt)? .*\|[[:space:]]*(head|tail)\b' \
                  station/bash/steps/*.sh || true)
+          # The same rule, in PowerShell, where truncation has different names.
+          # `Select-Object -First/-Last` and `Out-String` without -Width are the
+          # two that cut evidence silently: the first drops rows, the second
+          # wraps at the host width and puts `...` in the middle of a value.
+          # Out-String -Width IS allowed and is used deliberately, which is why
+          # the pattern insists on its absence.
+          hits="$hits$(grep -nE 'Select-Object[[:space:]]+-(First|Last)\b' \
+                 station/powershell/steps/*.ps1 2>/dev/null || true)"
+          hits="$hits$(grep -nE 'Out-String([[:space:]]*\||[[:space:]]*$)' \
+                 station/powershell/steps/*.ps1 2>/dev/null || true)"
           if [ -n "$hits" ]; then
             echo "$hits"
             echo "::error::A probe truncates its own output. See references/method.md rule 4."
@@ -542,14 +552,21 @@ jobs:
             # legitimately skips too - Git-Bash has no setsid and a Job Object
             # is PR 11 - so a count would either fail here or be loosened to
             # the point where a capture property could drop out unnoticed.
-            bad="$(grep '^SKIP' "/tmp/conf-$ps.out" | grep -vE 'SKIP (p5/p6|p8|p9):' || true)"
+            bad="$(grep '^SKIP' "/tmp/conf-$ps.out" | grep -vE 'SKIP (p8|p9):' || true)"
             [ -z "$bad" ] || { echo "::error::$ps skipped something it may not:"; echo "$bad"; rc=1; }
-            for prop in p1 p2 p3 p4 p7 p10; do
+            for prop in p1 p2 p3 p4 p5 p6 p7 p10; do
               grep -qE "^ok +$prop:" "/tmp/conf-$ps.out" || {
                 echo "::error::$ps did not answer $prop"; rc=1; }
             done
             grep -q "^--- conformance: caplib.psm1" "/tmp/conf-$ps.out" || {
               echo "::error::$ps did not report which interpreter it ran"; rc=1; }
+            # run.ps1's gates under the same edition. The conformance suite
+            # asks whether they fail closed; this asks the exact exit codes and
+            # compares them against run.sh's, case by case.
+            CONF_PS_SHELL="$ps" ./tests/test-run-ps1.sh 2>&1 | tee "/tmp/gates-$ps.out"
+            [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::run.ps1 gates failed under $ps"; rc=1; }
+            grep -q '^SKIP' "/tmp/gates-$ps.out" && {
+              echo "::error::run.ps1's gates skipped under $ps"; rc=1; }
           done
           exit $rc
 
@@ -559,7 +576,7 @@ jobs:
           set +e
           set -uo pipefail
           rc=0
-          for f in tests/test-powershell.sh tests/test-remote.sh; do
+          for f in tests/test-powershell.sh tests/test-remote.sh tests/test-run-ps1.sh; do
             echo "--- $f"
             ./$f 2>&1 | tee "/tmp/$(basename "$f").out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || rc=1
