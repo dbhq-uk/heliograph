@@ -301,15 +301,35 @@ Write-CapHeader -Path $out -Label "STEP: $step" -Context @("command: $shell -Fil
 $rc = Invoke-CapRun -Path $out -FilePath $shell -ArgumentList @('-NoProfile', '-Command', $wrapper)
 Write-CapFooter -Path $out -ExitCode $rc
 
-# DELIVERY IS NOT HERE YET. The transports are a later PR, and a runner that
-# quietly captured to local disk while looking like it had shipped would be the
-# exact defect property 9 exists for. So it says what it did.
-if ($env:PUSH -eq '0') {
+# --- delivery ------------------------------------------------------------------
+# THE FOOTER IS ALREADY WRITTEN, and always is before this point. Delivery ships
+# a COMPLETE log or it ships nothing; a reader must never have to wonder whether
+# the file they are holding is the whole run.
+#
+# AND A FAILED DELIVERY IS NEVER REPORTED AS A SUCCESS. It also never loses the
+# log: the file is on local disk and its path is named, so somebody with access
+# can still fetch it. That is property 9, and it is the one that let a real
+# defect ship on the bash side - a station that captured perfectly and
+# delivered nothing, invisibly, because the log was written correctly every
+# time.
+if ($env:PUSH -ceq '0') {
     Write-Host "PUSH=0 - captured locally, not delivered:"
     Write-Host "  $out"
 } else {
-    Write-Host "captured locally, NOT delivered: this runner has no transport yet."
-    Write-Host "  $out"
+    Import-Module (Join-Path $RepoRoot 'lib/transport.psm1') -Force
+    if (Import-Tp) {
+        if (Send-TpLog -LogPath $out -Message "step: $step ($stamp) exit=$rc ***NO_CI***") {
+            Write-Host "delivered over '$(Get-TpName)': $(Split-Path -Leaf $out)"
+        } else {
+            # NAMED, both the file and the channel. Somebody with access can
+            # still fetch it, and the reason is above this line.
+            [Console]::Error.WriteLine("DELIVERY FAILED over '$(Get-TpName)'. The log is complete and is here:")
+            [Console]::Error.WriteLine("  $out")
+        }
+    } else {
+        [Console]::Error.WriteLine("no usable transport, so the log was NOT delivered. It is complete and is here:")
+        [Console]::Error.WriteLine("  $out")
+    }
 }
 
 $result = if ($rc -eq 0) { 'OK' } else { "FAILED (exit $rc)" }

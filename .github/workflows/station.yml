@@ -545,16 +545,19 @@ jobs:
             command -v "$ps" >/dev/null 2>&1 || {
               echo "::error::$ps is not on this runner, so that edition was NOT tested"; rc=1; continue; }
             echo "--- $ps"
-            CONF_PS_SHELL="$ps" ./tests/conformance/conformance.sh \
+            # Over the SHARE, which needs nothing but a directory. The git
+            # transport is covered by the Linux sweep; here the question is the
+            # interpreter, not the channel.
+            CONF_PS_SHELL="$ps" CONF_TRANSPORT=share ./tests/conformance/conformance.sh \
               tests/conformance/drivers/powershell.sh 2>&1 | tee "/tmp/conf-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::conformance failed under $ps"; rc=1; }
             # WHICH skipped, not how many. On Windows the cancel property
             # legitimately skips too - Git-Bash has no setsid and a Job Object
             # is PR 11 - so a count would either fail here or be loosened to
             # the point where a capture property could drop out unnoticed.
-            bad="$(grep '^SKIP' "/tmp/conf-$ps.out" | grep -vE 'SKIP (p8|p9):' || true)"
+            bad="$(grep '^SKIP' "/tmp/conf-$ps.out" | grep -vE 'SKIP (p8):' || true)"
             [ -z "$bad" ] || { echo "::error::$ps skipped something it may not:"; echo "$bad"; rc=1; }
-            for prop in p1 p2 p3 p4 p5 p6 p7 p10; do
+            for prop in p1 p2 p3 p4 p5 p6 p7 p9 p10; do
               grep -qE "^ok +$prop:" "/tmp/conf-$ps.out" || {
                 echo "::error::$ps did not answer $prop"; rc=1; }
             done
@@ -573,6 +576,14 @@ jobs:
             # surviving is the defect, and only a real Windows tree shows it.
             CONF_PS_SHELL="$ps" ./tests/test-station-ps1.sh 2>&1 | tee "/tmp/pre-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the preflight or cancel failed under $ps"; rc=1; }
+            # The transports: what they refuse, what they never say, and what
+            # they do when a delivery fails. Property 9 cannot see the last one
+            # - from the far side of a working channel, a delivery that
+            # succeeded and one that lied look the same.
+            CONF_PS_SHELL="$ps" ./tests/test-transports-ps1.sh 2>&1 | tee "/tmp/tp-$ps.out"
+            [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the transports failed under $ps"; rc=1; }
+            grep -q '^SKIP' "/tmp/tp-$ps.out" && {
+              echo "::error::the transports skipped under $ps"; rc=1; }
             grep -q '^SKIP' "/tmp/pre-$ps.out" && {
               echo "::error::the preflight or cancel skipped under $ps"; rc=1; }
             # And it must have used a WINDOWS mechanism, not fallen through to
@@ -592,7 +603,7 @@ jobs:
           set -uo pipefail
           rc=0
           for f in tests/test-powershell.sh tests/test-remote.sh tests/test-run-ps1.sh \
-                   tests/test-station-ps1.sh; do
+                   tests/test-station-ps1.sh tests/test-transports-ps1.sh; do
             echo "--- $f"
             ./$f 2>&1 | tee "/tmp/$(basename "$f").out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || rc=1

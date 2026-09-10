@@ -126,6 +126,9 @@ The whole suite now runs once per transport:
 | **share** | a directory, and the log is read back from the share rather than the working tree |
 | **relay** | a stub relay in memory, two keypairs, and the log is **unsealed with the control side's identity** - so a log sealed for somebody else, or signed by nobody, is not counted as delivered |
 
+The PowerShell station ships **git and share**. It has no relay yet, and the
+driver says so by name rather than claiming a channel that does not exist.
+
 The relay stub is a queue with an HTTP interface and the relay's token rules,
 which is the entire contract the station side depends on. It is deliberately
 ignorant of the payload: every body is an opaque sealed envelope, stored and
@@ -140,7 +143,8 @@ that boundary against the stub rather than assuming it - a double more
 permissive than the thing it stands in for is worse than no double.
 
 And running it three times only proves three passes, so each transport is also
-checked for **teeth**: `tp_put_log` is replaced with `return 0` - a delivery
+checked for **teeth** - in **both implementations**, because a second
+implementation of delivery is a second thing that can silently stop delivering: `tp_put_log` is replaced with `return 0` - a delivery
 that claims success and does nothing, the exact shape of the original defect -
 and property 9 must fail. If it does not, it is reading the local file again.
 
@@ -179,11 +183,13 @@ wherever there is a choice.
 three `run.sh` carries, with the same exit codes. Gate 3 lives in the loop,
 which is a later PR, and nothing here silently stands in for it.
 
-`station/powershell/lib/cancel.psm1` is the cancel, and
-`station/powershell/start.ps1` the preflight.
+`station/powershell/lib/cancel.psm1` is the cancel, `start.ps1` the preflight,
+and `transports/{git,share}.psm1` the delivery.
 
-Together they pass properties 1-8 and 10 on both platforms, and **skip 9 by
-name**: delivery lives in the transports, which do not exist yet.
+Together they pass **every property**, over both transports the implementation
+ships. Only 8 skips, and only on Windows where Git-Bash has no `setsid` - the
+Job Object covers the station's own cancel, but the suite needs a process group
+to start the fixture in.
 
 The suite checks **which** properties skipped, not how many. A count was the
 first version and it was wrong on Windows; loosening it to "two or three" would

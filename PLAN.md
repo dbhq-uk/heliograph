@@ -24,7 +24,7 @@ in CI. The site documents the far side. The PowerShell station has its capture a
 | file share | **works end to end**, proved by a CLI round trip in CI |
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
-| PowerShell station | **the capture, the runner, the cancel and the preflight** - properties 1-8 and 10, gates 1, 2 and 4. No loop and no transports, so a step is captured locally and NOT delivered |
+| PowerShell station | **captures and DELIVERS** - every conformance property, over git and share, with gates 1, 2 and 4. No loop, so it cannot RECEIVE: a request is handed to `run.ps1` by whoever is driving |
 | site | 26 pages, near and far side. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
 
 ## Landed 2026-09-08
@@ -68,19 +68,21 @@ in CI. The site documents the far side. The PowerShell station has its capture a
 | #50 | **conformance over every transport**, with a stub relay so it needs no Cloudflare account - and a teeth check per transport, because running the suite three times only proves three passes |
 | #51 | **the conformance harness stops being Unix** (Track B/PR 8) - p6's privileged account and p8's cancel move into the driver, p8 proves the cancel by watching the log stop growing, and the redaction corpus lands with a test that every rule is load-bearing |
 | #52 | **`caplib.psm1`** (Track B/PR 9) - the capture in PowerShell, passing properties 1-4, 7 and 8, skipping the gates and delivery by name. The step fixtures moved into the driver too, which was the last Unix left in the suite |
+| #66 | **the PowerShell transports** (Track B/PR 12) - git and share deliver, and property 9 stops skipping. Teeth for both, because a second implementation of delivery is a second thing that can silently stop delivering. Found: `Import-Module` inside a module function imports into THAT module's session and nowhere else, so the transport loaded, initialised, reported success, and every one of its functions was invisible |
 | #54 | **the cancel and the preflight** (Track B/PR 11, part) - a Win32 Job Object with `taskkill /T /F` where `Add-Type` is blocked, which is the estate this station is for. Property 8 stops skipping on Windows. `start.ps1` answers the two questions that decide whether a station can run at all: Constrained Language Mode, and a GPO-set execution policy |
 | #53 | **`run.ps1`** (Track B/PR 10) - the runner and its three gates, a `probe.psm1` and a shipped `env` step. Found three case-sensitivity divergences from `run.sh`, two of them in a security gate, and added a twin comparison that would have caught all three |
 
 ## Next, in order
 
-1. **Track B: the transports, then the loop.** PR 11 was split, deliberately:
-   the preflight and the cancel landed, and `station.ps1` did not. A loop needs
-   something to poll, and the transports are PR 12 - so a loop written now
-   could not be tested end to end, and an untested loop is the one thing this
-   repository will not ship. `transports/{git,share,relay}.ps1` next, then the
-   loop with gate 3 (`ALLOW_ACTIONS`) alongside the first transport that can
-   prove it. Then bootstrap (PR 13) and the rest of Windows CI (PR 14)
-2. **The bundle's station side.** `/air-gapped` now says plainly that the
+1. **Track B: the loop.** `station.ps1` now has something to poll: the
+   transports deliver, and the RECEIVE half of the contract - fetching a
+   request, publishing a status - lands with the loop that can test it end to
+   end. Gate 3 (`ALLOW_ACTIONS`) lives there. The PowerShell relay is deferred
+   with it: it needs `heliograph-seal`, which is Go, and a station that must
+   ship a binary is a different bootstrap question
+2. **Bootstrap plants the PowerShell payload** (PR 13), and the rest of
+   Windows CI (PR 14)
+3. **The bundle's station side.** `/air-gapped` now says plainly that the
    bundle cannot be read by a station, and the CLI says the same. That page is
    the first thing to update when it lands
 
@@ -192,6 +194,13 @@ Break every new assertion deliberately and watch it fail before keeping it.
 pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
+
+**`Import-Module` inside a module function imports into THAT module's session
+state.** The transport loader loaded the transport, initialised it, and returned
+success - and every function the transport exported was invisible to the caller.
+It read as "the transport is fine, and `Send-TpLog` does not exist". `-Global`
+is the fix, and the reason it was not obvious is that the failure names the
+FUNCTION rather than the import.
 
 **A value type read through a property is a COPY.** `$info.BasicLimitInformation.LimitFlags = 0x2000` set the flag on a copy of the nested struct and threw it away, so the Job Object was created without KILL_ON_JOB_CLOSE and guaranteed nothing. Every call succeeded, the mechanism reported itself in force, the tests were green, and `taskkill` was quietly doing all the work. Assign the nested struct back. And the reason it survived: the only assertion looked for `strategy=`, which an empty value satisfies - so nothing ever asked whether the job existed.
 
