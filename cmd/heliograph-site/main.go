@@ -29,6 +29,7 @@ var order = []string{
 	"station", "bootstrap", "steps", "runner", "conformance",
 	"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped",
 	"transports", "relay", "intercom", "cli", "secrets", "security", "method",
+	"dbhq",
 }
 
 const baseURL = "https://heliograph.dbhq.uk"
@@ -289,6 +290,7 @@ var groups = []struct {
 	{"The far side", []string{"station", "bootstrap", "steps", "runner", "conformance"}},
 	{"Where it runs", []string{"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped"}},
 	{"Reference", []string{"transports", "relay", "intercom", "cli", "secrets", "security", "method"}},
+	{"More from DBHQ", []string{"dbhq"}},
 }
 
 // labels are the navigation's own words, and they are a THIRD set of words for
@@ -330,6 +332,7 @@ var labels = map[string]string{
 	"secrets":     "Secrets",
 	"security":    "Security",
 	"method":      "Debugging method",
+	"dbhq":        "DBHQ projects",
 }
 
 func label(o site.Page) string { return labels[o.Slug] }
@@ -374,7 +377,7 @@ func headerNav(p site.Page) string {
 	// The repository, last and marked. Three words and a logo: a header that
 	// lists everything is the one nobody reads.
 	b.WriteString(`<a href="https://github.com/dbhq-uk/heliograph">` +
-		site.GitHubMark + `Source</a></nav>`)
+		site.GitHubMark + `Source</a>` + orgMenu + `</nav>`)
 	return b.String()
 }
 
@@ -425,6 +428,26 @@ func sidebarItems(p site.Page, all []site.Page, prefix string) string {
 	}
 	return b.String()
 }
+
+// orgMenu is the other things DBHQ makes, on the home header.
+//
+// A <details> rather than a scripted dropdown, so it works with no JavaScript
+// and gets keyboard behaviour from the browser. The script only closes it
+// when the reader clicks elsewhere or presses Escape, which is the one thing
+// <details> does not do and whose absence reads as broken.
+//
+// It lists two siblings and the page. The page carries the rest: a menu that
+// lists everything is a menu nobody opens twice.
+const orgMenu = `<details class="org-menu">` +
+	`<summary aria-label="Other things DBHQ makes">DBHQ` +
+	`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" ` +
+	`aria-hidden="true" focusable="false"><path d="m4 6.5 4 4 4-4"/></svg></summary>` +
+	`<div class="org-panel">` +
+	`<a href="https://bbs.dbhq.uk"><b>bbs</b><span>The web, as a bulletin board</span></a>` +
+	`<a href="https://modem.dbhq.uk"><b>modem</b><span>A real Bell 103 connection, over the air</span></a>` +
+	`<a href="https://dbhq.uk/skills/"><b>Skills</b><span>Free skills for Claude Code and Codex</span></a>` +
+	`<a class="org-all" href="/dbhq">All DBHQ projects</a>` +
+	`</div></details>`
 
 // pageHead is the breadcrumb and the two markdown controls, above the title.
 //
@@ -579,34 +602,19 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 %[6]s
 %[7]s
 <footer><div class="inner">
-<p>A free, open-source tool by <a href="https://dbhq.uk">DBHQ</a>.</p>
 <p><a href="https://github.com/dbhq-uk/heliograph">`+site.GitHubMark+`Source</a>%[8]s</p>
-</div>
-%[16]s</footer>
+</div></footer>
 %[9]s
 <script>%[10]s
 %[11]s
 %[14]s
-%[15]s</script>
+%[15]s
+%[16]s</script>
 %[12]s
 `, header, hero, shellOpen, wide, site.RenderBody(body), shellClose, railHTML,
 		mirror, consentHTML, site.HeroJS, consentJS, navJS, crumbs, site.CopyJS, site.RailJS,
-		alsoFromDBHQ)
+		site.OrgJS)
 }
-
-// alsoFromDBHQ cross-links the other DBHQ web properties, and omits this one.
-// A second block within the same footer rather than a fourth <p> in .inner:
-// that row is a two-item space-between strip, and three more links crammed
-// into it would wrap into the same line as "Source" with no relation shown
-// between them.
-const alsoFromDBHQ = `<div class="inner also">
-<p class="also-label" id="footer-also-label">Also from DBHQ</p>
-<ul class="also-list" aria-labelledby="footer-also-label">
-<li><a href="https://dbhq.uk">DBHQ</a> - the practice behind these experiments.</li>
-<li><a href="https://bbs.dbhq.uk">BBS</a> - explore a bulletin board system.</li>
-<li><a href="https://modem.dbhq.uk">modem</a> - hear a real dial-up handshake, and run one.</li>
-</ul>
-</div>`
 
 // head is everything before the body: the words a search result and a shared
 // link are built from, the fonts, and the analytics tag held behind consent.
@@ -876,6 +884,7 @@ var titles = map[string]string{
 	"transports":  "Transports - git, relay, share, and a bundle for air gaps",
 	"cli":         "CLI reference - send, watch, logs --gaps, plant, doctor",
 	"method":      "The method - debugging a server you cannot log into",
+	"dbhq":        "DBHQ projects - the other things DBHQ makes",
 	"mcp":         "heliograph MCP server for Claude Code, Codex and any agent",
 	"codex":       "heliograph Codex CLI skill - drive a machine it cannot reach",
 	"station":     "The station - what heliograph runs on the far side",
@@ -923,6 +932,7 @@ var descriptions = map[string]string{
 	"secrets":     "Captured logs are committed to history, so heliograph redacts what it can. How redaction works, where it stops, and how to get a secret to the far side safely.",
 	"security":    "What heliograph refuses to do, what it gates, and what it cannot promise: read-only by default, no root, no credentials, and the account as the blast radius.",
 	"method":      "How to debug across a gap you cannot cross: one question per step, never truncate, keep a control, and change one thing between runs.",
+	"dbhq":        "The other free and open-source things DBHQ makes: bbs and modem in a browser, skills for Claude Code and Codex, and two tools that run without a sign-up.",
 }
 
 // heroHTML is the index's opening: the signal crossing the valley, then a real

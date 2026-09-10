@@ -150,3 +150,32 @@ func TestSummarySkipsACodeBlockEntirely(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// `| | |` is this repository's idiom for a table with no header: two columns
+// of label and value, where a header row would be furniture. It matched the
+// |---|---| separator pattern and was skipped, so the first row of DATA was
+// promoted into <thead>, where the CSS puts it in small caps and a screen
+// reader stops calling it data. Ten pages shipped like that.
+func TestAHeaderlessTableHasNoHeader(t *testing.T) {
+	got := RenderBody("| | |\n|---|---|\n| **control** | your machine |\n| **station** | the far side |\n")
+	if strings.Contains(got, "<thead>") {
+		t.Errorf("the first row of data became a header:\n%s", got)
+	}
+	if n := strings.Count(got, "<tr>"); n != 2 {
+		t.Errorf("expected two data rows, got %d:\n%s", n, got)
+	}
+	if !strings.Contains(got, "<td><strong>control</strong></td>") {
+		t.Errorf("the first row is not a data row:\n%s", got)
+	}
+}
+
+// A table that does declare a header still gets one.
+func TestATableWithAHeaderKeepsIt(t *testing.T) {
+	got := RenderBody("| transport | reach for it when |\n|---|---|\n| git | there is a git host |\n")
+	if !strings.Contains(got, "<th>transport</th>") {
+		t.Errorf("the declared header was lost:\n%s", got)
+	}
+	if !strings.Contains(got, "<td>git</td>") {
+		t.Errorf("the data row was lost:\n%s", got)
+	}
+}
