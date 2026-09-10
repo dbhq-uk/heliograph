@@ -85,8 +85,9 @@ done
 
 # --- the SECOND implementation ------------------------------------------------
 # AGENTS.md permits one only while it passes this suite. caplib.psm1 is the
-# capture and nothing else today, so properties 5, 6 and 9 - the gates and
-# delivery - have nothing to answer them yet and SKIP by name.
+# capture and run.ps1 the runner, so only property 9 - delivery - has nothing
+# to answer it yet, and it SKIPS by name. On Windows p8 skips too: Git-Bash has
+# no `setsid` and a Windows cancel needs a Job Object.
 #
 # The skips are counted rather than tolerated. "2 skipped" is the honest state
 # of a half-built implementation; three would mean something stopped being
@@ -115,10 +116,10 @@ fi
 # Loosening the count to "2 or 3" would have accepted a THIRD skip anywhere,
 # including a capture property quietly dropping out. So the skippable ones are
 # named, and everything else must be answered.
-PS_MAY_SKIP='p5/p6|p8|p9'
+PS_MAY_SKIP='p8|p9'
 ps_bad_skip="$(printf '%s' "$ps_out" | grep '^SKIP' | grep -vE "SKIP (${PS_MAY_SKIP}):" || true)"
 if [ -z "$ps_bad_skip" ]; then
-  t_ok "and every property it skipped is one it is allowed to: the gates, delivery, cancel"
+  t_ok "and every property it skipped is one it is allowed to: delivery, and cancel where it cannot signal a group"
 else
   t_no "caplib.psm1 skipped a property that is not on the allowed list:"
   printf '%s\n' "$ps_bad_skip" | sed 's/^/     /'
@@ -127,12 +128,12 @@ fi
 # And the capture properties are ANSWERED. This is the half a name-based check
 # needs: without it, a driver that skipped everything would have no disallowed
 # skip either.
-for prop in p1 p2 p3 p4 p7 p10; do
+for prop in p1 p2 p3 p4 p5 p6 p7 p10; do
   if printf '%s' "$ps_out" | grep -qE "^ok +${prop}:"; then :; else
-    t_no "caplib.psm1 did not answer $prop, which is a capture property it claims"
+    t_no "caplib.psm1 did not answer $prop, which is a property it claims"
   fi
 done
-t_ok "and every capture property it claims - p1 to p4, p7, p10 - was answered"
+t_ok "and every property it claims - p1 to p7 bar delivery, plus p10 - was answered"
 
 # --- the two implementations write the SAME log -------------------------------
 # The control side parses these logs, and it parses one format. Two capture

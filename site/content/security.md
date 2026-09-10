@@ -32,6 +32,15 @@ they can read first.
 read-only` or `action`, in the step's own file, read from the file about to be
 executed. Missing or unrecognised refuses with exit 3.
 
+Read **case-sensitively**, in both runners. `READ-ONLY` is not `read-only`, and
+`YES` is not `yes` for gate 2 either. That is not pedantry: PowerShell compares
+case-insensitively by default and bash does not, so until both were made strict
+a state-changing step ran on one implementation and was refused by the other,
+*from the same request*. A byte-order mark is refused too, by both, and said
+plainly - three invisible bytes hide the declaration from a `sed` anchor, break
+a shebang, and on Git-Bash make the file look non-executable, so every symptom
+points somewhere other than the cause.
+
 **2. An action needs `CONFIRM=yes`.** Carried in the request's `env:` line and
 checked by the runner.
 

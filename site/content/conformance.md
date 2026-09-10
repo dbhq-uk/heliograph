@@ -175,16 +175,39 @@ a bash station but no station. A Windows box that *does* have Git for Windows
 should keep running the bash station: one implementation is better than two
 wherever there is a choice.
 
-It passes properties 1-4, 7 and 10 today, and **skips 5, 6 and 9 by name** - the
-gates live in `run.ps1` and delivery in the transports, neither of which exists
-yet. On Windows it skips 8 as well: Git-Bash has no `setsid`, and a Windows
-cancel needs a Job Object, which is a later PR.
+`station/powershell/run.ps1` is the runner, carrying gates 1, 2 and 4 - the same
+three `run.sh` carries, with the same exit codes. Gate 3 lives in the loop,
+which is a later PR, and nothing here silently stands in for it.
+
+Together they pass properties 1-7 and 10, and **skip 9 by name**: delivery lives
+in the transports, which do not exist yet. On Windows 8 skips too - Git-Bash has
+no `setsid`, and a Windows cancel needs a Job Object.
 
 The suite checks **which** properties skipped, not how many. A count was the
 first version and it was wrong on Windows; loosening it to "two or three" would
 have accepted a third skip anywhere, including a capture property quietly
 dropping out. So the skippable ones are named, and every capture property the
 implementation claims must be *answered*.
+
+### The twins are compared case by case
+
+Two of the first divergences between `run.ps1` and `run.sh` were in a security
+gate, and both had the same cause: **PowerShell compares case-insensitively and
+bash does not.**
+
+- `CONFIRM=YES` satisfied the action gate on PowerShell and was refused by
+  `run.sh`. A state-changing step ran on one implementation and not the other,
+  from the same request.
+- `# heliograph-mode: READ-ONLY` did the same. A declaration that means
+  different things to two readers has not declared anything.
+
+A third: `./run.ps1 ENV` resolved to the `env` step, because a PowerShell
+hashtable is case-insensitive too.
+
+Finding those by hand does not scale and does not stay found, so the same
+**declaration** now goes through both runners and the exit codes must match.
+The body of each step differs - one is bash, one is PowerShell - but the header
+is the thing under test and it is byte-identical.
 
 **It is tested on Windows PowerShell 5.1, not only on 7.** That matters more
 than it sounds: the driver used to prefer `pwsh`, so on a runner with both

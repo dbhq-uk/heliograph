@@ -8,9 +8,10 @@
 # WHAT THIS DRIVER CAN AND CANNOT ANSWER TODAY, and it says so by skipping
 # rather than by passing:
 #
-#   1-4, 7, 8   caplib.psm1 exists. These are its properties.
-#   5, 6        the gates live in run.ps1, which does not exist yet
-#   9           delivery lives in the transports, which do not exist yet
+#   1-4, 7, 8, 10   caplib.psm1 exists. These are its properties.
+#   5, 6            run.ps1 carries gates 1, 2 and 4, the same three run.sh
+#                   carries, with the same exit codes
+#   9               delivery lives in the transports, which do not exist yet
 #
 # A driver that claimed `gates` and returned 0 would report the root gate as
 # proven on a station that has no gate at all, which is the most expensive
@@ -68,10 +69,26 @@ drv_supports() {
     # so and p8 SKIPS on Windows, rather than starting nothing and letting the
     # property report on a log that does not exist.
     cancel) command -v setsid >/dev/null 2>&1 ;;
-    # NOT YET, and said out loud. run.ps1 and the transports are PR 10 and 12.
-    gates | deliver) return 1 ;;
+    gates) return 0 ;;
+    # NOT YET, and said out loud. The transports are PR 12.
+    deliver) return 1 ;;
     *) return 1 ;;
   esac
+}
+
+# A PATH POWERSHELL WILL UNDERSTAND.
+#
+# Git-Bash converts Unix-looking paths to Windows ones AT THE EXEC BOUNDARY, so
+# an argument like `-LogPath /tmp/x` arrives native and everything works. A path
+# EMBEDDED IN A SCRIPT gets no such conversion: PowerShell reads `/tmp/x` as
+# `C:\tmp\x`, writes the file there, and the suite looks in Git-Bash's /tmp and
+# finds nothing.
+#
+# That is exactly how p5 failed on Windows and nowhere else - the step exited 0
+# and its marker was written to another directory, so "the gate is passing
+# without executing" was reported about a step that had executed perfectly.
+_p_winpath() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
 }
 
 drv_step_name() { printf 'steps/%s.ps1' "$1"; }
@@ -131,7 +148,8 @@ PS
       {
         printf '# heliograph-mode: read-only\n'
         printf "Write-Output 'this step declares itself and measures nothing'\n"
-        [ -n "$marker" ] && printf "New-Item -ItemType File -Force -Path '%s' | Out-Null\n" "$marker"
+        [ -n "$marker" ] && printf "New-Item -ItemType File -Force -Path '%s' | Out-Null\n" \
+          "$(_p_winpath "$marker")"
       } > "$path"
       ;;
     ships)
@@ -175,6 +193,53 @@ foreach ($l in [System.IO.File]::ReadAllLines((Join-Path $here ($name + '.lines'
     Write-Output $l
 }
 PS
+}
+
+# A payload with the runner in it. bootstrap.ps1 will do this properly in a
+# later PR; until then the driver plants the two files run.ps1 needs, which is
+# exactly what it will plant - so when bootstrap arrives, this stops being the
+# thing under test rather than changing what is tested.
+drv_bootstrap() {
+  local dir="$1"
+  mkdir -p "$dir/steps" "$dir/ops-logs" || return 1
+  cp "$_P_HERE/../../../station/powershell/run.ps1" \
+     "$_P_HERE/../../../station/powershell/caplib.psm1" "$dir/" || return 1
+  return 0
+}
+
+# ALLOW_ROOT=1, and it is not a hole in the test.
+#
+# p5 asks whether a DECLARED step runs - it is testing the declaration gate,
+# and it needs one step that gets through. On a machine where the account is
+# already privileged EVERY step refuses with 5, which is the privileged gate
+# doing exactly its job, and p5 then fails for a reason that has nothing to do
+# with the property it is asserting.
+#
+# GitHub's Windows runner is an Administrator, so this is not hypothetical; it
+# is also true of anyone running the suite in a root container. p6 is what
+# tests the privileged gate, and it does NOT set this - so the gate is still
+# proved to refuse, by the property written for it.
+drv_step() {
+  local dir="$1" step="$2"
+  ( cd "$dir" && PUSH=0 ALLOW_ROOT=1 \
+      "$_P_SHELL" -NoProfile -File ./run.ps1 "./$step" ) >/dev/null 2>&1
+}
+
+# WITHOUT BEING ADMINISTRATOR, and without a way to become one.
+#
+# The bash side puts a fake `id` on PATH, which works because cap_refuse_root
+# asks an external program. There is no external program here: the check is
+# WindowsPrincipal.IsInRole plus an explicit S-1-5-18, and neither can be
+# shadowed by a PATH entry.
+#
+# So caplib.psm1 has a seam, and it is ONE-DIRECTIONAL:
+# HELIOGRAPH_ASSUME_PRIVILEGED=1 can only make the gate REFUSE. There is no
+# value of it that permits a run, which is what stops a test hook being a
+# backdoor with a test's name on it.
+drv_step_privileged() {
+  local dir="$1" step="$2"
+  ( cd "$dir" && PUSH=0 HELIOGRAPH_ASSUME_PRIVILEGED=1 \
+      "$_P_SHELL" -NoProfile -File ./run.ps1 "./$step" ) >/dev/null 2>&1
 }
 
 drv_capture() {
