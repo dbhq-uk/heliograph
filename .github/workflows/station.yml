@@ -582,8 +582,12 @@ jobs:
             # succeeded and one that lied look the same.
             CONF_PS_SHELL="$ps" ./tests/test-transports-ps1.sh 2>&1 | tee "/tmp/tp-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the transports failed under $ps"; rc=1; }
-            grep -q '^SKIP' "/tmp/tp-$ps.out" && {
-              echo "::error::the transports skipped under $ps"; rc=1; }
+            # A SKIP HERE IS ALLOWED ONLY FOR THE LINK CASES, which need a
+            # privilege or Developer Mode to construct. Everything else must
+            # run: a transport check that quietly skipped would report a
+            # refusal as proven on a runner that never built the thing.
+            bad="$(grep '^SKIP' "/tmp/tp-$ps.out" | grep -v 'could not be created here' || true)"
+            [ -z "$bad" ] || { echo "::error::the transports skipped something they may not under $ps:"; echo "$bad"; rc=1; }
             grep -q '^SKIP' "/tmp/pre-$ps.out" && {
               echo "::error::the preflight or cancel skipped under $ps"; rc=1; }
             # And it must have used a WINDOWS mechanism, not fallen through to

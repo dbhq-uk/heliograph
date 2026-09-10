@@ -42,6 +42,9 @@ t_ok "a PowerShell interpreter is present ($PS_BIN), so the assertions below ran
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+IS_WINDOWS=0
+case "$(uname -s 2>/dev/null)" in MINGW* | MSYS* | CYGWIN*) IS_WINDOWS=1 ;; esac
+
 winpath() {
   if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
 }
@@ -145,13 +148,39 @@ fi
 # checking the scope leaves the one that actually receives logs unchecked - a
 # linked `ops-logs` sends every delivery somewhere the control side never
 # reads, and Send-TpLog returns true having written it there.
+# THE LINK IS MADE BY POWERSHELL ON WINDOWS, and CONFIRMED to be one before
+# anything is asserted about it.
+#
+# `ln -s` under MSYS COPIES rather than links unless winsymlinks is set, so the
+# first version of this created a plain directory on Windows and then asserted
+# that a link was refused. It failed there and nowhere else, about a transport
+# that was behaving correctly - the test had not built the thing it was testing.
+mklink() {  # mklink <target> <linkpath> - $? is 0 only if a real link resulted
+  local target="$1" link="$2"
+  if [ "$IS_WINDOWS" = "1" ]; then
+    "$PS_BIN" -NoProfile -Command \
+      "New-Item -ItemType SymbolicLink -Path '$(winpath "$link")' -Target '$(winpath "$target")' -ErrorAction SilentlyContinue | Out-Null" \
+      >/dev/null 2>&1
+  else
+    ln -s "$target" "$link" 2>/dev/null
+  fi
+  [ -L "$link" ]
+}
+
 mkdir -p "$WORK/elsewhere" "$WORK/mnt/linked"
 for target in scope logs; do
   rm -rf "$WORK/mnt/linkscope" "$WORK/mnt/linked/ops-logs"
   case "$target" in
-    scope) ln -s "$WORK/elsewhere" "$WORK/mnt/linkscope"; scope=linkscope ;;
-    logs)  ln -s "$WORK/elsewhere" "$WORK/mnt/linked/ops-logs"; scope=linked ;;
+    scope) linkpath="$WORK/mnt/linkscope"; scope=linkscope ;;
+    logs)  linkpath="$WORK/mnt/linked/ops-logs"; scope=linked ;;
   esac
+  if ! mklink "$WORK/elsewhere" "$linkpath"; then
+    # SKIPPED WITH THE REASON, not passed. Creating a symlink needs a privilege
+    # or Developer Mode on Windows, and a case that could not be constructed
+    # has not been tested - which is a different thing from having passed.
+    t_skip "a linked $target could not be created here, so that refusal was NOT exercised"
+    continue
+  fi
   tp "if (Import-Tp) { 'ACCEPTED' } else { 'refused' }" \
     TRANSPORT=share "SHARE_DIR=$(winpath "$WORK/mnt")" "SHARE_SCOPE=$scope"
   case "$TP_OUT" in
