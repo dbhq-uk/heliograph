@@ -26,6 +26,12 @@
 
 _P_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _P_CAPTURE="$_P_HERE/powershell-capture.ps1"
+_P_STOP="$_P_HERE/powershell-stop.ps1"
+
+# Windows is asked about once. `uname` under Git-Bash answers MINGW64_NT-*, and
+# MSYS_NT-* under an MSYS shell.
+_P_WINDOWS=0
+case "$(uname -s 2>/dev/null)" in MINGW* | MSYS* | CYGWIN*) _P_WINDOWS=1 ;; esac
 
 # CONF_PS_SHELL OVERRIDES, and that is not a convenience.
 #
@@ -63,12 +69,15 @@ drv_supports() {
     # line, inside the read loop, so there is no buffer to lose the way busybox
     # `sed` does. What it needs is a way to SIGNAL the whole tree.
     #
-    # On Unix that is `setsid` and a negative pid. Git-Bash on Windows has
-    # neither, and a Windows station will use a Job Object with
-    # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE - which is PR 11. Until then this says
-    # so and p8 SKIPS on Windows, rather than starting nothing and letting the
-    # property report on a log that does not exist.
-    cancel) command -v setsid >/dev/null 2>&1 ;;
+    # On Unix that is `setsid` and a negative pid; on Windows it is a Job
+    # Object with KILL_ON_JOB_CLOSE, falling back to `taskkill /T /F` where
+    # Add-Type is blocked. Both live in station/powershell/lib/cancel.psm1, so
+    # this answers yes on either platform - and `setsid` is only asked about
+    # where it is the mechanism.
+    cancel)
+      if [ "$_P_WINDOWS" = "1" ]; then return 0; fi
+      command -v setsid >/dev/null 2>&1
+      ;;
     gates) return 0 ;;
     # NOT YET, and said out loud. The transports are PR 12.
     deliver) return 1 ;;
@@ -251,30 +260,39 @@ drv_capture() {
 # tree. On Windows the driver will need a Job Object - that is PR 11's problem,
 # and this suite runs the PowerShell implementation on Linux and on Windows
 # both, so the difference will be visible rather than assumed.
+# The capture writes its OWN pid to the handle, from inside PowerShell, after
+# putting itself in a kill group. That is the pid a canceller needs: on Windows
+# the bash pid here is Git-Bash's idea of the process and taskkill wants the
+# Windows one, and the two are not the same number.
 drv_capture_bg() {
   local out="$1" step="$2.ps1" handle="$3"
-  setsid "$_P_SHELL" -NoProfile -File "$_P_CAPTURE" -LogPath "$out" -Step "$step" \
-    >/dev/null 2>&1 &
-  printf '%s' "$!" > "$handle"
-}
-
-drv_cancel() {
-  local handle="$1" pid waited=0
-  pid="$(cat "$handle" 2>/dev/null)" || return 1
-  [ -n "$pid" ] || return 1
-  kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
-  while kill -0 "$pid" 2>/dev/null; do
+  rm -f "$handle"
+  if [ "$_P_WINDOWS" = "1" ]; then
+    "$_P_SHELL" -NoProfile -File "$_P_CAPTURE" -LogPath "$out" -Step "$step" \
+      -HandleFile "$(_p_winpath "$handle")" >/dev/null 2>&1 &
+  else
+    # setsid, so the group exists for Stop-CapTree to signal.
+    setsid "$_P_SHELL" -NoProfile -File "$_P_CAPTURE" -LogPath "$out" -Step "$step" \
+      -HandleFile "$handle" >/dev/null 2>&1 &
+  fi
+  # Wait for the handle rather than assuming it is there: PowerShell takes a
+  # moment to start, and a canceller reading an empty file would aim at nothing.
+  local waited=0
+  while [ ! -s "$handle" ]; do
     waited=$((waited + 1))
-    if [ "$waited" -gt 50 ]; then
-      kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null
-      sleep 0.5
-      kill -0 "$pid" 2>/dev/null && return 1
-      break
-    fi
+    [ "$waited" -gt 300 ] && break
     sleep 0.1
   done
-  wait "$pid" 2>/dev/null
-  return 0
+}
+
+# Cancelled by the implementation's own mechanism, not by bash. That is the
+# point: p8 asks whether THIS station can cancel a run, and answering it with a
+# `kill` the station itself would never use would prove nothing about Windows.
+drv_cancel() {
+  local handle="$1"
+  [ -s "$handle" ] || return 1
+  "$_P_SHELL" -NoProfile -File "$_P_STOP" \
+    -HandleFile "$(_p_winpath "$handle")" >/dev/null 2>&1
 }
 
 # Not implemented, and absent rather than stubbed. The suite checks with

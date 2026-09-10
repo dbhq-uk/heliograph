@@ -179,15 +179,37 @@ wherever there is a choice.
 three `run.sh` carries, with the same exit codes. Gate 3 lives in the loop,
 which is a later PR, and nothing here silently stands in for it.
 
-Together they pass properties 1-7 and 10, and **skip 9 by name**: delivery lives
-in the transports, which do not exist yet. On Windows 8 skips too - Git-Bash has
-no `setsid`, and a Windows cancel needs a Job Object.
+`station/powershell/lib/cancel.psm1` is the cancel, and
+`station/powershell/start.ps1` the preflight.
+
+Together they pass properties 1-8 and 10 on both platforms, and **skip 9 by
+name**: delivery lives in the transports, which do not exist yet.
 
 The suite checks **which** properties skipped, not how many. A count was the
 first version and it was wrong on Windows; loosening it to "two or three" would
 have accepted a third skip anywhere, including a capture property quietly
 dropping out. So the skippable ones are named, and every capture property the
 implementation claims must be *answered*.
+
+### A cancel has to take the whole tree
+
+A step runs `terraform`, which runs a provider, which runs `git`. Signalling
+only what the station started leaves all of that running while the operator is
+told the run was cancelled - and it carries on changing the estate.
+
+bash gets this from `setsid` and a negative pid. Windows has no process groups;
+it has **Job Objects**, which are better for this. A job with
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` terminates every process in it the moment
+the last handle closes, so killing the station takes the whole tree - including
+anything started *after* the kill was decided.
+
+The fallback is not cosmetic. **A hardened estate can block `Add-Type`**, by
+Constrained Language Mode or by policy, and that estate is exactly the one this
+PowerShell station exists for. Where the P/Invoke will not compile, the cancel
+falls back to `taskkill /T /F`, which walks the child tree *at the moment it
+runs* - so a grandchild started a millisecond later can survive it. That is a
+real gap, it is why the Job Object is preferred rather than merely tidier, and
+the preflight says which of the two this machine actually gets.
 
 ### The twins are compared case by case
 

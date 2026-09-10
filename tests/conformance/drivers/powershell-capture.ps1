@@ -13,7 +13,10 @@
 param(
     [Parameter(Mandatory = $true)][string] $LogPath,
     [Parameter(Mandatory = $true)][string] $Step,
-    [string] $Label = 'conformance'
+    [string] $Label = 'conformance',
+    # Written before the step starts, so a canceller has something to aim at
+    # even if the capture never produces a line.
+    [string] $HandleFile = ''
 )
 
 Set-StrictMode -Version 2.0
@@ -21,6 +24,18 @@ $ErrorActionPreference = 'Stop'
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Import-Module (Join-Path $here '../../../station/powershell/caplib.psm1') -Force
+Import-Module (Join-Path $here '../../../station/powershell/lib/cancel.psm1') -Force
+
+# THIS PROCESS AND EVERYTHING IT STARTS DIE TOGETHER. On Windows that is a Job
+# Object with KILL_ON_JOB_CLOSE; elsewhere the caller has already put us in our
+# own process group with setsid. Either way a canceller only needs this pid.
+[void](Enter-CapKillGroup)
+if ($HandleFile) {
+    # Before the step, deliberately. A capture that hangs on its first line
+    # still has to be cancellable, and a handle written afterwards would not be
+    # there yet.
+    [System.IO.File]::WriteAllText($HandleFile, "$PID")
+}
 
 # The host that runs the step is THIS host, found from the running process
 # rather than assumed to be on PATH. `powershell` and `pwsh` are different

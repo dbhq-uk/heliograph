@@ -403,6 +403,17 @@ function Get-CapGit {
 # Off Windows it asks the same question the bash side does, so a station on
 # PowerShell 7 on Linux behaves identically to one on run.sh.
 function Test-CapPrivileged {
+    # THE SEAM LIVES HERE, in the one definition of "is this account
+    # privileged", so the preflight and the gate cannot answer it differently.
+    # It was in the ALLOWED wrapper first, which meant `start.ps1` could not be
+    # tested at all: it asks this question, not that one.
+    #
+    # ONE-DIRECTIONAL, and that is what makes it safe to have. It can only ever
+    # return $true - "treat this account as privileged" - and there is no value
+    # of it that reports a privileged account as ordinary. A test hook that
+    # could open a gate would be a backdoor with a test's name on it.
+    if ($env:HELIOGRAPH_ASSUME_PRIVILEGED -ceq '1') { return $true }
+
     if (Test-CapWindows) {
         try {
             $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
@@ -434,11 +445,11 @@ function Test-CapPrivileged {
 # test's name on it. The bash side's equivalent seam is `cap_refuse_root`
 # calling `id -u` rather than reading $EUID, so a fake `id` can be put on PATH.
 function Test-CapPrivilegedAllowed {
-    if ($env:HELIOGRAPH_ASSUME_PRIVILEGED -eq '1') {
-        return ($env:ALLOW_ROOT -eq '1')
-    }
     if (-not (Test-CapPrivileged)) { return $true }
-    return ($env:ALLOW_ROOT -eq '1')
+    # -ceq, case-sensitive, for the same reason CONFIRM is: `ALLOW_ROOT=YES` is
+    # not `ALLOW_ROOT=1` on either implementation, and bash's `[ "$x" = "1" ]`
+    # settles it there.
+    return ($env:ALLOW_ROOT -ceq '1')
 }
 
 # --- writing ------------------------------------------------------------------
