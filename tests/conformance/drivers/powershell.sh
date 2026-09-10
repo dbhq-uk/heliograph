@@ -76,6 +76,21 @@ drv_supports() {
   esac
 }
 
+# A PATH POWERSHELL WILL UNDERSTAND.
+#
+# Git-Bash converts Unix-looking paths to Windows ones AT THE EXEC BOUNDARY, so
+# an argument like `-LogPath /tmp/x` arrives native and everything works. A path
+# EMBEDDED IN A SCRIPT gets no such conversion: PowerShell reads `/tmp/x` as
+# `C:\tmp\x`, writes the file there, and the suite looks in Git-Bash's /tmp and
+# finds nothing.
+#
+# That is exactly how p5 failed on Windows and nowhere else - the step exited 0
+# and its marker was written to another directory, so "the gate is passing
+# without executing" was reported about a step that had executed perfectly.
+_p_winpath() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
+}
+
 drv_step_name() { printf 'steps/%s.ps1' "$1"; }
 
 # --- the fixtures, in PowerShell ---------------------------------------------
@@ -133,7 +148,8 @@ PS
       {
         printf '# heliograph-mode: read-only\n'
         printf "Write-Output 'this step declares itself and measures nothing'\n"
-        [ -n "$marker" ] && printf "New-Item -ItemType File -Force -Path '%s' | Out-Null\n" "$marker"
+        [ -n "$marker" ] && printf "New-Item -ItemType File -Force -Path '%s' | Out-Null\n" \
+          "$(_p_winpath "$marker")"
       } > "$path"
       ;;
     ships)

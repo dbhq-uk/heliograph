@@ -72,6 +72,12 @@ run() {
 
 logs() { find "$WORK/ops-logs" -name '*.txt' 2>/dev/null | wc -l | tr -d ' '; }
 
+# See drivers/powershell.sh: a path embedded in a script gets no conversion at
+# the exec boundary, so PowerShell reads a Git-Bash /tmp path as C:\tmp.
+winpath() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
+}
+
 # --- gate 1: a step declares itself, or it does not run ----------------------
 run -- ./steps/ok.ps1
 assert_eq "a declared read-only step runs, exit 0" "0" "$RC"
@@ -329,7 +335,7 @@ if "$HERE/../station/bootstrap.sh" "$BASHREPO" >/dev/null 2>&1; then
       "$header" "$(printf "'%s'" "$WORK/twin-bash-ran")" > "$BASHREPO/steps/twin.sh"
     chmod +x "$BASHREPO/steps/twin.sh"
     printf '%s\nWrite-Output "ran"\nNew-Item -ItemType File -Force -Path %s | Out-Null\n' \
-      "$header" "$(printf "'%s'" "$WORK/twin-ps-ran")" > "$WORK/steps/twin.ps1"
+      "$header" "$(printf "'%s'" "$(winpath "$WORK/twin-ps-ran")")" > "$WORK/steps/twin.ps1"
 
     ( cd "$BASHREPO" && env "${envs[@]+"${envs[@]}"}" PUSH=0 ALLOW_ROOT=1 \
         ./run.sh ./steps/twin.sh ) >/dev/null 2>&1

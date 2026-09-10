@@ -190,6 +190,14 @@ pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
 
+**Git-Bash converts a path at the exec boundary and nowhere else.** An argument
+like `-LogPath /tmp/x` arrives at a native program already converted, so
+everything looked fine; a path EMBEDDED IN A SCRIPT gets no such treatment, and
+PowerShell read `/tmp/x` as `C:\tmp\x`. The step wrote its marker to a
+directory the suite never looked in, and property 5 reported *"exit 0, but the
+step never ran"* about a step that had run perfectly. `cygpath -w` where the
+path goes into a file rather than onto a command line.
+
 **A loop that refuses at the wrong gate has tested nothing.** The check that
 `HELIOGRAPH_ASSUME_PRIVILEGED` cannot OPEN the privileged gate ran an action
 with no `CONFIRM`, so gate 2 refused every iteration before gate 4 was reached.
