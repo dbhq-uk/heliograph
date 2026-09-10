@@ -93,8 +93,17 @@ done
 # of a half-built implementation; three would mean something stopped being
 # checked without anybody deciding to stop checking it.
 PS_DRIVER="$HERE/conformance/drivers/powershell.sh"
-ps_out="$(CONF_TRANSPORT=git "$HERE/conformance/conformance.sh" "$PS_DRIVER" 2>&1)"
-ps_rc=$?
+# OVER EVERY TRANSPORT IT SHIPS, for the same reason the bash driver is: the
+# properties are about the method and the method must not depend on the channel.
+PS_COVERED="git share"
+ps_rc=0
+ps_out=""
+for t in $PS_COVERED; do
+  one="$(CONF_TRANSPORT="$t" "$HERE/conformance/conformance.sh" "$PS_DRIVER" 2>&1)"
+  [ $? -eq 0 ] || ps_rc=1
+  ps_out="$ps_out
+$one"
+done
 # INDENTED, because CI refuses a line starting with SKIP in this file's output
 # and these two are legitimate - they are the ones the assertion below counts.
 # Left at the margin they would fail the build for being honest, and the fix
@@ -104,9 +113,9 @@ printf '%s\n' "$ps_out" | sed 's/^/  /'
 if printf '%s' "$ps_out" | grep -q 'no PowerShell here'; then
   t_no "no PowerShell interpreter, so the second implementation was NOT exercised"
 elif [ "$ps_rc" = "0" ]; then
-  t_ok "caplib.psm1 passes every property it claims to implement"
+  t_ok "the PowerShell station passes every property it claims, over $PS_COVERED"
 else
-  t_no "caplib.psm1 FAILS the conformance suite"
+  t_no "the PowerShell station FAILS the conformance suite"
 fi
 
 # WHICH properties skipped, not how many.
@@ -116,10 +125,10 @@ fi
 # Loosening the count to "2 or 3" would have accepted a THIRD skip anywhere,
 # including a capture property quietly dropping out. So the skippable ones are
 # named, and everything else must be answered.
-PS_MAY_SKIP='p8|p9'
+PS_MAY_SKIP='p8'
 ps_bad_skip="$(printf '%s' "$ps_out" | grep '^SKIP' | grep -vE "SKIP (${PS_MAY_SKIP}):" || true)"
 if [ -z "$ps_bad_skip" ]; then
-  t_ok "and every property it skipped is one it is allowed to: delivery, and cancel where it cannot signal a group"
+  t_ok "and it skipped nothing it is not allowed to - only cancel, where it cannot signal a group"
 else
   t_no "caplib.psm1 skipped a property that is not on the allowed list:"
   printf '%s\n' "$ps_bad_skip" | sed 's/^/     /'
@@ -128,12 +137,25 @@ fi
 # And the capture properties are ANSWERED. This is the half a name-based check
 # needs: without it, a driver that skipped everything would have no disallowed
 # skip either.
-for prop in p1 p2 p3 p4 p5 p6 p7 p10; do
+for prop in p1 p2 p3 p4 p5 p6 p7 p9 p10; do
   if printf '%s' "$ps_out" | grep -qE "^ok +${prop}:"; then :; else
     t_no "caplib.psm1 did not answer $prop, which is a property it claims"
   fi
 done
-t_ok "and every property it claims - p1 to p7 bar delivery, plus p10 - was answered"
+t_ok "and every property was answered - p1 to p7, p9 and p10"
+
+# THE SAME INVERSION FOR THE SECOND IMPLEMENTATION. Running its suite over two
+# transports proves two passes; it says nothing about whether the suite would
+# notice either of them silently stopping. A second implementation of delivery
+# is a second thing that can stop delivering.
+for t in git share; do
+  "$HERE/conformance/deliver-teeth.sh" "$t" powershell >/dev/null 2>&1
+  case $? in
+    0) t_ok "p9 over $t notices a PowerShell Send-TpLog that delivers nothing" ;;
+    2) t_skip "p9 teeth over $t (powershell): this transport cannot deliver from here" ;;
+    *) t_no "p9 over $t did NOT notice a PowerShell Send-TpLog that delivers nothing" ;;
+  esac
+done
 
 # --- the two implementations write the SAME log -------------------------------
 # The control side parses these logs, and it parses one format. Two capture

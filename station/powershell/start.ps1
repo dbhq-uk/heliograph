@@ -192,12 +192,33 @@ foreach ($need in 'run.ps1', 'caplib.psm1', 'lib/probe.psm1', 'lib/cancel.psm1')
 }
 
 # --- the transport ------------------------------------------------------------
-# SAID, not skipped. A preflight that printed nothing about the transport would
-# read as "the transport is fine", and the honest answer today is that this
-# implementation has none - so a station here captures locally and delivers
-# nothing. Anybody who needs delivery on Windows should run the bash station,
-# which has all four transports.
-report warn 'transport' 'the PowerShell station has no transport yet, so a step is captured to ops-logs and NOT delivered. For a Windows station that ships its logs, use the bash station via station.ps1 with Git for Windows'
+# ASKED, not assumed. The transport says what is wrong with ITSELF through
+# Test-TpPreflight, so a channel's requirements live in the channel's own file -
+# which is what stops this preflight growing a git-shaped hole that refuses to
+# start a station using something else.
+Import-Module (Join-Path $RepoRoot 'lib/transport.psm1') -Force
+$tpName = if ($env:TRANSPORT) { $env:TRANSPORT } else { 'git' }
+if (Import-Tp) {
+    report ok 'transport' "$tpName - $(Get-TpDescribe)"
+    foreach ($line in @(Test-TpPreflight)) {
+        report $line.Status $line.Label $line.Detail
+    }
+    # REACHABILITY IS PROVED, not inferred from the variables being set. A
+    # station that captures an hour-long log it cannot deliver is the failure
+    # this whole preflight exists to prevent, and --check is where it costs
+    # nothing to find out.
+    if (Test-Tp) {
+        report ok 'reach' 'the channel answered and the credential was accepted'
+    } else {
+        report FAIL 'reach' "the '$tpName' transport could not be reached, or refused this credential - see the line(s) above. The station would capture logs it could not deliver"
+    }
+} else {
+    report FAIL 'transport' "the '$tpName' transport will not initialise here - see the line(s) above. Set TRANSPORT to one of: $((Get-TpNames) -join ', ')"
+}
+
+# STILL SAID, because it is the difference between this station and the bash
+# one, and a preflight that stayed silent would read as a full round trip.
+report warn 'receive' 'this station DELIVERS but does not yet RECEIVE: there is no loop, so a request has to be handed to run.ps1 by whoever is driving. For a station that polls, use the bash station'
 
 Write-Output ''
 if ($script:Failed -gt 0) {

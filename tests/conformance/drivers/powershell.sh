@@ -11,7 +11,9 @@
 #   1-4, 7, 8, 10   caplib.psm1 exists. These are its properties.
 #   5, 6            run.ps1 carries gates 1, 2 and 4, the same three run.sh
 #                   carries, with the same exit codes
-#   9               delivery lives in the transports, which do not exist yet
+#   9               transports/{git,share}.psm1 deliver. The relay does not
+#                   exist for PowerShell yet, so p9 skips on that transport by
+#                   name rather than being claimed
 #
 # A driver that claimed `gates` and returned 0 would report the root gate as
 # proven on a station that has no gate at all, which is the most expensive
@@ -79,8 +81,16 @@ drv_supports() {
       command -v setsid >/dev/null 2>&1
       ;;
     gates) return 0 ;;
-    # NOT YET, and said out loud. The transports are PR 12.
-    deliver) return 1 ;;
+    # DELIVERY, over whichever transport CONF_TRANSPORT names. Only the ones
+    # this implementation actually ships: relay is not among them yet, and a
+    # driver that claimed it would report a channel as proven that does not
+    # exist.
+    deliver)
+      case "$CONF_TRANSPORT" in
+        git | share) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
     *) return 1 ;;
   esac
 }
@@ -208,12 +218,88 @@ PS
 # later PR; until then the driver plants the two files run.ps1 needs, which is
 # exactly what it will plant - so when bootstrap arrives, this stops being the
 # thing under test rather than changing what is tested.
+# The WHOLE payload, because a transport needs lib/ and transports/ and the
+# runner needs both. bootstrap.ps1 will do this properly in a later PR; until
+# then the driver plants exactly what that will plant, so when bootstrap
+# arrives it stops being the thing under test rather than changing what is.
 drv_bootstrap() {
   local dir="$1"
   mkdir -p "$dir/steps" "$dir/ops-logs" || return 1
-  cp "$_P_HERE/../../../station/powershell/run.ps1" \
-     "$_P_HERE/../../../station/powershell/caplib.psm1" "$dir/" || return 1
-  return 0
+  cp -r "$_P_HERE/../../../station/powershell/." "$dir/" || return 1
+  _drv_ps_farside "$dir"
+}
+
+# --- the far side, per transport ---------------------------------------------
+# The same two the bash driver stands up, and read back the same way: from the
+# RECEIVING END, never from the working tree that wrote it. A station with no
+# far side would let a delivery that never happened look identical to one that
+# did, which is precisely the defect p9 exists to catch.
+_drv_ps_farside() {
+  local dir="$1"
+  case "$CONF_TRANSPORT" in
+    git)
+      (
+        cd "$dir" || exit 1
+        git init -q .
+        git -c user.email=ci@example.invalid -c user.name=ci add -A
+        git -c user.email=ci@example.invalid -c user.name=ci commit -qm init
+        git init -q --bare "$dir.remote.git"
+        git remote add origin "$dir.remote.git"
+        git push -q -u origin HEAD
+      ) >/dev/null 2>&1
+      ;;
+    share)
+      # The share root only. NOT the scope under it: Initialize-Tp must create
+      # nothing, because `--check` has to run where nobody may alter anything.
+      mkdir -p "$dir.share"
+      ;;
+    *) return 0 ;;
+  esac
+}
+
+_drv_ps_env() {
+  local dir="$1" p
+  case "$CONF_TRANSPORT" in
+    git)
+      p="$(_p_winpath "$dir")"
+      export TRANSPORT=git REPO_ROOT="$p"
+      ;;
+    share)
+      p="$(_p_winpath "$dir.share")"
+      export TRANSPORT=share SHARE_DIR="$p" SHARE_SCOPE=conformance
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+# Run a step and let it DELIVER. No PUSH=0 here, deliberately: the delivery is
+# the thing under test.
+drv_deliver() {
+  local dir="$1" step="$2"
+  ( cd "$dir" && _drv_ps_env "$dir" && ALLOW_ROOT=1 \
+      "$_P_SHELL" -NoProfile -File ./run.ps1 "./$step" ) >/dev/null 2>&1
+}
+
+# Read back what the far side ACTUALLY RECEIVED.
+drv_delivered() {
+  local dir="$1"
+  case "$CONF_TRANSPORT" in
+    git)
+      local remote="$dir.remote.git" branch name
+      branch="$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)" || return 1
+      name="$(git -C "$remote" ls-tree -r --name-only "$branch" 2>/dev/null \
+                | grep '^ops-logs/.*\.txt$' | tail -1)"
+      [ -n "$name" ] || return 1
+      git -C "$remote" show "$branch:$name" 2>/dev/null
+      ;;
+    share)
+      local newest
+      newest="$(ls -1 "$dir.share/conformance/ops-logs/"*.txt 2>/dev/null | tail -1)"
+      [ -n "$newest" ] || return 1
+      cat "$newest"
+      ;;
+    *) return 1 ;;
+  esac
 }
 
 # ALLOW_ROOT=1, and it is not a hole in the test.

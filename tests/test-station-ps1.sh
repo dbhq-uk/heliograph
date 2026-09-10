@@ -45,13 +45,24 @@ winpath() {
   if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
 }
 
+# A WORKING TRANSPORT, because the preflight now asks one. Without it the
+# default is git, the temp payload is not a checkout, and every assertion below
+# fails on a refusal that is entirely correct - the preflight doing its job
+# about a channel the test never meant to configure.
+#
+# The share is used because it needs nothing but a directory: this file is
+# testing the PREFLIGHT, and a transport that needed a remote would make it
+# a test of git as well.
+mkdir -p "$WORK/farside"
+TP_ENV=(TRANSPORT=share "SHARE_DIR=$(winpath "$WORK/farside")" SHARE_SCOPE=preflight)
+
 pre() {  # pre <env...> -- <args...>   -> PRE_OUT, PRE_RC
   local envs=() a
   while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do envs+=("$1"); shift; done
   shift || true
   a=("$@")
   PRE_OUT="$( cd "$WORK" && env -u ALLOW_ROOT -u HELIOGRAPH_ASSUME_PRIVILEGED \
-                "${envs[@]+"${envs[@]}"}" \
+                "${TP_ENV[@]}" "${envs[@]+"${envs[@]}"}" \
                 "$PS_BIN" -NoProfile -File ./start.ps1 "${a[@]}" 2>&1 )"
   PRE_RC=$?
 }
@@ -85,8 +96,17 @@ assert_contains "it reports the execution policy PER SCOPE, because a GPO overri
 assert_contains "it says which cancel mechanism this machine actually gets" \
   "cancel" "$PRE_OUT"
 assert_contains "it prints a UTC clock to compare against" "clock" "$PRE_OUT"
-assert_contains "and it says the transport is missing rather than staying silent" \
-  "no transport yet" "$PRE_OUT"
+# THE TRANSPORT IS ASKED, and it answers for itself. A preflight that printed
+# nothing about the channel would read as "the channel is fine".
+assert_contains "it names the transport and what it is" "transport" "$PRE_OUT"
+assert_contains "and the transport contributes its OWN lines, so a channel's requirements live in the channel" \
+  "scope" "$PRE_OUT"
+assert_contains "and reachability is PROVED, not inferred from the variables being set" \
+  "reach" "$PRE_OUT"
+# AND WHAT IT STILL CANNOT DO, because a station that delivers but cannot
+# receive is not a round trip, and silence there would imply one.
+assert_contains "and it says plainly that it cannot yet receive" \
+  "does not yet RECEIVE" "$PRE_OUT"
 
 # --check CHANGES NOTHING, AND THE WHOLE TREE IS COMPARED.
 #

@@ -161,5 +161,20 @@ It also reports which **cancel** this machine gets: a Job Object where
 the child tree at the moment it runs, so a process started immediately after
 can survive - worth knowing before you rely on cancelling a long step.
 
-**It has no transport yet.** A step is captured to `ops-logs` and not
-delivered. For a Windows station that ships its logs, use the bash station.
+### What it can and cannot do
+
+It **delivers**: `transports/git.psm1` and `transports/share.psm1` ship a
+finished log to the far side, and both pass the same conformance property the
+bash transports do - including the check that a delivery which quietly ships
+nothing makes that property *fail*.
+
+It does **not receive**. There is no loop, so a request has to be handed to
+`run.ps1` by whoever is driving; the station cannot poll for one. The preflight
+says exactly that rather than implying a round trip. For a station that polls,
+use the bash station.
+
+The credential is handled the way the bash transport handles it: through
+`GIT_CONFIG_*` rather than `git -c`, so a token never reaches the process table
+where `ps` shows it to every other user on the box. `Get-TpDescribe` masks both
+halves of a URL's userinfo, because `https://<token>:x-oauth-basic@host` is a
+documented git form in which **the secret is the username**.

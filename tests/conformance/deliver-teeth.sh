@@ -17,16 +17,23 @@
 # that copy is what the station runs, so editing it changes this one station and
 # cannot leak into the repository or another test running in parallel.
 #
-# Usage: deliver-teeth.sh <transport>   exits 0 when p9 correctly FAILED
+# Usage: deliver-teeth.sh <transport> [driver]   exits 0 when p9 correctly FAILED
+#
+# The driver defaults to bash. It matters because the MUTATION differs: the bash
+# payload has `tp_put_log` in a sourced .sh, the PowerShell payload has
+# `Send-TpLog` in a .psm1. Everything else about this check is the same, and it
+# has to cover both - a second implementation of delivery is a second thing that
+# can silently stop delivering.
 # =============================================================================
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-T="${1:?usage: deliver-teeth.sh <transport>}"
+T="${1:?usage: deliver-teeth.sh <transport> [driver]}"
+DRV="${2:-bash}"
 
 export CONF_TRANSPORT="$T"
-# shellcheck disable=SC1091
-. "$HERE/drivers/bash.sh"
+# shellcheck disable=SC1090,SC1091
+. "$HERE/drivers/$DRV.sh"
 
 drv_supports deliver || {
   printf 'deliver-teeth: %s cannot deliver here, so there is nothing to blunt\n' "$T"
@@ -42,24 +49,32 @@ trap cleanup EXIT
 
 drv_bootstrap "$WORK/d" || { echo "deliver-teeth: bootstrap failed for $T"; exit 3; }
 
-TP="$WORK/d/transports/$T.sh"
+# APPENDED, NOT EDITED IN PLACE, in either language. A later definition wins in
+# both bash and PowerShell, so this needs no knowledge of how the original is
+# written - and a sed that silently matched nothing would leave the real one in
+# place and make this whole check report a pass it never earned.
+case "$DRV" in
+  powershell)
+    TP="$WORK/d/transports/$T.psm1"
+    MARKER='function Send-TpLog { return $true }'
+    ;;
+  *)
+    TP="$WORK/d/transports/$T.sh"
+    MARKER='tp_put_log() { return 0; }'
+    ;;
+esac
 [ -f "$TP" ] || { echo "deliver-teeth: no planted transport at $TP"; exit 3; }
 
-# Appended, not edited in place. A later definition of a shell function wins, so
-# this needs no knowledge of how the original is written - and a sed that
-# silently matched nothing would leave the real one in place and make this whole
-# check report a pass it never earned.
-cat >> "$TP" <<'EOS'
-
-# --- deliver-teeth.sh: the mutation ------------------------------------------
-tp_put_log() { return 0; }
-EOS
+{
+  printf '\n# --- deliver-teeth.sh: the mutation ---\n'
+  printf '%s\n' "$MARKER"
+} >> "$TP"
 
 # THE MUTATION IS CONFIRMED PRESENT. A `cat >>` into a read-only file, or into a
 # path that turned out not to be the one the station loads, fails silently and
 # would leave this whole check asserting that a WORKING transport delivered
 # nothing - which it would then blame on the transport.
-grep -q '^tp_put_log() { return 0; }$' "$TP" || {
+grep -qxF "$MARKER" "$TP" || {
   echo "deliver-teeth: the mutation did not reach $TP"
   exit 3
 }
@@ -89,11 +104,11 @@ body="$(drv_delivered "$WORK/d")"
 
 case "$body" in
   *"finished UTC"*)
-    printf 'deliver-teeth: %s DELIVERED a log with a neutered tp_put_log.\n' "$T"
+    printf 'deliver-teeth: %s/%s DELIVERED a log with delivery neutered.\n' "$DRV" "$T"
     printf '  p9 is reading something other than the far side, so running the\n'
     printf '  suite over this transport proves nothing.\n'
     exit 1
     ;;
 esac
-printf 'deliver-teeth: %s - the step ran, and a neutered tp_put_log delivered nothing\n' "$T"
+printf 'deliver-teeth: %s/%s - the step ran, and a neutered delivery delivered nothing\n' "$DRV" "$T"
 exit 0
