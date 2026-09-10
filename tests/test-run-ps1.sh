@@ -58,19 +58,54 @@ printf '# heliograph-mode: banana\nWrite-Output "x"\n'              > "$WORK/ste
 { for i in $(seq 1 35); do printf '# filler %s\n' "$i"; done
   printf '# heliograph-mode: read-only\nWrite-Output "too late"\n'; } > "$WORK/steps/late.ps1"
 
-# run <env...> -- <args...>  -> sets RC, OUT, ERR
-run() {
+# run_raw <env...> -- <args...>  -> exactly what was asked, nothing added.
+run_raw() {
   local envs=() a
   while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do envs+=("$1"); shift; done
   shift || true
   a=("$@")
-  OUT="$( cd "$WORK" && env "${envs[@]+"${envs[@]}"}" PUSH=0 \
+  # `-u` FIRST, so every run starts from a clean seam and an inherited
+  # HELIOGRAPH_ASSUME_PRIVILEGED cannot set the baseline this file measures
+  # against. An explicit assignment after it still wins, which is what the
+  # gate-4 tests rely on.
+  OUT="$( cd "$WORK" && env -u HELIOGRAPH_ASSUME_PRIVILEGED -u ALLOW_ROOT -u CONFIRM \
+            "${envs[@]+"${envs[@]}"}" PUSH=0 \
             "$PS_BIN" -NoProfile -File ./run.ps1 "${a[@]}" 2>"$WORK/err" )"
   RC=$?
   ERR="$(cat "$WORK/err")"
 }
 
 logs() { find "$WORK/ops-logs" -name '*.txt' 2>/dev/null | wc -l | tr -d ' '; }
+
+# --- IS THIS ACCOUNT ALREADY PRIVILEGED? -------------------------------------
+# Measured, not assumed. GitHub's Windows runner is an Administrator, so every
+# step refuses with 5 - the privileged gate doing its job - and every assertion
+# below that is about some OTHER gate fails for a reason it is not testing.
+#
+# So the baseline is taken once, and every test that is not about gate 4 runs
+# with ALLOW_ROOT=1 when it has to. The gate-4 tests use run_raw and get
+# nothing added, and they compare against this baseline rather than against a
+# fixed code - which states the property better anyway: the seam must not
+# change the answer unless it is exactly `1`.
+run_raw -- ./steps/ok.ps1
+PRIV_BASE="$RC"
+BASE_ENV=()
+if [ "$PRIV_BASE" = "5" ]; then
+  BASE_ENV=(ALLOW_ROOT=1)
+  t_ok "this account is privileged, so the gate refuses by default - ALLOW_ROOT=1 for the rest"
+else
+  t_ok "this account is not privileged, so the gate is open by default (baseline $PRIV_BASE)"
+fi
+
+# run <env...> -- <args...>  -> with whatever this account needs to get past
+# gate 4, so the assertion is about the gate it names.
+run() {
+  local envs=() a
+  while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do envs+=("$1"); shift; done
+  shift || true
+  a=("$@")
+  run_raw "${BASE_ENV[@]+"${BASE_ENV[@]}"}" "${envs[@]+"${envs[@]}"}" -- "$@"
+}
 
 # See drivers/powershell.sh: a path embedded in a script gets no conversion at
 # the exec boundary, so PowerShell reads a Git-Bash /tmp path as C:\tmp.
@@ -142,13 +177,13 @@ done
 
 # --- gate 4: nothing runs as the privileged account --------------------------
 before="$(logs)"
-run HELIOGRAPH_ASSUME_PRIVILEGED=1 -- ./steps/ok.ps1
+run_raw HELIOGRAPH_ASSUME_PRIVILEGED=1 -- ./steps/ok.ps1
 assert_eq "a privileged account refuses with exit 5" "5" "$RC"
 assert_contains "and says the account is the blast radius" "blast radius" "$ERR"
 assert_eq "and writes no log, so the refusal precedes the capture" \
   "$before" "$(logs)"
 
-run HELIOGRAPH_ASSUME_PRIVILEGED=1 ALLOW_ROOT=1 -- ./steps/ok.ps1
+run_raw HELIOGRAPH_ASSUME_PRIVILEGED=1 ALLOW_ROOT=1 -- ./steps/ok.ps1
 assert_eq "ALLOW_ROOT=1 permits it, and keeps the bash spelling" "0" "$RC"
 
 # THE SEAM IS ONE-DIRECTIONAL, and this is the assertion that makes it safe to
@@ -166,22 +201,24 @@ assert_eq "ALLOW_ROOT=1 permits it, and keeps the bash spelling" "0" "$RC"
 # With a read-only step, gate 4 is the only gate in the way, so the exit code
 # says exactly what that gate did.
 opened=""
-still=""
+changed=""
 for v in 0 no false '' yes 2 YES true; do
-  run "HELIOGRAPH_ASSUME_PRIVILEGED=$v" -- ./steps/ok.ps1
-  # Not 1: the seam must not force a refusal for anything but the documented
-  # value, or it is a way to break a station rather than to test one.
-  [ "$RC" = "5" ] && still="$still [$v]"
+  run_raw "HELIOGRAPH_ASSUME_PRIVILEGED=$v" -- ./steps/ok.ps1
+  # AGAINST THE BASELINE, not against a fixed code. On an account that is
+  # genuinely privileged the answer is 5 whatever this variable says, and
+  # demanding 0 would fail for the right reason at the wrong assertion. The
+  # property is that the seam CHANGES NOTHING unless it is exactly `1`.
+  [ "$RC" = "$PRIV_BASE" ] || changed="$changed [$v -> $RC]"
 done
-if [ -z "$still" ]; then
-  t_ok "no value but 1 makes HELIOGRAPH_ASSUME_PRIVILEGED refuse anything"
+if [ -z "$changed" ]; then
+  t_ok "no value but 1 changes what HELIOGRAPH_ASSUME_PRIVILEGED decides (baseline $PRIV_BASE)"
 else
-  t_no "HELIOGRAPH_ASSUME_PRIVILEGED refused for values it should ignore:$still"
+  t_no "HELIOGRAPH_ASSUME_PRIVILEGED changed the answer for values it should ignore:$changed"
 fi
 
 # And with the gate forced closed, nothing but the documented override opens it.
 for v in 0 no false '' 2 YES yes true; do
-  run HELIOGRAPH_ASSUME_PRIVILEGED=1 "ALLOW_ROOT=$v" -- ./steps/ok.ps1
+  run_raw HELIOGRAPH_ASSUME_PRIVILEGED=1 "ALLOW_ROOT=$v" -- ./steps/ok.ps1
   [ "$RC" = "0" ] && opened="$opened [ALLOW_ROOT=$v]"
 done
 if [ -z "$opened" ]; then
@@ -247,7 +284,9 @@ fi
 SHIPPED="$WORK/shipped"
 mkdir -p "$SHIPPED"
 cp -r "$PSDIR/." "$SHIPPED/"
-step_out="$( cd "$SHIPPED" && PUSH=0 "$PS_BIN" -NoProfile -File ./run.ps1 env 2>&1 )"
+step_out="$( cd "$SHIPPED" && env -u HELIOGRAPH_ASSUME_PRIVILEGED -u CONFIRM \
+               "${BASE_ENV[@]+"${BASE_ENV[@]}"}" PUSH=0 \
+               "$PS_BIN" -NoProfile -File ./run.ps1 env 2>&1 )"
 step_rc=$?
 assert_eq "the shipped default step runs, exit 0" "0" "$step_rc"
 assert_contains "and prints its summary, which is the last thing a reader looks for" \
@@ -337,12 +376,13 @@ if "$HERE/../station/bootstrap.sh" "$BASHREPO" >/dev/null 2>&1; then
     printf '%s\nWrite-Output "ran"\nNew-Item -ItemType File -Force -Path %s | Out-Null\n' \
       "$header" "$(printf "'%s'" "$(winpath "$WORK/twin-ps-ran")")" > "$WORK/steps/twin.ps1"
 
-    ( cd "$BASHREPO" && env "${envs[@]+"${envs[@]}"}" PUSH=0 ALLOW_ROOT=1 \
+    ( cd "$BASHREPO" && env -u CONFIRM "${envs[@]+"${envs[@]}"}" PUSH=0 ALLOW_ROOT=1 \
         ./run.sh ./steps/twin.sh ) >/dev/null 2>&1
     brc=$?
     bran=no; [ -f "$WORK/twin-bash-ran" ] && bran=yes
 
-    ( cd "$WORK" && env "${envs[@]+"${envs[@]}"}" PUSH=0 ALLOW_ROOT=1 \
+    ( cd "$WORK" && env -u CONFIRM -u HELIOGRAPH_ASSUME_PRIVILEGED \
+        "${envs[@]+"${envs[@]}"}" PUSH=0 ALLOW_ROOT=1 \
         "$PS_BIN" -NoProfile -File ./run.ps1 ./steps/twin.ps1 ) >/dev/null 2>&1
     prc=$?
     pran=no; [ -f "$WORK/twin-ps-ran" ] && pran=yes
