@@ -56,8 +56,23 @@ pre() {  # pre <env...> -- <args...>   -> PRE_OUT, PRE_RC
   PRE_RC=$?
 }
 
-# --- the preflight ------------------------------------------------------------
+# --- IS THIS ACCOUNT ALREADY PRIVILEGED? -------------------------------------
+# Measured, not assumed, for the same reason test-run-ps1.sh measures it:
+# GitHub's Windows runner is an Administrator, so the preflight correctly
+# refuses and every assertion about some OTHER line fails for a reason it is
+# not testing. The `user` line has its own assertions further down, which is
+# where that gate belongs.
+BASE_ENV=()
 pre -- --check
+if printf '%s' "$PRE_OUT" | grep -q 'is an Administrator or SYSTEM'; then
+  BASE_ENV=(ALLOW_ROOT=1)
+  t_ok "this account is privileged, so the preflight refuses it - ALLOW_ROOT=1 for the rest"
+else
+  t_ok "this account is not privileged, so the preflight has nothing to refuse"
+fi
+
+# --- the preflight ------------------------------------------------------------
+pre "${BASE_ENV[@]+"${BASE_ENV[@]}"}" -- --check
 assert_eq "the preflight passes on this machine" "0" "$PRE_RC"
 
 # THE TWO THAT DECIDE THIS ON A REAL ESTATE. Neither is guessable from a version
@@ -73,19 +88,46 @@ assert_contains "it prints a UTC clock to compare against" "clock" "$PRE_OUT"
 assert_contains "and it says the transport is missing rather than staying silent" \
   "no transport yet" "$PRE_OUT"
 
-# --check CHANGES NOTHING. It is what gets run where nobody may alter anything
-# yet, so the answer to "will this work here" can be had before asking.
-rm -rf "$WORK/ops-logs"
-pre -- --check
-if [ -d "$WORK/ops-logs" ]; then
-  t_no "--check created ops-logs, and it must change nothing at all"
+# --check CHANGES NOTHING, AND THE WHOLE TREE IS COMPARED.
+#
+# The first version of this deleted ops-logs first and then checked it had not
+# come back - which skipped the entire branch that runs when the directory
+# EXISTS, and that branch wrote a probe file. It proved that --check does not
+# create one directory, and nothing else. The implementation as written then
+# failed this stronger test, which is the point of writing it this way.
+#
+# A SENTINEL WITH THE PROBE'S OWN NAME, because the probe had a fixed one: had
+# that file already existed, --check would have destroyed it.
+snapshot() {
+  ( cd "$WORK" && find . -type f -printf '%p %s\n' 2>/dev/null | LC_ALL=C sort
+    cd "$WORK" && find . -type f -exec sha256sum {} + 2>/dev/null | LC_ALL=C sort )
+}
+mkdir -p "$WORK/ops-logs"
+printf 'do not touch me\n' > "$WORK/ops-logs/.heliograph-write-check"
+before_snap="$(snapshot)"
+pre "${BASE_ENV[@]+"${BASE_ENV[@]}"}" -- --check
+after_snap="$(snapshot)"
+if [ "$before_snap" = "$after_snap" ]; then
+  t_ok "--check changed NOTHING in the whole payload, not merely created no directory"
 else
-  t_ok "--check created nothing, so it can run where nothing may be altered"
+  t_no "--check modified the tree:"
+  diff <(printf '%s\n' "$before_snap") <(printf '%s\n' "$after_snap") | sed 's/^/     /' | head -10
 fi
+assert_eq "and a file with the probe's own name is intact" \
+  "do not touch me" "$(cat "$WORK/ops-logs/.heliograph-write-check" 2>/dev/null)"
 assert_contains "and it says so" "nothing was changed" "$PRE_OUT"
 
-# A REAL START MAY create it, which is the difference between the two.
-pre -- ""
+# A REAL START PROVES WRITABILITY, and must not clobber that file either.
+pre "${BASE_ENV[@]+"${BASE_ENV[@]}"}" -- ""
+assert_contains "a real start proves the directory accepts a write" "writable" "$PRE_OUT"
+assert_eq "and its probe did not reuse a name that was already taken" \
+  "do not touch me" "$(cat "$WORK/ops-logs/.heliograph-write-check" 2>/dev/null)"
+left="$(find "$WORK/ops-logs" -name '.heliograph-write-check.*' 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "and left no probe behind" "0" "$left"
+rm -rf "$WORK/ops-logs"
+
+# A REAL START MAY create it, which is the other half of the difference.
+pre "${BASE_ENV[@]+"${BASE_ENV[@]}"}" -- ""
 if [ -d "$WORK/ops-logs" ]; then
   t_ok "a real start creates ops-logs, so a capture has somewhere to go"
 else
@@ -107,33 +149,40 @@ assert_contains "and it is still SAID, because it is worth knowing" \
 # A MISSING PAYLOAD FILE. The loop would fail on its first request and the
 # reason would be somewhere else entirely.
 mv "$WORK/lib/probe.psm1" "$WORK/lib/probe.psm1.hidden"
-pre -- --check
+pre "${BASE_ENV[@]+"${BASE_ENV[@]}"}" -- --check
 assert_eq "a missing payload file is a blocking problem" "1" "$PRE_RC"
 assert_contains "and it names the file" "probe.psm1" "$PRE_OUT"
 assert_contains "and says to re-run the bootstrap" "bootstrap" "$PRE_OUT"
 mv "$WORK/lib/probe.psm1.hidden" "$WORK/lib/probe.psm1"
 
-pre -- --check
+pre "${BASE_ENV[@]+"${BASE_ENV[@]}"}" -- --check
 assert_eq "and it passes again once the file is back" "0" "$PRE_RC"
 
 # --- the cancel takes the WHOLE TREE -----------------------------------------
-# A grandchild is the case that matters: the step is a child of the capture and
-# whatever the step runs is a child of that. Killing one level is the defect.
+# THREE LEVELS, and each records its OWN pid.
+#
+# The first version built runner -> cmd -> timeout on Windows and asserted on
+# cmd's pid, which is the INTERMEDIATE process. cmd could die while timeout
+# carried on and the test would still pass - so it checked the one level that
+# was never in doubt. A step is a child of the capture and whatever the step
+# runs is a child of that, so the deepest is exactly the one that matters:
+# terraform surviving a cancel is the defect, not the shell that launched it.
 if [ "$IS_WINDOWS" = "1" ]; then
-  cat > "$WORK/tree.ps1" <<'PS'
-param([string] $PidFile)
-$p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','timeout /t 300 /nobreak' -PassThru
-[System.IO.File]::WriteAllText($PidFile, "$($p.Id)")
-Start-Sleep -Seconds 300
-PS
+  SLEEPER_CMD="cmd.exe"
+  SLEEPER_ARGS="'/c','timeout /t 300 /nobreak'"
 else
-  cat > "$WORK/tree.ps1" <<'PS'
-param([string] $PidFile)
-$p = Start-Process -FilePath '/bin/sleep' -ArgumentList '300' -PassThru
-[System.IO.File]::WriteAllText($PidFile, "$($p.Id)")
+  SLEEPER_CMD="/bin/sleep"
+  SLEEPER_ARGS="'300'"
+fi
+
+cat > "$WORK/child.ps1" <<PS
+param([string] \$PidFile)
+# ITS OWN pid, and its child's. Written by the process they belong to, so
+# neither is inferred.
+\$sleeper = Start-Process -FilePath '$SLEEPER_CMD' -ArgumentList $SLEEPER_ARGS -PassThru
+[System.IO.File]::WriteAllText(\$PidFile, "\$PID\`n\$(\$sleeper.Id)")
 Start-Sleep -Seconds 300
 PS
-fi
 
 cat > "$WORK/runtree.ps1" <<'PS'
 param([string] $PidFile, [string] $HandleFile)
@@ -142,7 +191,8 @@ Import-Module (Join-Path $here 'lib/cancel.psm1') -Force
 $strategy = Enter-CapKillGroup
 [System.IO.File]::WriteAllText($HandleFile, "$PID")
 Write-Output "strategy=$strategy"
-& (Join-Path $here 'tree.ps1') -PidFile $PidFile
+$shell = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+& $shell -NoProfile -File (Join-Path $here 'child.ps1') -PidFile $PidFile
 PS
 
 cat > "$WORK/stop.ps1" <<'PS'
@@ -153,7 +203,7 @@ if (Stop-CapTree -ProcessId $ProcessId) { exit 0 }
 exit 1
 PS
 
-GC_FILE="$WORK/grandchild.pid"
+GC_FILE="$WORK/pids"
 H_FILE="$WORK/tree.handle"
 rm -f "$GC_FILE" "$H_FILE"
 
@@ -166,14 +216,15 @@ else
 fi
 
 waited=0
-while { [ ! -s "$GC_FILE" ] || [ ! -s "$H_FILE" ]; } && [ "$waited" -lt 300 ]; do
+while { [ ! -s "$GC_FILE" ] || [ ! -s "$H_FILE" ]; } && [ "$waited" -lt 600 ]; do
   waited=$((waited + 1)); sleep 0.1
 done
 
 if [ -s "$GC_FILE" ] && [ -s "$H_FILE" ]; then
-  t_ok "a two-deep process tree started, and both pids were recorded"
-  runner="$(tr -d ' \r\n' < "$H_FILE")"
-  grandchild="$(tr -d ' \r\n' < "$GC_FILE")"
+  runner="$(tr -d ' \r' < "$H_FILE" | head -1)"
+  child="$(tr -d ' \r' < "$GC_FILE" | sed -n 1p)"
+  sleeper="$(tr -d ' \r' < "$GC_FILE" | sed -n 2p)"
+  t_ok "a THREE-level tree started: runner $runner, child $child, sleeper $sleeper"
 
   alive() {  # alive <pid> - asked through the module, which is what the station uses
     ( cd "$WORK" && "$PS_BIN" -NoProfile -Command \
@@ -181,30 +232,47 @@ if [ -s "$GC_FILE" ] && [ -s "$H_FILE" ]; then
       ) >/dev/null 2>&1
   }
 
-  if alive "$grandchild"; then
-    t_ok "the grandchild is running before the cancel, so there is something to prove"
+  # WHICH MECHANISM, by name. `strategy=` alone matched an empty value, so
+  # deleting the Job Object setup left the test green - which is exactly how a
+  # dead LimitFlags assignment survived: taskkill was doing all the work and
+  # nothing asked whether the job existed.
+  strat="$(sed -n 's/^strategy=//p' "$WORK/tree.out" 2>/dev/null | head -1 | tr -d ' \r')"
+  if [ "$IS_WINDOWS" = "1" ]; then
+    case "$strat" in
+      job-object) t_ok "and it established a Job Object, which is the Windows mechanism" ;;
+      taskkill)   t_ok "and it fell back to taskkill, having said why: $(sed -n 's/.*Reason: //p' "$WORK/tree.out" | head -1)" ;;
+      *)          t_no "the strategy on Windows was [$strat], which is neither job-object nor taskkill" ;;
+    esac
   else
-    t_no "the grandchild was not running, so the cancel below proves nothing"
+    assert_eq "and it established the process-group mechanism" "process-group" "$strat"
+  fi
+
+  if alive "$child" && alive "$sleeper"; then
+    t_ok "both descendants are running before the cancel, so there is something to prove"
+  else
+    t_no "the tree was not fully up (child=$(alive "$child" && echo yes || echo no), sleeper=$(alive "$sleeper" && echo yes || echo no)), so the cancel below proves nothing"
   fi
 
   ( cd "$WORK" && "$PS_BIN" -NoProfile -File ./stop.ps1 -ProcessId "$runner" ) >/dev/null 2>&1
   stop_rc=$?
   assert_eq "the cancel reports the runner confirmed dead" "0" "$stop_rc"
 
-  sleep 1
-  if alive "$grandchild"; then
-    t_no "THE GRANDCHILD SURVIVED. A cancel that stops the wrapper and leaves the"
-    printf '     step running tells the operator the run was cancelled while it\n'
-    printf '     carries on changing the estate.\n'
+  sleep 2
+  if alive "$sleeper"; then
+    t_no "THE DEEPEST DESCENDANT SURVIVED. A cancel that stops the wrapper and"
+    printf '     leaves the step running tells the operator the run was cancelled\n'
+    printf '     while it carries on changing the estate.\n'
   else
-    t_ok "and the GRANDCHILD is gone too, so the cancel took the whole tree"
+    t_ok "and the DEEPEST descendant is gone, two levels down from what was killed"
   fi
-
-  assert_contains "and the strategy it used is reported, not assumed" \
-    "strategy=" "$(cat "$WORK/tree.out" 2>/dev/null)"
+  if alive "$child"; then
+    t_no "the intermediate process survived the cancel"
+  else
+    t_ok "and so is the one in between"
+  fi
 else
   t_no "the process tree never started, so the cancel was NOT exercised"
-  cat "$WORK/tree.out" 2>/dev/null | sed 's/^/     /' | head -5
+  sed 's/^/     /' "$WORK/tree.out" 2>/dev/null | head -5
 fi
 
 # NO ZOMBIE TEST HERE, and that is a deliberate omission rather than an

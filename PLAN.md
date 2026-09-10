@@ -193,6 +193,8 @@ pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
 
+**A value type read through a property is a COPY.** `$info.BasicLimitInformation.LimitFlags = 0x2000` set the flag on a copy of the nested struct and threw it away, so the Job Object was created without KILL_ON_JOB_CLOSE and guaranteed nothing. Every call succeeded, the mechanism reported itself in force, the tests were green, and `taskkill` was quietly doing all the work. Assign the nested struct back. And the reason it survived: the only assertion looked for `strategy=`, which an empty value satisfies - so nothing ever asked whether the job existed.
+
 **A test that passes with the thing deleted is worse than no test.** An
 assertion here claimed `Test-CapAlive` is not fooled by a zombie, and it passed
 with the check removed - PowerShell reaps its own children, so the case cannot
@@ -216,6 +218,12 @@ of the executable test: the BOM is the cause and every other symptom points
 somewhere unhelpful. Found because the twin comparison disagreed on Windows and
 nowhere else, and because the assertion printed the file's first eight bytes
 and its mode instead of just a number.
+
+**"It puts it back afterwards" is not "it changes nothing".** `--check` is what
+gets run where nobody is permitted to alter anything yet, and it wrote a probe
+file and deleted it - with a FIXED NAME, so a file already at that path was
+destroyed. The test missed it by deleting the directory first, which skipped the
+whole branch that runs when it exists. Snapshot the tree, not one path.
 
 **Git-Bash converts a path at the exec boundary and nowhere else.** An argument
 like `-LogPath /tmp/x` arrives at a native program already converted, so

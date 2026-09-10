@@ -45,6 +45,7 @@ function Test-CancelWindows {
 
 $script:JobHandle = [IntPtr]::Zero
 $script:JobReady = $false
+$script:JobReason = ''
 
 function Enter-CapKillGroup {
     <#
@@ -125,12 +126,27 @@ namespace Heliograph {
             $h = [Heliograph.Job]::CreateJobObject([IntPtr]::Zero, $null)
             if ($h -eq [IntPtr]::Zero) { throw 'CreateJobObject returned NULL' }
 
+            # THE NESTED STRUCT IS ASSIGNED BACK, and the first version did
+            # not - which made the whole Job Object do nothing at all.
+            #
+            # These are VALUE TYPES. `$info.BasicLimitInformation` returns a
+            # COPY, so `$info.BasicLimitInformation.LimitFlags = 0x2000`
+            # modified the copy and threw it away. The job was created, the
+            # process was assigned to it, SetInformationJobObject succeeded -
+            # and the limit flag was zero, so nothing was killed on close. Every
+            # cancel that appeared to work was `taskkill` doing all of it.
+            #
+            # Nothing failed loudly. That is what makes it worth this comment:
+            # the mechanism reported itself in force, the tests were green, and
+            # the guarantee it exists to provide was absent.
             $info = New-Object Heliograph.Job+JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+            $basic = $info.BasicLimitInformation
             # 0x2000 = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE. The one flag that
             # matters: every process in the job is terminated when the last
             # handle to it closes, which happens when this process dies for any
             # reason at all - including one it never got to handle.
-            $info.BasicLimitInformation.LimitFlags = 0x2000
+            $basic.LimitFlags = 0x2000
+            $info.BasicLimitInformation = $basic
 
             $size = [System.Runtime.InteropServices.Marshal]::SizeOf($info)
             $ptr = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($size)
@@ -161,8 +177,22 @@ namespace Heliograph {
         # that blocks Add-Type is the estate with no bash, which is the estate
         # this station is for. A cancel that walks the tree is worse than a job
         # object and enormously better than none.
+        #
+        # THE REASON IS KEPT, because four different failures land here and they
+        # have different remedies: Add-Type refused by policy, the compiler
+        # missing, CreateJobObject denied, or AssignProcessToJobObject refusing
+        # because this process is ALREADY IN A JOB - which is ordinary on a CI
+        # runner and on anything started by a container runtime, and which
+        # nested jobs made legal only from Windows 8. The preflight prints it.
+        $script:JobReason = $_.Exception.Message
         return 'taskkill'
     }
+}
+
+# Why the fallback was taken, for the preflight to print. Empty when it was not.
+function Get-CapKillGroupReason {
+    if ($script:JobReason) { return $script:JobReason }
+    return ''
 }
 
 function Stop-CapTree {
@@ -232,6 +262,7 @@ function Test-CapAlive {
 
 Export-ModuleMember -Function @(
     'Enter-CapKillGroup',
+    'Get-CapKillGroupReason',
     'Stop-CapTree',
     'Test-CapAlive',
     'Test-CancelWindows'

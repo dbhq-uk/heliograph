@@ -107,7 +107,12 @@ switch ($strategy) {
         report ok 'cancel' 'a Job Object with KILL_ON_JOB_CLOSE, so a cancel takes the whole tree and nothing can escape it'
     }
     'taskkill' {
-        report warn 'cancel' 'Add-Type is blocked here, so a cancel falls back to taskkill /T /F. That walks the child tree at the moment it runs, so a process started immediately after can survive. Everything else works; if cancels matter on this estate, ask for Add-Type to be permitted'
+        # THE REASON, because four different failures land on this fallback and
+        # they have different remedies: Add-Type refused by policy, no compiler,
+        # CreateJobObject denied, or this process being ALREADY IN A JOB - which
+        # is ordinary under a container runtime and on some CI runners.
+        $why = Get-CapKillGroupReason
+        report warn 'cancel' ("a Job Object could not be set up, so a cancel falls back to taskkill /T /F. That walks the child tree at the moment it runs, so a process started immediately after can survive. Everything else works. Reason: " + $(if ($why) { $why } else { 'not reported' }))
     }
     default {
         report ok 'cancel' "$strategy - a kill reaches the step's whole process group"
@@ -132,25 +137,49 @@ if (-not (Test-CapPrivileged)) {
 
 # --- somewhere to put a log ---------------------------------------------------
 $logDir = if ($env:LOG_DIR) { $env:LOG_DIR } else { Join-Path $RepoRoot 'ops-logs' }
-try {
-    if (-not (Test-Path -LiteralPath $logDir)) {
-        if ($CheckOnly) {
-            report warn 'ops-logs' "$logDir does not exist yet. --check creates nothing; a real start would make it"
-        } else {
+if ($CheckOnly) {
+    # --check WRITES NOTHING, and the first version did.
+    #
+    # It wrote a probe file and deleted it, which is a contract violation on its
+    # own - `--check` is what gets run on a node where nobody is permitted to
+    # alter anything yet, and "it puts it back afterwards" is not the same
+    # promise. Worse, the probe had a fixed name: had that file already existed,
+    # --check would have destroyed it.
+    #
+    # So it reports what it can see and is HONEST about what it therefore
+    # cannot: a directory that exists and refuses writes looks identical to one
+    # that accepts them until something writes.
+    if (Test-Path -LiteralPath $logDir -PathType Container) {
+        report warn 'ops-logs' "$logDir exists. --check writes nothing, so whether it ACCEPTS a write is unproved - a real start settles that before any step runs"
+    } else {
+        report warn 'ops-logs' "$logDir does not exist yet. --check creates nothing; a real start would make it"
+    }
+} else {
+    try {
+        if (-not (Test-Path -LiteralPath $logDir)) {
             [void](New-Item -ItemType Directory -Force -Path $logDir -ErrorAction Stop)
         }
-    }
-    if (Test-Path -LiteralPath $logDir) {
         # WRITTEN TO, not stat'ed. A directory that exists and cannot be written
         # to looks identical until the first log fails to arrive, an hour later,
         # with nobody left to tell.
-        $probe = Join-Path $logDir '.heliograph-write-check'
-        [System.IO.File]::WriteAllText($probe, 'x')
-        Remove-Item -LiteralPath $probe -Force
+        #
+        # A UNIQUE NAME, created with CreateNew so an existing file is never
+        # opened let alone truncated, and removed in `finally` so a failure
+        # between the two does not leave litter behind.
+        $probe = Join-Path $logDir (".heliograph-write-check." + [guid]::NewGuid().ToString('N'))
+        $fs = $null
+        try {
+            $fs = [System.IO.File]::Open($probe, [System.IO.FileMode]::CreateNew,
+                                         [System.IO.FileAccess]::Write)
+            $fs.WriteByte(120)
+        } finally {
+            if ($fs) { $fs.Dispose() }
+            if (Test-Path -LiteralPath $probe) { Remove-Item -LiteralPath $probe -Force }
+        }
         report ok 'ops-logs' 'writable'
+    } catch {
+        report FAIL 'ops-logs' "$logDir is not writable, so a capture would have nowhere to go: $($_.Exception.Message)"
     }
-} catch {
-    report FAIL 'ops-logs' "$logDir is not writable, so a capture would have nowhere to go: $($_.Exception.Message)"
 }
 
 # --- the payload is all here --------------------------------------------------
