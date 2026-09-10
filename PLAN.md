@@ -24,7 +24,7 @@ in CI. The site documents the far side. The PowerShell station has its capture a
 | file share | **works end to end**, proved by a CLI round trip in CI |
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
-| PowerShell station | **the capture and the runner exist** - `caplib.psm1` and `run.ps1` pass properties 1-7 and 10, with gates 1, 2 and 4. No loop, no transports yet |
+| PowerShell station | **the capture, the runner, the cancel and the preflight** - properties 1-8 and 10, gates 1, 2 and 4. No loop and no transports, so a step is captured locally and NOT delivered |
 | site | 26 pages, near and far side. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
 
 ## Landed 2026-09-08
@@ -68,17 +68,18 @@ in CI. The site documents the far side. The PowerShell station has its capture a
 | #50 | **conformance over every transport**, with a stub relay so it needs no Cloudflare account - and a teeth check per transport, because running the suite three times only proves three passes |
 | #51 | **the conformance harness stops being Unix** (Track B/PR 8) - p6's privileged account and p8's cancel move into the driver, p8 proves the cancel by watching the log stop growing, and the redaction corpus lands with a test that every rule is load-bearing |
 | #52 | **`caplib.psm1`** (Track B/PR 9) - the capture in PowerShell, passing properties 1-4, 7 and 8, skipping the gates and delivery by name. The step fixtures moved into the driver too, which was the last Unix left in the suite |
+| #54 | **the cancel and the preflight** (Track B/PR 11, part) - a Win32 Job Object with `taskkill /T /F` where `Add-Type` is blocked, which is the estate this station is for. Property 8 stops skipping on Windows. `start.ps1` answers the two questions that decide whether a station can run at all: Constrained Language Mode, and a GPO-set execution policy |
 | #53 | **`run.ps1`** (Track B/PR 10) - the runner and its three gates, a `probe.psm1` and a shipped `env` step. Found three case-sensitivity divergences from `run.sh`, two of them in a security gate, and added a twin comparison that would have caught all three |
 
 ## Next, in order
 
-1. **Track B: the PowerShell station**, PR 11 onwards. `station.ps1` and
-   `start.ps1` next - the loop and the preflight, which is where gate 3
-   (`--allow-actions`) lives and what a Windows cancel needs: a Win32 **Job
-   Object** with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, with `taskkill /T /F`
-   as a genuine fallback because a hardened estate may block `Add-Type`. That
-   is also what turns property 8 from a Windows skip into an answer.
-   Then the three transports (PR 12), bootstrap (PR 13) and Windows CI (PR 14)
+1. **Track B: the transports, then the loop.** PR 11 was split, deliberately:
+   the preflight and the cancel landed, and `station.ps1` did not. A loop needs
+   something to poll, and the transports are PR 12 - so a loop written now
+   could not be tested end to end, and an untested loop is the one thing this
+   repository will not ship. `transports/{git,share,relay}.ps1` next, then the
+   loop with gate 3 (`ALLOW_ACTIONS`) alongside the first transport that can
+   prove it. Then bootstrap (PR 13) and the rest of Windows CI (PR 14)
 2. **The bundle's station side.** `/air-gapped` now says plainly that the
    bundle cannot be read by a station, and the CLI says the same. That page is
    the first thing to update when it lands
@@ -192,6 +193,15 @@ pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
 
+**A value type read through a property is a COPY.** `$info.BasicLimitInformation.LimitFlags = 0x2000` set the flag on a copy of the nested struct and threw it away, so the Job Object was created without KILL_ON_JOB_CLOSE and guaranteed nothing. Every call succeeded, the mechanism reported itself in force, the tests were green, and `taskkill` was quietly doing all the work. Assign the nested struct back. And the reason it survived: the only assertion looked for `strategy=`, which an empty value satisfies - so nothing ever asked whether the job existed.
+
+**A test that passes with the thing deleted is worse than no test.** An
+assertion here claimed `Test-CapAlive` is not fooled by a zombie, and it passed
+with the check removed - PowerShell reaps its own children, so the case cannot
+be constructed from this suite. It was deleted rather than left looking like
+coverage, and the guard it was written for is marked untested in the module.
+Removing an assertion is sometimes the honest move.
+
 **A fixed sleep encodes one implementation's startup time.** The cancel
 property waited three seconds and then cancelled, which is ample for bash and
 not always enough for PowerShell - two interpreter starts and a module import.
@@ -208,6 +218,12 @@ of the executable test: the BOM is the cause and every other symptom points
 somewhere unhelpful. Found because the twin comparison disagreed on Windows and
 nowhere else, and because the assertion printed the file's first eight bytes
 and its mode instead of just a number.
+
+**"It puts it back afterwards" is not "it changes nothing".** `--check` is what
+gets run where nobody is permitted to alter anything yet, and it wrote a probe
+file and deleted it - with a FIXED NAME, so a file already at that path was
+destroyed. The test missed it by deleting the directory first, which skipped the
+whole branch that runs when it exists. Snapshot the tree, not one path.
 
 **Git-Bash converts a path at the exec boundary and nowhere else.** An argument
 like `-LogPath /tmp/x` arrives at a native program already converted, so

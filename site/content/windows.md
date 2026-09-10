@@ -131,3 +131,35 @@ useless.
 The design is in
 [`docs/specs/2026-09-08-powershell-station-and-full-documentation-design.md`](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-08-powershell-station-and-full-documentation-design.md).
 This page will describe it when it exists, and not before.
+
+## The PowerShell station, for a box with no bash
+
+Everything above assumes Git for Windows, and where you have it that is the
+right answer: one implementation of the capture is better than two.
+
+`station/powershell/` is for the estate that has no bash and will not be given
+any. Run its preflight first - it changes nothing, and it answers the two
+questions that decide whether a station can work on that machine at all:
+
+```powershell
+.\start.ps1 --check
+```
+
+**Constrained Language Mode** stops the capture dead. Under it, .NET method
+calls and type literals are refused, which is most of `caplib.psm1`, and the
+failure otherwise reads as a syntax error in somebody else's file rather than
+as a policy decision. The preflight names it, and names AppLocker/WDAC and
+`__PSLockDownPolicy` as what sets it.
+
+**A GPO-set execution policy overrides `-ExecutionPolicy Bypass`.** A station
+that launches fine by hand then refuses to launch from a scheduled task. The
+preflight reads the policy *per scope*, because the effective value alone does
+not say who set it and therefore does not say whether you can change it.
+
+It also reports which **cancel** this machine gets: a Job Object where
+`Add-Type` is permitted, and `taskkill /T /F` where it is not. The second walks
+the child tree at the moment it runs, so a process started immediately after
+can survive - worth knowing before you rely on cancelling a long step.
+
+**It has no transport yet.** A step is captured to `ops-logs` and not
+delivered. For a Windows station that ships its logs, use the bash station.
