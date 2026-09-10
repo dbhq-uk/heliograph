@@ -67,13 +67,34 @@ SHARE_OK=(TRANSPORT=share "SHARE_DIR=$(winpath "$WORK/mnt")" SHARE_SCOPE=inv)
 # It can come from a .station-env, which is a file the far side may have
 # written. A name that escapes the directory runs somebody else's code with the
 # station's credentials.
-for bad in '../../evil' '/etc/passwd' 'Share' 'sh are' 'x;y' ''; do
+#
+# THE REFUSAL IS ASSERTED BY ITS DIAGNOSTIC, not by the call returning false.
+# The first version passed names at paths where no module exists, so DELETING
+# THE WHITELIST left every case green - it proved file absence, not validation.
+# The whitelist says "is not a usable transport name"; a missing file says
+# "no transport named". Those are different answers and only one of them is
+# this check.
+for bad in '../../evil' '/etc/passwd' 'Share' 'sh are' 'x;y' 'a..b'; do
   tp "if (Import-Tp -Name '$bad') { 'ACCEPTED' } else { 'refused' }"
   case "$TP_OUT" in
-    *ACCEPTED*) t_no "the transport name [$bad] was ACCEPTED, and it becomes a path that gets imported" ;;
-    *) t_ok "the transport name [$bad] is refused" ;;
+    *ACCEPTED*)
+      t_no "the transport name [$bad] was ACCEPTED, and it becomes a path that gets imported" ;;
+    *'is not a usable transport name'*)
+      t_ok "the transport name [$bad] is refused BY THE WHITELIST" ;;
+    *)
+      t_no "the transport name [$bad] was refused, but not by the whitelist - so the whitelist is not what stopped it"
+      printf '     it said: %s\n' "$(printf '%s' "$TP_OUT" | head -1)" ;;
   esac
 done
+
+# A TRAVERSAL THAT RESOLVES TO A REAL MODULE. This is the case that separates
+# the whitelist from the filesystem: without the whitelist it would load.
+tp "if (Import-Tp -Name '../transports/share') { 'ACCEPTED' } else { 'refused' }" "${SHARE_OK[@]}"
+case "$TP_OUT" in
+  *ACCEPTED*) t_no "a traversal that RESOLVES TO A REAL MODULE was accepted" ;;
+  *'is not a usable transport name'*) t_ok "and a traversal that resolves to a real module is refused by the whitelist" ;;
+  *) t_no "the traversal was refused, but not by the whitelist" ;;
+esac
 
 tp "if (Import-Tp -Name 'share') { 'loaded' }" "${SHARE_OK[@]}"
 assert_contains "and an ordinary name still loads, so the guard is not refusing everything" \
@@ -117,6 +138,29 @@ if [ -d "$WORK/nosuchmount" ]; then
 else
   t_ok "and nothing was created, so an unmounted volume stays visible as one"
 fi
+
+# --- A LINK INSIDE THE SHARE IS REFUSED, and ops-logs counts ----------------
+# The share is the security boundary; a link inside it points somewhere the
+# mount's permissions do not describe. BOTH components matter, and only
+# checking the scope leaves the one that actually receives logs unchecked - a
+# linked `ops-logs` sends every delivery somewhere the control side never
+# reads, and Send-TpLog returns true having written it there.
+mkdir -p "$WORK/elsewhere" "$WORK/mnt/linked"
+for target in scope logs; do
+  rm -rf "$WORK/mnt/linkscope" "$WORK/mnt/linked/ops-logs"
+  case "$target" in
+    scope) ln -s "$WORK/elsewhere" "$WORK/mnt/linkscope"; scope=linkscope ;;
+    logs)  ln -s "$WORK/elsewhere" "$WORK/mnt/linked/ops-logs"; scope=linked ;;
+  esac
+  tp "if (Import-Tp) { 'ACCEPTED' } else { 'refused' }" \
+    TRANSPORT=share "SHARE_DIR=$(winpath "$WORK/mnt")" "SHARE_SCOPE=$scope"
+  case "$TP_OUT" in
+    *ACCEPTED*) t_no "a linked $target was ACCEPTED: a delivery would land where the control side never reads" ;;
+    *'link or reparse point'*) t_ok "a linked $target is refused, and the refusal says why" ;;
+    *) t_no "a linked $target was refused, but not as a link" ;;
+  esac
+done
+rm -rf "$WORK/mnt/linkscope" "$WORK/mnt/linked"
 
 # --- Initialize-Tp CREATES NOTHING, because --check calls it -----------------
 before="$(find "$WORK/mnt" | LC_ALL=C sort)"
@@ -189,17 +233,32 @@ done
 # other user on the box can read it out of `ps`. GIT_CONFIG_* is how the bash
 # side avoids that, and this asserts the PowerShell side did not take the
 # shortcut.
-# CODE ONLY, not the comment that explains why this is avoided. The first
-# version grepped the whole file and matched its own explanation - the same
-# shape as the no-truncation gate firing on a comment about truncation.
-assert_eq "the git transport passes no credential on a git command line" "0" \
-  "$(grep -v '^[[:space:]]*#' "$PSDIR/transports/git.psm1" \
-     | grep -c -- '-c *http\.extraHeader')"
-assert_contains "it uses GIT_CONFIG_* instead" \
-  "GIT_CONFIG_KEY_" "$(cat "$PSDIR/transports/git.psm1")"
-# APPENDED at the next free index rather than slot 0: an operator may already
-# export their own GIT_CONFIG_*, and slot 0 would truncate theirs off the list.
-assert_contains "and appends at the next free index rather than overwriting slot 0" \
-  'GIT_CONFIG_COUNT' "$(cat "$PSDIR/transports/git.psm1")"
+# ASKED OF THE BEHAVIOUR, not of the source. Grepping the file for
+# `GIT_CONFIG_KEY_` passes on a comment and on preflight text, so deleting the
+# injection itself left both assertions green. This runs git through the
+# transport with a credential set and asks what git actually received.
+#
+# A local `git config --get` inside the repo reads the config the environment
+# injected, which is exactly the thing under test: if the header never reached
+# git, there is nothing to read.
+tp "if (Import-Tp) { Invoke-CapGit config --get http.extraHeader }" \
+  TRANSPORT=git "REPO_ROOT=$(winpath "$GITREPO")" GIT_TOKEN=INJECTEDTOKENVALUE
+case "$TP_OUT" in
+  *Authorization*) t_ok "the credential REACHES git, through the config it was injected into" ;;
+  *) t_no "git received no Authorization header at all, so the injection is not working"
+     printf '     it said: %s\n' "$(printf '%s' "$TP_OUT" | head -2)" ;;
+esac
+
+# AND NEVER ON A COMMAND LINE. Code only, not the comment that explains why
+# this is avoided - the first version grepped the whole file and matched its
+# own explanation, the same shape as the no-truncation gate firing on a comment
+# about truncation.
+#
+# The `-c` form IS present, for git older than 2.31 where the environment
+# mechanism does not exist and the choice is argv or no credential at all. So
+# this asserts it is reached only through that guard rather than being absent.
+assert_contains "the -c fallback exists only behind the version check" \
+  "Test-GitEnvConfig" "$(grep -v '^[[:space:]]*#' "$PSDIR/transports/git.psm1" \
+                          | grep -B 20 -- '-c "http\.extraHeader' || true)"
 
 t_summary

@@ -62,13 +62,27 @@ function Initialize-Tp {
         return $false
     }
 
-    # A SYMLINKED SCOPE IS REFUSED. The share is the security boundary, and a
-    # link inside it points somewhere the mount's permissions do not describe.
+    # A LINKED SCOPE **OR** ops-logs IS REFUSED. The share is the security
+    # boundary, and a link inside it points somewhere the mount's permissions
+    # do not describe.
+    #
+    # BOTH COMPONENTS, because only checking the scope leaves the one that
+    # actually receives logs unchecked: a linked `ops-logs` sends every
+    # delivery somewhere the control side never reads, and Send-TpLog returns
+    # true having written it there. transports/share.sh refuses either.
+    #
+    # ReparsePoint as well as LinkType, because on Windows a junction and a
+    # mount point are neither symlinks nor hard links and LinkType alone does
+    # not always name them.
     $scopePath = Join-Path $script:ShareDir $script:ShareScope
-    if (Test-Path -LiteralPath $scopePath) {
-        $item = Get-Item -LiteralPath $scopePath -Force
-        if ($item.LinkType) {
-            Write-CapTpError "$scopePath is a $($item.LinkType), and the share is the security boundary - a link inside it points somewhere the mount's permissions do not describe"
+    foreach ($p in $scopePath, (Join-Path $scopePath 'ops-logs')) {
+        if (-not (Test-Path -LiteralPath $p)) { continue }
+        $item = Get-Item -LiteralPath $p -Force
+        $isLink = $false
+        if ($item.LinkType) { $isLink = $true }
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { $isLink = $true }
+        if ($isLink) {
+            Write-CapTpError "$p is a link or reparse point, and the share is the security boundary - it points somewhere the mount's permissions do not describe, so a delivery would land where the control side never reads"
             return $false
         }
     }
@@ -159,11 +173,23 @@ function Test-Tp {
       IT CREATES NO DIRECTORY: it probes the deepest one that already exists,
       because `--check` promises to change nothing.
     #>
+    # THE DEEPEST DIRECTORY THAT ALREADY EXISTS, and ops-logs is deeper than
+    # the scope. Probing the scope when `ops-logs` exists with a stricter ACL
+    # approves a station that can write a status and cannot deliver a single
+    # log - which is the one thing this check is for.
+    #
+    # IT CREATES NOTHING: `--check` promises that, so it probes what is there
+    # rather than making the directory in order to test it.
     $dir = $script:ShareDir
     $what = 'the share root'
     if (Test-Path -LiteralPath $script:ShareBase -PathType Container) {
         $dir = $script:ShareBase
         $what = 'the scope directory'
+    }
+    $logs = Join-Path $script:ShareBase 'ops-logs'
+    if (Test-Path -LiteralPath $logs -PathType Container) {
+        $dir = $logs
+        $what = 'the ops-logs directory, which is where a log actually lands'
     }
 
     $tmp = Join-Path $dir ($script:TmpPrefix + 'check.' + [guid]::NewGuid().ToString('N'))

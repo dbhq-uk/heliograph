@@ -126,6 +126,22 @@ Stated on the site rather than hidden, so nobody plans around a promise.
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour
+- **Delivery pushes to the branch's configured upstream, not to `origin`.**
+  Both implementations do this - `cap_push` and `Send-TpLog` alike. If a branch
+  tracks the same-named branch on a DIFFERENT remote, a bare `git push`
+  succeeds, delivery is reported as done, and `origin` - the remote the
+  preflight named as the far side - receives nothing. The fix is to push
+  `HEAD:refs/heads/<branch>` to `origin` explicitly and to rebase from
+  `origin/<branch>`, in BOTH implementations together: fixing one would make
+  the twins disagree, which is the one thing they may not do. Found by an
+  adversarial read on 2026-09-10
+- **A push that the server completed can be reported as a failure.** If the
+  connection drops after the ref is updated but before the acknowledgement
+  reaches git, both push attempts return non-zero while the far side has the
+  commit. The station then says DELIVERY FAILED about a log that arrived. This
+  errs in the safe direction - it never claims a success it did not have - and
+  the fix is to query the remote ref after a failed push and compare. Both
+  implementations
 - **The two captures disagree about a bare carriage return.** A progress bar
   writing `step 1\rstep 2\rstep 3\n` is ONE line with embedded `^M` to the
   bash capture, because `read` splits on LF alone, and THREE lines to
@@ -194,6 +210,13 @@ Break every new assertion deliberately and watch it fail before keeping it.
 pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
+
+**A test can prove a file is absent while claiming to prove a guard works.**
+The transport-name whitelist was checked by passing `../../evil` and
+`/etc/passwd`, and every case passed with the whitelist DELETED - because no
+module exists at those paths, so the refusal came from the filesystem. The
+assertion now demands the whitelist's own diagnostic, and adds a traversal that
+RESOLVES TO A REAL MODULE: without the whitelist, that one loads.
 
 **`Import-Module` inside a module function imports into THAT module's session
 state.** The transport loader loaded the transport, initialised it, and returned

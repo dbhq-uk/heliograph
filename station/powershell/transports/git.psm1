@@ -22,6 +22,7 @@ Set-StrictMode -Version 2.0
 
 $script:RepoRoot = ''
 $script:Branch = ''
+$script:WriteCheckRef = 'refs/heads/heliograph-write-check'
 
 # $LASTEXITCODE IS UNSET UNTIL THE FIRST NATIVE CALL, and under
 # Set-StrictMode reading an unset variable THROWS rather than yielding $null.
@@ -116,8 +117,13 @@ function Get-GitAuthHeader {
             # An unreadable file yields no token, which is handled below. The
             # realistic mistake is GIT_TOKEN_FILE naming a mounted secrets
             # DIRECTORY rather than a file inside it.
+            # ReadAllLines strips the terminator and nothing else, which is
+            # what `sed -n 1p` does on the bash side. `.Trim()` was wrong here:
+            # it also removes leading and trailing bytes OF THE TOKEN, and a
+            # token that differs by one byte fails authentication with a
+            # message that says nothing about whitespace.
             $lines = [System.IO.File]::ReadAllLines($env:GIT_TOKEN_FILE)
-            if ($lines.Count -gt 0) { $tok = $lines[0].Trim() }
+            if ($lines.Count -gt 0) { $tok = $lines[0] }
         } catch {
             return ''
         }
@@ -128,6 +134,24 @@ function Get-GitAuthHeader {
     $pair = "$user`:$tok"
     $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pair))
     return "Basic $b64"
+}
+
+function Test-GitEnvConfig {
+    <#
+      .SYNOPSIS
+      $true when this git understands GIT_CONFIG_COUNT/KEY/VALUE (2.31+).
+      .DESCRIPTION
+      OLDER GIT SILENTLY IGNORES THEM. Not an error - it just runs
+      unauthenticated, so the push fails with a credential message while the
+      preflight says a credential is configured. caplib.sh checks the same
+      version for the same reason.
+    #>
+    $v = (& git --version 2>$null | Select-Object -First 1)
+    if ((Get-LastExit) -ne 0 -or -not $v) { return $false }
+    if ($v -notmatch 'git version (\d+)\.(\d+)') { return $false }
+    $maj = [int]$Matches[1]; $min = [int]$Matches[2]
+    if ($maj -gt 2) { return $true }
+    return ($maj -eq 2 -and $min -ge 31)
 }
 
 function Invoke-CapGit {
@@ -151,6 +175,25 @@ function Invoke-CapGit {
 
     $hdr = Get-GitAuthHeader
     $saved = @{}
+    $useEnv = $false
+    if ($hdr) { $useEnv = Test-GitEnvConfig }
+    if ($hdr -and -not $useEnv) {
+        # THE LESSER EVIL, and the same trade caplib.sh makes. On git older than
+        # 2.31 the environment mechanism does not exist, so the choice is
+        # `-c http.extraHeader=` - which puts the header in argv where `ps` can
+        # read it - or no credential at all, which means no delivery. A log that
+        # never arrives is worse than a token visible to whoever is already on
+        # this machine, and the preflight reports which is in force.
+        try {
+            $out = & git -C $script:RepoRoot -c "http.extraHeader=Authorization: $hdr" @GitArgs 2>&1 |
+                   ForEach-Object { "$_" }
+            $script:GitExit = Get-LastExit
+            return ($out -join "`n")
+        } catch {
+            $script:GitExit = 1
+            return "$($_.Exception.Message)"
+        }
+    }
     if ($hdr) {
         $n = 0
         if ($env:GIT_CONFIG_COUNT -match '^\d+$') { $n = [int]$env:GIT_CONFIG_COUNT }
@@ -187,7 +230,18 @@ function Test-Tp {
         Write-CapTpError "the remote did not answer, or refused this credential. './start.ps1 --check' reports which credential is in force"
         return $false
     }
-    $null = Invoke-CapGit push --dry-run origin HEAD
+    # A REF THAT DOES NOT EXIST, and the choice is load-bearing rather than
+    # arbitrary. `push --dry-run origin HEAD` is refused LOCALLY as a
+    # non-fast-forward the moment origin holds a commit this checkout lacks -
+    # which is the ordinary state every time a station starts, after any push
+    # by anyone. The credential is fine and the message blames it.
+    #
+    # A ref that does not exist cannot be a non-fast-forward, --dry-run creates
+    # nothing, and the push still negotiates with git-receive-pack, which is
+    # the service write access is granted on. transports/git.sh uses this exact
+    # ref name, and it is fixed rather than generated so it is greppable in a
+    # git host's audit log.
+    $null = Invoke-CapGit push --dry-run origin "HEAD:$script:WriteCheckRef"
     if ($script:GitExit -ne 0) {
         Write-CapTpError "the remote is readable but refused a push. A read credential and a write credential are different grants on most hosts, and a station that cannot push captures logs it can never deliver"
         return $false
@@ -305,5 +359,12 @@ Export-ModuleMember -Function @(
     'Test-TpPreflight',
     'Hide-GitCredential',
     'Get-GitAuthHeader',
-    'Get-LastExit'
+    'Get-LastExit',
+    'Test-GitEnvConfig',
+    # EXPORTED because it is this transport's single git entry point - the rule
+    # this file is built on is that every git command the station issues is in
+    # here, and the loop will need to issue some. It is also the only way to ask
+    # BEHAVIOURALLY whether the credential reached git, rather than grepping the
+    # source and matching a comment.
+    'Invoke-CapGit'
 )
