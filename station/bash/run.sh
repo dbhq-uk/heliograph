@@ -148,6 +148,32 @@ ps_step() {
   exit 4
 }
 
+# A BOM IS REFUSED, and said, because the alternative is three silent failures.
+#
+# Three invisible bytes before `#!` mean the kernel does not find the
+# interpreter. Three before `# heliograph-mode:` mean the anchored sed below
+# does not match and the step is refused as UNDECLARED - true, and useless,
+# because the declaration is right there in the file the author is looking at.
+#
+# And on Git-Bash the exec bit is INFERRED FROM A SHEBANG AT OFFSET 0, so a BOM
+# also makes `[ -x ]` false - and the runner told a Windows operator to
+# `chmod +x`, which cannot fix it. That is why this is checked BEFORE the
+# executable test rather than next to the mode gate: the BOM is the cause and
+# everything else is a symptom pointing somewhere unhelpful.
+#
+# run.ps1 refuses the same thing with the same code. Editors on Windows write a
+# BOM by default, so a step written on the control node and run on a Windows
+# station is exactly where this turns up.
+refuse_bom() {
+  [ -n "${1:-}" ] && [ -r "$1" ] || return 0
+  [ "$(head -c 3 "$1" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "efbbbf" ] || return 0
+  echo "step '$STEP' ($1) starts with a byte-order mark." >&2
+  echo "  A BOM is three invisible bytes before the first character. They break" >&2
+  echo "  the shebang, hide the declaration from both runners, and on Git-Bash" >&2
+  echo "  they make the file look non-executable. Save it as UTF-8 without one." >&2
+  exit 3
+}
+
 # --- pick the command (validate the step BEFORE any side effect) -------------
 # Every step is an argv array. Keep them one line each so the table stays a
 # readable index of what this branch can do.
@@ -193,6 +219,7 @@ case "$STEP" in
           #
           # MODE_QUERY is exempt: --mode and --file promise to touch nothing, and
           # a declaration is readable whether or not the file can be executed.
+          refuse_bom "$STEP_PATH"
           if [ "$MODE_QUERY" != "1" ] && [ ! -x "$STEP_PATH" ]; then
             echo "step file is not executable: $STEP_PATH" >&2
             echo "    chmod +x $STEP_PATH" >&2
@@ -228,24 +255,7 @@ esac
 # It makes the classification an explicit statement in the file being run,
 # checked at the boundary, instead of a guess made from its name.
 STEP_FILE="${STEP_FILE:-${CMD[0]-}}"
-# A BOM IS REFUSED, and said, because the alternative is two silent failures.
-#
-# Three invisible bytes before `#!` mean the kernel does not find the
-# interpreter, and the run fails with something that names neither the file nor
-# the bytes. Three before `# heliograph-mode:` mean the anchored sed below does
-# not match and the step is refused as UNDECLARED - which is true and useless,
-# because the declaration is right there in the file the author is looking at.
-#
-# run.ps1 refuses the same thing with the same code. Editors on Windows write a
-# BOM by default, so a step written on the control node and run on a Windows
-# station is exactly where this turns up.
-if [ "$(head -c 3 "$STEP_FILE" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "efbbbf" ]; then
-  echo "step '$STEP' ($STEP_FILE) starts with a byte-order mark." >&2
-  echo "  A BOM is three invisible bytes before the first character. They break" >&2
-  echo "  the shebang and hide the declaration from both runners. Save the file" >&2
-  echo "  as UTF-8 without a BOM." >&2
-  exit 3
-fi
+refuse_bom "$STEP_FILE"
 
 MODE="$(sed -n '1,30{s/^#[[:space:]]*heliograph-mode:[[:space:]]*\([A-Za-z-]*\).*/\1/p;}' "$STEP_FILE" 2>/dev/null | head -1)"
 

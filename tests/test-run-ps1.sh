@@ -415,7 +415,7 @@ if "$HERE/../station/bootstrap.sh" "$BASHREPO" >/dev/null 2>&1; then
   rm -f "$WORK/twin-bash-ran" "$WORK/twin-ps-ran"
   printf '\xef\xbb\xbf#!/usr/bin/env bash\n# heliograph-mode: read-only\necho ran\n' \
     > "$BASHREPO/steps/twin.sh"
-  chmod +x "$BASHREPO/steps/twin.sh"
+  chmod +x "$BASHREPO/steps/twin.sh" 2>/dev/null || true
   printf '\xef\xbb\xbf# heliograph-mode: read-only\nWrite-Output "ran"\n' > "$WORK/steps/twin.ps1"
   ( cd "$BASHREPO" && PUSH=0 ALLOW_ROOT=1 ./run.sh ./steps/twin.sh ) >/dev/null 2>"$WORK/bomb.err"
   bomb=$?

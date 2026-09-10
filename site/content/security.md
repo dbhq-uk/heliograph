@@ -37,8 +37,9 @@ Read **case-sensitively**, in both runners. `READ-ONLY` is not `read-only`, and
 case-insensitively by default and bash does not, so until both were made strict
 a state-changing step ran on one implementation and was refused by the other,
 *from the same request*. A byte-order mark is refused too, by both, and said
-plainly - three invisible bytes hide the declaration from a `sed` anchor and
-break a shebang.
+plainly - three invisible bytes hide the declaration from a `sed` anchor, break
+a shebang, and on Git-Bash make the file look non-executable, so every symptom
+points somewhere other than the cause.
 
 **2. An action needs `CONFIRM=yes`.** Carried in the request's `env:` line and
 checked by the runner.

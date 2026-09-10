@@ -190,6 +190,23 @@ pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
 
+**A fixed sleep encodes one implementation's startup time.** The cancel
+property waited three seconds and then cancelled, which is ample for bash and
+not always enough for PowerShell - two interpreter starts and a module import.
+On a loaded machine the cancel landed before a single line was captured, and
+the property reported *"the partial log does not survive a cancel"* about a run
+that had not produced one. It waits for the run to be demonstrably under way
+now. A specification may not assume how fast an implementation starts.
+
+**A BOM makes a file look non-executable to Git-Bash.** The exec bit there is
+inferred from a shebang at offset 0, and three invisible bytes move it - so
+`run.sh` refused a BOM'd step with *"step file is not executable"* and told a
+Windows operator to `chmod +x`, which cannot fix it. The BOM check moved ahead
+of the executable test: the BOM is the cause and every other symptom points
+somewhere unhelpful. Found because the twin comparison disagreed on Windows and
+nowhere else, and because the assertion printed the file's first eight bytes
+and its mode instead of just a number.
+
 **Git-Bash converts a path at the exec boundary and nowhere else.** An argument
 like `-LogPath /tmp/x` arrives at a native program already converted, so
 everything looked fine; a path EMBEDDED IN A SCRIPT gets no such treatment, and

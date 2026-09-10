@@ -373,7 +373,28 @@ if drv_supports cancel; then
   # What is in that file is the driver's business; the suite only hands it over.
   P8_HANDLE="$WORK/p8.handle"
   drv_capture_bg "$WORK/p8.log" "$WORK/slow" "$P8_HANDLE"
-  sleep 3
+
+  # CANCEL A RUN THAT IS UNDER WAY, which means waiting until it demonstrably
+  # is. A fixed sleep assumed the implementation starts as fast as bash does,
+  # and PowerShell does not: two interpreter starts and a module import took
+  # longer than three seconds on a loaded machine, the cancel landed before a
+  # single line was captured, and the property reported "the partial log does
+  # not survive" about a run that had not yet produced one.
+  #
+  # Waiting for two stamped lines rather than one, because the assertions below
+  # ask for at least two - so the wait and the assertion agree about what
+  # "started" means instead of racing each other.
+  p8_waited=0
+  while [ "$(grep -c ' | ' "$WORK/p8.log" 2>/dev/null || echo 0)" -lt 2 ]; do
+    p8_waited=$((p8_waited + 1))
+    if [ "$p8_waited" -gt 300 ]; then
+      t_no "p8: the capture produced no output in 30s, so there was nothing to cancel"
+      break
+    fi
+    sleep 0.1
+  done
+  # And a moment more, so the cancel lands mid-run rather than between lines.
+  sleep 1
 
   drv_cancel "$P8_HANDLE"
   p8_reported=$?
