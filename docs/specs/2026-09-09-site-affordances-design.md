@@ -50,3 +50,32 @@ The copy controls were then proved in a real browser against the built site:
 the code button puts the block's exact text on the clipboard, and the markdown
 button puts the 2,244 bytes of `install.md` on it. A test that asserts a
 button exists is not a test that it copies anything.
+
+## The DBHQ menu, and what it replaced (added later the same day)
+
+PR #45 put an "Also from DBHQ" list in the footer: three links, on all 27
+pages, at the point a reader has already stopped reading. It is gone. In its
+place:
+
+- **A `DBHQ` menu in the home header**, a `<details>` so it opens with no
+  JavaScript and gets its keyboard behaviour from the browser. The script only
+  closes it on an outside click or Escape, which is the one thing `<details>`
+  does not do and whose absence reads as broken. It names two siblings and the
+  skills, then points at the page.
+- **`/dbhq`**, a page: the sites you can open now, the skills marketplace with
+  its install command, the two free browser tools, and the company. It links
+  to `dbhq.uk/skills` rather than copying that list, because a copy of
+  twenty-odd skills would be wrong within the week and nothing here could
+  catch it.
+- **A `More from DBHQ` group in every docs sidebar**, since docs pages carry
+  no header.
+
+The footer byline went with it. Attribution did not: the JSON-LD on every page
+still names DBHQ as author and publisher.
+
+**A defect found while checking the new page.** `| | |` is this repository's
+idiom for a table with no header, used on ten pages. It matches the
+`|---|---|` separator pattern, so it was skipped, and the first row of *data*
+was promoted into `<thead>` - rendered in small caps by the CSS, and no longer
+data to a screen reader. `/index`'s "control, transport, station" table
+shipped like that. Fixed in `RenderBody`, with a test for both shapes.

@@ -422,11 +422,6 @@ footer{border-top:1px solid var(--ridge);background:var(--dusk);
 footer .inner{max-width:min(76rem,92vw);margin:0 auto;display:flex;gap:1.6rem;
   flex-wrap:wrap;align-items:center;justify-content:space-between}
 footer p{margin:0}
-footer .also{display:block;margin:1.7rem auto 0;padding-top:1.7rem;border-top:1px solid var(--ridge)}
-footer .also-label{margin:0 0 .6rem;color:var(--ink-3);font-size:.78rem;font-weight:600;
-  letter-spacing:.12em;text-transform:uppercase}
-footer .also-list{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:.4rem 2rem}
-footer .also-list li{margin:0}
 
 /* ---------------------------------------------------------------- motion */
 @media (prefers-reduced-motion:reduce){
@@ -497,6 +492,37 @@ footer .also-list li{margin:0}
    that never changes while the page moves under it. */
 .rail nav a.here{color:var(--flash)}
 .rail nav a.here::before{background:var(--gold)}
+
+/* The DBHQ menu in the home header. A <details>, so it opens with no
+   JavaScript; the panel is absolutely positioned so opening it does not
+   push the header's own links sideways. */
+.org-menu{position:relative;display:inline-block}
+.org-menu>summary{
+  display:inline-flex;align-items:center;gap:.28rem;cursor:pointer;list-style:none;
+  color:var(--ink-2);transition:color .2s var(--ease)}
+.org-menu>summary::-webkit-details-marker{display:none}
+.org-menu>summary:hover,.org-menu[open]>summary{color:var(--flash)}
+.org-menu>summary svg{width:13px;height:13px;transition:transform .2s var(--ease)}
+.org-menu[open]>summary svg{transform:rotate(180deg)}
+.org-panel{
+  position:absolute;right:0;top:calc(100% + .7rem);z-index:40;
+  width:min(20rem,calc(100vw - 2rem));
+  display:flex;flex-direction:column;
+  background:var(--dusk);border:1px solid var(--ridge);border-radius:10px;
+  padding:.4rem;box-shadow:0 16px 44px rgba(4,7,11,.7)}
+.org-panel a{
+  display:block;padding:.55rem .65rem;border-radius:7px;text-decoration:none;
+  color:var(--ink);line-height:1.35}
+.org-panel a:hover{background:var(--slate)}
+.org-panel a b{display:block;font-weight:600;font-size:.94rem}
+.org-panel a span{display:block;color:var(--ink-3);font-size:.82rem;margin-top:.1rem}
+.org-panel .org-all{
+  margin-top:.25rem;border-top:1px solid var(--ridge);border-radius:0 0 7px 7px;
+  color:var(--gold);font-size:.88rem;font-weight:500}
+/* The panel stays anchored to the menu's RIGHT edge at every width. An
+   earlier left:0 override for narrow screens ran it off the side of a phone:
+   the menu sits near the right edge, so a panel growing rightwards from there
+   has nowhere to go. */
 
 `
 
@@ -790,6 +816,21 @@ const RailJS = `
     paint();
   },{rootMargin:'0px 0px -70% 0px'});
   ids.forEach(function(id){io.observe(document.getElementById(id));});
+})();
+`
+
+// OrgJS closes the DBHQ menu on an outside click or Escape. The one thing
+// <details> does not do on its own, and whose absence reads as broken.
+const OrgJS = `
+(function(){
+  var menu=document.querySelector('.org-menu');
+  if(!menu)return;
+  document.addEventListener('click',function(e){
+    if(menu.open&&!menu.contains(e.target))menu.open=false;
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'&&menu.open){menu.open=false;menu.querySelector('summary').focus();}
+  });
 })();
 `
 

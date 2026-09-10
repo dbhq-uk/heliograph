@@ -461,3 +461,65 @@ func TestTheSiteHasAFaviconEverythingCanRead(t *testing.T) {
 		}
 	}
 }
+
+// The other things DBHQ makes were one line of footer byline. They are now a
+// menu on the home page, a group in every docs sidebar, and a page.
+func TestTheDBHQMenuIsReachableFromEveryPage(t *testing.T) {
+	out := buildSite(t)
+	for name, h := range htmlPages(t, out) {
+		if name == "dbhq.html" {
+			continue
+		}
+		if !strings.Contains(h, `href="/dbhq"`) {
+			t.Errorf("%s has no way to reach the DBHQ projects page", name)
+		}
+	}
+	home := htmlPages(t, out)["index.html"]
+	if !strings.Contains(home, `<details class="org-menu">`) ||
+		!strings.Contains(home, `<summary`) {
+		t.Error("the home header has no DBHQ menu")
+	}
+	for _, want := range []string{"https://bbs.dbhq.uk", "https://modem.dbhq.uk", `href="/dbhq"`} {
+		if !strings.Contains(home[:strings.Index(home, "</header>")], want) {
+			t.Errorf("the DBHQ menu does not list %s", want)
+		}
+	}
+}
+
+// The footer carried a byline and, from #45, a three-item "Also from DBHQ"
+// list. Both said the same thing on all 27 pages, at the point a reader has
+// already left. The menu and the page say it where somebody is looking.
+func TestTheFooterCarriesNoDBHQBlock(t *testing.T) {
+	out := buildSite(t)
+	for name, h := range htmlPages(t, out) {
+		i := strings.Index(h, "<footer>")
+		if i < 0 {
+			t.Errorf("%s has no footer", name)
+			continue
+		}
+		foot := h[i:]
+		for _, gone := range []string{"free, open-source tool by", "Also from DBHQ", "also-list"} {
+			if strings.Contains(foot, gone) {
+				t.Errorf("%s still carries %q in its footer", name, gone)
+			}
+		}
+	}
+}
+
+// The page itself: every project it names is a link, and it points at the
+// company rather than describing it second-hand.
+func TestTheDBHQPageLinksToTheProjectsItNames(t *testing.T) {
+	out := buildSite(t)
+	h, ok := htmlPages(t, out)["dbhq.html"]
+	if !ok {
+		t.Fatal("there is no dbhq page")
+	}
+	for _, want := range []string{
+		"https://dbhq.uk", "https://bbs.dbhq.uk", "https://modem.dbhq.uk",
+		"https://github.com/dbhq-uk/marketplace", "https://dbhq.uk/skills/",
+	} {
+		if !strings.Contains(h, `href="`+want+`"`) {
+			t.Errorf("the DBHQ page does not link to %s", want)
+		}
+	}
+}

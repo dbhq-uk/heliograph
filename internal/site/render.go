@@ -195,6 +195,18 @@ func RenderBody(md string) string {
 			continue
 		}
 
+		// `| | |` is the idiom for a table with no header: two columns of
+		// label and value, where a header row would be furniture. It matches
+		// the separator pattern below, so without this it was skipped and the
+		// first row of DATA became the header - in small caps, and no longer
+		// data to a screen reader. Ten pages shipped like that.
+		if !inTable && reTableRow.MatchString(l) &&
+			strings.TrimSpace(strings.ReplaceAll(l, "|", "")) == "" {
+			closeBlocks()
+			out.WriteString("<div class=\"tw\"><table><tbody>\n")
+			inTable = true
+			continue
+		}
 		if reTableSep.MatchString(l) {
 			continue // the |---|---| row carries no content
 		}
