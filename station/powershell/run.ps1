@@ -25,12 +25,15 @@
 #     5  refused: this account is privileged
 #     *  otherwise the step's own exit code, unchanged
 # =============================================================================
-[CmdletBinding()]
-param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]] $Args_ = @()
-)
-
+# NO param() BLOCK AND NO [CmdletBinding()], deliberately.
+#
+# CmdletBinding adds the common parameters, and PowerShell binds them BEFORE
+# this script sees anything - so `.\run.ps1 -Verbose` set a preference and ran
+# the DEFAULT step, while run.sh called it an unknown step and exited 2. A step
+# name that happens to start with a hyphen, or to abbreviate a common
+# parameter, must reach the gates like any other.
+#
+# The automatic $args gets the words as typed, with no binding of any kind.
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
@@ -68,18 +71,24 @@ function Write-Err { param([string] $Text) [Console]::Error.WriteLine($Text) }
 # table itself - two copies of that mapping would drift the first time somebody
 # registered a step that takes arguments.
 $query = ''
-$rest = @($Args_)
+$rest = @($args)
 if ($rest.Count -gt 0) {
-    switch ($rest[0]) {
-        '--mode' { $query = 'mode'; $rest = @($rest[1..($rest.Count - 1)]) }
-        '--file' { $query = 'file'; $rest = @($rest[1..($rest.Count - 1)]) }
+    # -ceq, because run.sh's `case` is case-sensitive and `--MODE` is not an
+    # option there.
+    if ($rest[0] -ceq '--mode' -or $rest[0] -ceq '--file') {
+        $query = $rest[0].Substring(2)
+        # `@()` WHEN THERE IS NOTHING LEFT. `1..0` in PowerShell is the sequence
+        # 1,0 - it counts DOWN - so `$rest[1..0]` on a one-element array yields
+        # two elements rather than none, and `.\run.ps1 --mode` was treated as
+        # a step named `--mode`. run.sh shifts the option and answers about the
+        # default step.
+        if ($rest.Count -gt 1) { $rest = @($rest[1..($rest.Count - 1)]) } else { $rest = @() }
     }
 }
-$modeQuery = [bool]$query
 
 $step = if ($rest.Count -gt 0 -and $rest[0]) { $rest[0] } else { $DefaultStep }
 
-if ($step -eq '--list' -or $step -eq '-l') {
+if ($step -ceq '--list' -or $step -ceq '-l') {
     # Read out of this file, so the table and the listing cannot disagree.
     $inBlock = $false
     foreach ($l in [System.IO.File]::ReadAllLines($MyInvocation.MyCommand.Path)) {
@@ -134,7 +143,52 @@ if ($StepTable.ContainsKey($step)) {
 # refuses exactly as a committed one does.
 $mode = ''
 $lineNo = 0
-foreach ($l in [System.IO.File]::ReadAllLines($stepFile)) {
+
+# THE FILE IS READ AS BYTES FIRST, for two reasons that both end in the two
+# runners disagreeing about the same file.
+#
+# A BOM. `File.ReadAllLines` detects one and strips it, so a declaration behind
+# a BOM is accepted here - while run.sh's `sed` sees those bytes before the `#`,
+# the anchor does not match, and the step is refused as undeclared. Editors on
+# Windows write BOMs by default, so this is the common case rather than the
+# exotic one. Refused here too, and SAID, because "your editor added three
+# invisible bytes" is a fixable answer and "declares no mode" is not.
+#
+# UNREADABLE. Resolve-Path and Test-Path succeeding do not mean ReadAllLines
+# will: an ACL, a lock, or a file replaced between the two throws, and the
+# uncaught exception exits 1 - a code the contract does not define and the loop
+# would misreport.
+$headBytes = $null
+try {
+    $headBytes = [System.IO.File]::ReadAllBytes($stepFile)
+} catch {
+    Write-Err "cannot read step file: $stepFile"
+    Write-Err "  $($_.Exception.Message)"
+    exit 2
+}
+if ($headBytes.Length -ge 2) {
+    $b0 = $headBytes[0]; $b1 = $headBytes[1]
+    $b2 = if ($headBytes.Length -ge 3) { $headBytes[2] } else { 0 }
+    if (($b0 -eq 0xEF -and $b1 -eq 0xBB -and $b2 -eq 0xBF) -or
+        ($b0 -eq 0xFF -and $b1 -eq 0xFE) -or ($b0 -eq 0xFE -and $b1 -eq 0xFF)) {
+        Write-Err "step '$step' ($stepFile) starts with a byte-order mark."
+        Write-Err "  A BOM is three invisible bytes before the first character, and the"
+        Write-Err "  declaration must be the first thing on its line for BOTH runners to"
+        Write-Err "  read it. Save the file as UTF-8 without a BOM."
+        exit 3
+    }
+}
+
+$stepLines = $null
+try {
+    $stepLines = [System.IO.File]::ReadAllLines($stepFile)
+} catch {
+    Write-Err "cannot read step file: $stepFile"
+    Write-Err "  $($_.Exception.Message)"
+    exit 2
+}
+
+foreach ($l in $stepLines) {
     $lineNo++
     if ($lineNo -gt 30) { break }
     # -cmatch, case-sensitive, for the same reason as the switch below: the
@@ -223,10 +277,28 @@ $out = Join-Path $outDir ("$label-$stamp.txt")
 
 $shell = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 
+# THE CHILD IS TOLD TO EMIT UTF-8, rather than only being decoded as it.
+#
+# caplib.psm1 sets StandardOutputEncoding, which chooses the DECODER and cannot
+# make an arbitrary program emit UTF-8 - Microsoft is explicit about that. Here
+# the child is not arbitrary: it is PowerShell, so it can be told. Under 5.1 on
+# a console with an OEM codepage, a step printing a non-ASCII character
+# otherwise lands in the log as mojibake, and the damage is done before
+# anything downstream sees the line.
+#
+# `exit $LASTEXITCODE` at the end, or the wrapper's own success would replace
+# the step's exit code - which is property 3, broken by the thing added to
+# protect property 10.
+$wrapper = @(
+    '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false);'
+    "& '" + $stepFile.Replace("'", "''") + "';"
+    'exit $LASTEXITCODE'
+) -join ' '
+
 Write-Host ''
 Write-Host "==> STEP: $step"
 Write-CapHeader -Path $out -Label "STEP: $step" -Context @("command: $shell -File $stepFile")
-$rc = Invoke-CapRun -Path $out -FilePath $shell -ArgumentList @('-NoProfile', '-File', $stepFile)
+$rc = Invoke-CapRun -Path $out -FilePath $shell -ArgumentList @('-NoProfile', '-Command', $wrapper)
 Write-CapFooter -Path $out -ExitCode $rc
 
 # DELIVERY IS NOT HERE YET. The transports are a later PR, and a runner that

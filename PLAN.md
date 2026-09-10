@@ -190,6 +190,13 @@ pages turned up three false claims, including one fatal: `station.sh` required a
 local `station/request` file, which blob and relay never create, so a relay
 station could never run a step at all. Nothing else had noticed.
 
+**A loop that refuses at the wrong gate has tested nothing.** The check that
+`HELIOGRAPH_ASSUME_PRIVILEGED` cannot OPEN the privileged gate ran an action
+with no `CONFIRM`, so gate 2 refused every iteration before gate 4 was reached.
+Every value "refused", the assertion passed, and a value that opened gate 4
+would have gone unnoticed. Found by an adversarial read on 2026-09-10. When a
+test asserts that gate N did something, the input has to reach gate N.
+
 **Two implementations of one rule need a test that compares them, not two
 tests.** `run.ps1` and `run.sh` were each tested and each passed, and three
 things still meant different things to the two of them - `CONFIRM=YES`,

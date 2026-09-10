@@ -97,10 +97,23 @@ Invoke-ProbeOptional 'disk' {
 # it. Optional, because a station on the share or relay transport needs no git.
 foreach ($tool in 'git', 'curl', 'ssh', 'python3', 'dotnet') {
     Invoke-ProbeOptional "tool: $tool" {
-        $c = Get-Command $tool -ErrorAction SilentlyContinue
-        if (-not $c) { throw "not on PATH" }
+        # -CommandType Application, AND the resolved path is what gets run.
+        #
+        # Windows PowerShell 5.1 defines `curl` as an ALIAS for
+        # Invoke-WebRequest, so a bare `Get-Command curl` finds the cmdlet and
+        # `& curl --version` calls it - which fails with a parameter binding
+        # error and reports "curl is broken here" about a curl.exe that may not
+        # even be installed. `wget` and `ls` are the same story.
+        # Indexed, rather than the cmdlet that takes the first of a pipeline.
+        # CI refuses that cmdlet in a step outright and is right to: telling
+        # "pick one command" from "cut the evidence" needs a reader, and a gate
+        # that needs a reader is a gate that gets argued with. The comment
+        # avoids the literal too, or the gate would fire on this explanation.
+        $found = @(Get-Command $tool -CommandType Application -ErrorAction SilentlyContinue)
+        if ($found.Count -eq 0) { throw "not on PATH as an executable" }
+        $c = $found[0]
         "path   : $($c.Source)"
-        & $tool --version 2>&1
+        & $c.Source --version 2>&1
     }.GetNewClosure()
 }
 

@@ -26,96 +26,19 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/assert.sh"
 PSDIR="$(cd "$HERE/../station/powershell" && pwd)"
 
+# AN ARRAY, because CONF_PS_SHELL may be a full path and on Windows that path
+# contains "Program Files". Unquoted in a `for` word list it split into three
+# candidates, none of which exists.
+PS_CANDIDATES=()
+[ -n "${CONF_PS_SHELL:-}" ] && PS_CANDIDATES+=("$CONF_PS_SHELL")
+PS_CANDIDATES+=(pwsh powershell powershell.exe)
 PS_BIN=""
-for c in ${CONF_PS_SHELL:-} pwsh powershell powershell.exe; do
-  [ -n "$c" ] || continue
+for c in "${PS_CANDIDATES[@]}"; do
   if command -v "$c" >/dev/null 2>&1; then PS_BIN="$c"; break; fi
 done
 if [ -z "$PS_BIN" ]; then
   t_skip "no PowerShell interpreter: run.ps1's gates were NOT exercised."
-  # --- THE SHIPPED STEP ACTUALLY RUNS ------------------------------------------
-# The default step must work, or `.\run.ps1` with no arguments - the one command
-# an operator is asked to remember - fails on a fresh payload.
-#
-# AND IT MUST REPORT ZERO FAILED PROBES on the platform it is run on. That is
-# the assertion, not "it exited 0": three defects hid behind an exit code here.
-# `$LASTEXITCODE` is set only by a native call, so probes that ran nothing
-# native inherited the previous probe's code and reported failures they had
-# nothing to do with. `WindowsIdentity::GetCurrent()` threw everywhere but
-# Windows. And `exit (Write-ProbeSummary)` captured the tally into the
-# parentheses instead of printing it, so the log ended with no summary at all -
-# which reads exactly like a step that was cut off.
-SHIPPED="$WORK/shipped"
-mkdir -p "$SHIPPED"
-cp -r "$PSDIR/." "$SHIPPED/"
-step_out="$( cd "$SHIPPED" && PUSH=0 "$PS_BIN" -NoProfile -File ./run.ps1 env 2>&1 )"
-step_rc=$?
-assert_eq "the shipped default step runs, exit 0" "0" "$step_rc"
-assert_contains "and prints its summary, which is the last thing a reader looks for" \
-  "probes, " "$step_out"
-tally="$(printf '%s' "$step_out" | sed -n 's/.*| \([0-9]*\) probes, \([0-9]*\) failed.*/\1 \2/p' | tail -1)"
-case "$tally" in
-  *" 0") t_ok "and every required probe passed here: $tally" ;;
-  "")    t_no "the step printed no tally, so nothing above was measured" ;;
-  *)     t_no "the shipped step has failing probes on this platform: $tally"
-         printf '%s\n' "$step_out" | grep -A 2 'FAILED:' | sed 's/^/     /' | head -12 ;;
-esac
-assert_contains "and it asks the question that decides whether a station can run here" \
-  "LanguageMode" "$step_out"
-
-# --- THE TWINS AGREE, case by case -------------------------------------------
-# Every divergence above was found by hand, one spelling at a time, and two of
-# them were in a security gate: `CONFIRM=YES` ran a state-changing step here and
-# was refused by run.sh, and `# heliograph-mode: READ-ONLY` did the same. Both
-# because PowerShell compares case-insensitively and bash does not.
-#
-# Finding those by hand does not scale and does not stay found. So the same
-# DECLARATION goes through both runners and the exit codes must match. The body
-# of each step differs - one is bash, one is PowerShell - but the header is the
-# thing under test, and it is byte-identical.
-BASHREPO="$WORK/bashrepo"
-if "$HERE/../station/bootstrap.sh" "$BASHREPO" >/dev/null 2>&1; then
-
-  # case <name> <header> <env...> - runs it both ways, compares the codes
-  twin() {
-    local name="$1" header="$2"; shift 2
-    local envs=("$@") brc prc
-
-    printf '#!/usr/bin/env bash\n%s\necho ran\n' "$header" > "$BASHREPO/steps/twin.sh"
-    chmod +x "$BASHREPO/steps/twin.sh"
-    printf '%s\nWrite-Output "ran"\n' "$header" > "$WORK/steps/twin.ps1"
-
-    ( cd "$BASHREPO" && env "${envs[@]+"${envs[@]}"}" PUSH=0 \
-        ./run.sh ./steps/twin.sh ) >/dev/null 2>&1
-    brc=$?
-    ( cd "$WORK" && env "${envs[@]+"${envs[@]}"}" PUSH=0 \
-        "$PS_BIN" -NoProfile -File ./run.ps1 ./steps/twin.ps1 ) >/dev/null 2>&1
-    prc=$?
-
-    if [ "$brc" = "$prc" ]; then
-      t_ok "twins agree on $name: both exit $brc"
-    else
-      t_no "twins DISAGREE on $name: run.sh exits $brc, run.ps1 exits $prc"
-      printf '     The same declaration means two different things to two readers.\n'
-    fi
-  }
-
-  twin "a read-only step"              "# heliograph-mode: read-only"
-  twin "no declaration at all"         "# nothing declared here"
-  twin "an unrecognised mode"          "# heliograph-mode: banana"
-  twin "a mode in capitals"            "# heliograph-mode: READ-ONLY"
-  twin "a header in capitals"          "# HELIOGRAPH-MODE: read-only"
-  twin "a mode with odd spacing"       "#heliograph-mode:read-only"
-  twin "an action with no CONFIRM"     "# heliograph-mode: action"
-  twin "an action with CONFIRM=yes"    "# heliograph-mode: action" CONFIRM=yes
-  twin "an action with CONFIRM=YES"    "# heliograph-mode: action" CONFIRM=YES
-  twin "an action with CONFIRM=1"      "# heliograph-mode: action" CONFIRM=1
-  twin "an action with CONFIRM=true"   "# heliograph-mode: action" CONFIRM=true
-else
-  t_no "could not bootstrap a bash payload, so the twins were NOT compared"
-fi
-
-t_summary
+  t_summary
   exit 0
 fi
 t_ok "a PowerShell interpreter is present ($PS_BIN), so the assertions below ran"
@@ -152,7 +75,17 @@ logs() { find "$WORK/ops-logs" -name '*.txt' 2>/dev/null | wc -l | tr -d ' '; }
 # --- gate 1: a step declares itself, or it does not run ----------------------
 run -- ./steps/ok.ps1
 assert_eq "a declared read-only step runs, exit 0" "0" "$RC"
-assert_contains "and its output reaches the log" "ran ok" "$OUT"
+# THE LOG, not the terminal. $OUT is what the runner printed, and it prints
+# through Write-Host as well as writing the file - so this assertion stayed
+# green with the log write removed entirely, which is the one thing it exists
+# to check.
+oklog="$(find "$WORK/ops-logs" -name 'ok-*.txt' 2>/dev/null | tail -1)"
+if [ -n "$oklog" ]; then
+  assert_contains "and its output reaches THE LOG FILE, not just the terminal" \
+    "ran ok" "$(cat "$oklog")"
+else
+  t_no "a successful run wrote no log file at all"
+fi
 
 before="$(logs)"
 run -- ./steps/undeclared.ps1
@@ -218,17 +151,37 @@ assert_eq "ALLOW_ROOT=1 permits it, and keeps the bash spelling" "0" "$RC"
 # be a backdoor: an attacker who can set an environment variable could turn the
 # gate off. So every value that is not `1` must leave the gate exactly as it
 # was, and `1` must only ever refuse.
+# A READ-ONLY STEP, and this was wrong first time in a way worth recording: the
+# loop used an ACTION with no CONFIRM, so gate 2 refused every iteration before
+# gate 4 was reached. Every value "refused", the assertion passed, and it had
+# tested nothing about the privileged gate at all. A value that OPENED gate 4
+# would have gone unnoticed.
+#
+# With a read-only step, gate 4 is the only gate in the way, so the exit code
+# says exactly what that gate did.
 opened=""
-for v in 0 no false '' yes 2 1; do
-  run "HELIOGRAPH_ASSUME_PRIVILEGED=$v" -- ./steps/act.ps1
-  # An action with no CONFIRM must refuse whatever this variable says. If it
-  # ever exits 0, the variable has opened a gate rather than closed one.
-  [ "$RC" = "0" ] && opened="$opened [$v]"
+still=""
+for v in 0 no false '' yes 2 YES true; do
+  run "HELIOGRAPH_ASSUME_PRIVILEGED=$v" -- ./steps/ok.ps1
+  # Not 1: the seam must not force a refusal for anything but the documented
+  # value, or it is a way to break a station rather than to test one.
+  [ "$RC" = "5" ] && still="$still [$v]"
+done
+if [ -z "$still" ]; then
+  t_ok "no value but 1 makes HELIOGRAPH_ASSUME_PRIVILEGED refuse anything"
+else
+  t_no "HELIOGRAPH_ASSUME_PRIVILEGED refused for values it should ignore:$still"
+fi
+
+# And with the gate forced closed, nothing but the documented override opens it.
+for v in 0 no false '' 2 YES yes true; do
+  run HELIOGRAPH_ASSUME_PRIVILEGED=1 "ALLOW_ROOT=$v" -- ./steps/ok.ps1
+  [ "$RC" = "0" ] && opened="$opened [ALLOW_ROOT=$v]"
 done
 if [ -z "$opened" ]; then
-  t_ok "no value of HELIOGRAPH_ASSUME_PRIVILEGED opens any gate"
+  t_ok "and with it closed, only ALLOW_ROOT=1 opens gate 4 - no other value does"
 else
-  t_no "HELIOGRAPH_ASSUME_PRIVILEGED opened a gate for:$opened"
+  t_no "gate 4 opened for:$opened"
   printf '     A test seam that can permit a run is a backdoor with a test name.\n'
 fi
 
@@ -303,6 +256,49 @@ esac
 assert_contains "and it asks the question that decides whether a station can run here" \
   "LanguageMode" "$step_out"
 
+# --- probe accounting, which the shipped step alone cannot test ---------------
+# The step above passes, so nothing there would notice `$script:ProbeFailures++`
+# being deleted or `Get-ProbeExitCode` always returning 0. A tally that cannot
+# count a failure is a tally that says "17 probes, 0 failed" whatever happened.
+#
+# So: one step whose REQUIRED probe fails, and one whose OPTIONAL probe fails.
+# They must be counted differently - "this box has no systemd" is an answer,
+# not a failure - and that distinction is the whole reason the two exist.
+cat > "$WORK/steps/probefail.ps1" <<'PS'
+# heliograph-mode: read-only
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+Import-Module (Join-Path $here '../lib/probe.psm1') -Force
+Invoke-Probe 'one that works' { 'fine' }
+Invoke-Probe 'one that does not' { throw 'deliberate' }
+Write-ProbeSummary
+exit (Get-ProbeExitCode)
+PS
+cat > "$WORK/steps/probeopt.ps1" <<'PS'
+# heliograph-mode: read-only
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+Import-Module (Join-Path $here '../lib/probe.psm1') -Force
+Invoke-Probe 'one that works' { 'fine' }
+Invoke-ProbeOptional 'one that is absent' { throw 'deliberate' }
+Write-ProbeSummary
+exit (Get-ProbeExitCode)
+PS
+mkdir -p "$WORK/lib" && cp "$PSDIR/lib/probe.psm1" "$WORK/lib/"
+
+run -- ./steps/probefail.ps1
+assert_eq "a step with a failed REQUIRED probe exits 1" "1" "$RC"
+faillog="$(find "$WORK/ops-logs" -name 'probefail-*.txt' 2>/dev/null | tail -1)"
+assert_contains "and its tally counts the failure" "2 probes, 1 failed" "$(cat "$faillog" 2>/dev/null)"
+assert_contains "and the failing probe is named where it failed" \
+  "one that does not" "$(cat "$faillog" 2>/dev/null)"
+
+run -- ./steps/probeopt.ps1
+assert_eq "a step whose only failure is an OPTIONAL probe exits 0" "0" "$RC"
+optlog="$(find "$WORK/ops-logs" -name 'probeopt-*.txt' 2>/dev/null | tail -1)"
+assert_contains "and the tally does not count it as a failure" \
+  "2 probes, 0 failed" "$(cat "$optlog" 2>/dev/null)"
+assert_contains "but it is still reported, because absence is evidence" \
+  "absent or unavailable" "$(cat "$optlog" 2>/dev/null)"
+
 # --- THE TWINS AGREE, case by case -------------------------------------------
 # Every divergence above was found by hand, one spelling at a time, and two of
 # them were in a security gate: `CONFIRM=YES` ran a state-changing step here and
@@ -316,26 +312,39 @@ assert_contains "and it asks the question that decides whether a station can run
 BASHREPO="$WORK/bashrepo"
 if "$HERE/../station/bootstrap.sh" "$BASHREPO" >/dev/null 2>&1; then
 
-  # case <name> <header> <env...> - runs it both ways, compares the codes
+  # case <name> <header> <env...> - runs it both ways, compares the code AND
+  # whether the step actually executed.
+  #
+  # THE MARKER IS HALF THE COMPARISON. Two runners that both refuse with 3 for
+  # DIFFERENT reasons agree on the number and disagree on everything that
+  # matters, and an exit code alone cannot tell those apart. Each step touches
+  # a marker as its last act, so "did the body run" is a fact rather than an
+  # inference.
   twin() {
     local name="$1" header="$2"; shift 2
-    local envs=("$@") brc prc
+    local envs=("$@") brc prc bran pran
 
-    printf '#!/usr/bin/env bash\n%s\necho ran\n' "$header" > "$BASHREPO/steps/twin.sh"
+    rm -f "$WORK/twin-bash-ran" "$WORK/twin-ps-ran"
+    printf '#!/usr/bin/env bash\n%s\necho ran\n: > %s\n' \
+      "$header" "$(printf "'%s'" "$WORK/twin-bash-ran")" > "$BASHREPO/steps/twin.sh"
     chmod +x "$BASHREPO/steps/twin.sh"
-    printf '%s\nWrite-Output "ran"\n' "$header" > "$WORK/steps/twin.ps1"
+    printf '%s\nWrite-Output "ran"\nNew-Item -ItemType File -Force -Path %s | Out-Null\n' \
+      "$header" "$(printf "'%s'" "$WORK/twin-ps-ran")" > "$WORK/steps/twin.ps1"
 
-    ( cd "$BASHREPO" && env "${envs[@]+"${envs[@]}"}" PUSH=0 \
+    ( cd "$BASHREPO" && env "${envs[@]+"${envs[@]}"}" PUSH=0 ALLOW_ROOT=1 \
         ./run.sh ./steps/twin.sh ) >/dev/null 2>&1
     brc=$?
-    ( cd "$WORK" && env "${envs[@]+"${envs[@]}"}" PUSH=0 \
+    bran=no; [ -f "$WORK/twin-bash-ran" ] && bran=yes
+
+    ( cd "$WORK" && env "${envs[@]+"${envs[@]}"}" PUSH=0 ALLOW_ROOT=1 \
         "$PS_BIN" -NoProfile -File ./run.ps1 ./steps/twin.ps1 ) >/dev/null 2>&1
     prc=$?
+    pran=no; [ -f "$WORK/twin-ps-ran" ] && pran=yes
 
-    if [ "$brc" = "$prc" ]; then
-      t_ok "twins agree on $name: both exit $brc"
+    if [ "$brc" = "$prc" ] && [ "$bran" = "$pran" ]; then
+      t_ok "twins agree on $name: both exit $brc, both ran=$bran"
     else
-      t_no "twins DISAGREE on $name: run.sh exits $brc, run.ps1 exits $prc"
+      t_no "twins DISAGREE on $name: run.sh exit $brc ran=$bran, run.ps1 exit $prc ran=$pran"
       printf '     The same declaration means two different things to two readers.\n'
     fi
   }
@@ -351,6 +360,26 @@ if "$HERE/../station/bootstrap.sh" "$BASHREPO" >/dev/null 2>&1; then
   twin "an action with CONFIRM=YES"    "# heliograph-mode: action" CONFIRM=YES
   twin "an action with CONFIRM=1"      "# heliograph-mode: action" CONFIRM=1
   twin "an action with CONFIRM=true"   "# heliograph-mode: action" CONFIRM=true
+  twin "a declaration with trailing space" "# heliograph-mode: read-only "
+  twin "a declaration with a tab"       "#	heliograph-mode: read-only"
+  twin "a mode with a trailing comment" "# heliograph-mode: read-only   # measures nothing"
+
+  # A BOM, which both must refuse. Written by hand because the header argument
+  # cannot carry one: it is three bytes BEFORE the first character.
+  rm -f "$WORK/twin-bash-ran" "$WORK/twin-ps-ran"
+  printf '\xef\xbb\xbf#!/usr/bin/env bash\n# heliograph-mode: read-only\necho ran\n' \
+    > "$BASHREPO/steps/twin.sh"
+  chmod +x "$BASHREPO/steps/twin.sh"
+  printf '\xef\xbb\xbf# heliograph-mode: read-only\nWrite-Output "ran"\n' > "$WORK/steps/twin.ps1"
+  ( cd "$BASHREPO" && PUSH=0 ALLOW_ROOT=1 ./run.sh ./steps/twin.sh ) >/dev/null 2>&1
+  bomb=$?
+  ( cd "$WORK" && PUSH=0 ALLOW_ROOT=1 "$PS_BIN" -NoProfile -File ./run.ps1 ./steps/twin.ps1 ) >/dev/null 2>&1
+  bomp=$?
+  if [ "$bomb" = "3" ] && [ "$bomp" = "3" ]; then
+    t_ok "twins agree on a byte-order mark: both refuse with 3"
+  else
+    t_no "twins disagree on a BOM: run.sh exits $bomb, run.ps1 exits $bomp"
+  fi
 else
   t_no "could not bootstrap a bash payload, so the twins were NOT compared"
 fi
