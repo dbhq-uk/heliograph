@@ -191,9 +191,22 @@ drv_bootstrap() {
   return 0
 }
 
+# ALLOW_ROOT=1, and it is not a hole in the test.
+#
+# p5 asks whether a DECLARED step runs - it is testing the declaration gate,
+# and it needs one step that gets through. On a machine where the account is
+# already privileged EVERY step refuses with 5, which is the privileged gate
+# doing exactly its job, and p5 then fails for a reason that has nothing to do
+# with the property it is asserting.
+#
+# GitHub's Windows runner is an Administrator, so this is not hypothetical; it
+# is also true of anyone running the suite in a root container. p6 is what
+# tests the privileged gate, and it does NOT set this - so the gate is still
+# proved to refuse, by the property written for it.
 drv_step() {
   local dir="$1" step="$2"
-  ( cd "$dir" && PUSH=0 "$_P_SHELL" -NoProfile -File ./run.ps1 "./$step" ) >/dev/null 2>&1
+  ( cd "$dir" && PUSH=0 ALLOW_ROOT=1 \
+      "$_P_SHELL" -NoProfile -File ./run.ps1 "./$step" ) >/dev/null 2>&1
 }
 
 # WITHOUT BEING ADMINISTRATOR, and without a way to become one.
