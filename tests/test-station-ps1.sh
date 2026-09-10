@@ -167,20 +167,22 @@ assert_eq "and it passes again once the file is back" "0" "$PRE_RC"
 # was never in doubt. A step is a child of the capture and whatever the step
 # runs is a child of that, so the deepest is exactly the one that matters:
 # terraform surviving a cancel is the defect, not the shell that launched it.
-if [ "$IS_WINDOWS" = "1" ]; then
-  SLEEPER_CMD="cmd.exe"
-  SLEEPER_ARGS="'/c','timeout /t 300 /nobreak'"
-else
-  SLEEPER_CMD="/bin/sleep"
-  SLEEPER_ARGS="'300'"
-fi
+# THE SLEEPER IS POWERSHELL ON BOTH PLATFORMS, which removes a branch and a
+# defect with it. The Windows version used `cmd /c timeout /t 300`, and
+# `timeout` REFUSES A REDIRECTED STDIN - "ERROR: Input redirection is not
+# supported" - so it exited immediately and the deepest process was dead before
+# the cancel had anything to prove. The assertion caught that, which is the
+# whole reason it checks the tree is up before killing it.
 
-cat > "$WORK/child.ps1" <<PS
-param([string] \$PidFile)
+cat > "$WORK/child.ps1" <<'PS'
+param([string] $PidFile)
 # ITS OWN pid, and its child's. Written by the process they belong to, so
-# neither is inferred.
-\$sleeper = Start-Process -FilePath '$SLEEPER_CMD' -ArgumentList $SLEEPER_ARGS -PassThru
-[System.IO.File]::WriteAllText(\$PidFile, "\$PID\`n\$(\$sleeper.Id)")
+# neither is inferred - the first version recorded an intermediate process and
+# asserted on that, which is the one level that was never in doubt.
+$shell = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+$sleeper = Start-Process -FilePath $shell `
+    -ArgumentList '-NoProfile', '-Command', 'Start-Sleep -Seconds 300' -PassThru
+[System.IO.File]::WriteAllText($PidFile, "$PID`n$($sleeper.Id)")
 Start-Sleep -Seconds 300
 PS
 
