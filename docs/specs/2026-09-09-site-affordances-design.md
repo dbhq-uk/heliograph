@@ -79,3 +79,18 @@ idiom for a table with no header, used on ten pages. It matches the
 was promoted into `<thead>` - rendered in small caps by the CSS, and no longer
 data to a screen reader. `/index`'s "control, transport, station" table
 shipped like that. Fixed in `RenderBody`, with a test for both shapes.
+
+## What only a browser found (2026-09-10)
+
+The site gained client-side navigation between these two passes. It replaces
+`main` and the rail wholesale, so the rail's `IntersectionObserver` was left
+watching headings that had left the document: **the rail stopped marking the
+current section after one soft navigation**, on every page, while every page
+was correct on a hard load. No test in this repository could have seen it, and
+none did.
+
+`swap()` now announces with an `hg:swap` event and the rail rebinds on it,
+disconnecting its previous observer first so they cannot stack. The copy
+controls were checked at the same time and need nothing: they are delegated
+from `document`, so replacing the page under them changes nothing. Proved
+across two swaps and the back button.

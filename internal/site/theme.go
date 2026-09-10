@@ -794,8 +794,12 @@ const CopyJS = `
 // classic way to make a page feel heavy while doing nothing visible.
 const RailJS = `
 (function(){
+  if(!('IntersectionObserver' in window))return;
+  var io=null;
+  function bind(){
+  if(io){io.disconnect();io=null;}
   var rail=document.querySelector('.rail nav');
-  if(!rail||!('IntersectionObserver' in window))return;
+  if(!rail)return;
   var links={},ids=[];
   Array.prototype.forEach.call(rail.querySelectorAll('a'),function(a){
     var id=decodeURIComponent(a.getAttribute('href').slice(1));
@@ -811,11 +815,15 @@ const RailJS = `
     if(!current)return;
     for(var j=0;j<ids.length;j++)links[ids[j]].classList.toggle('here',ids[j]===current);
   }
-  var io=new IntersectionObserver(function(entries){
+  io=new IntersectionObserver(function(entries){
     entries.forEach(function(en){seen[en.target.id]=en.isIntersecting;});
     paint();
   },{rootMargin:'0px 0px -70% 0px'});
   ids.forEach(function(id){io.observe(document.getElementById(id));});
+  }
+  bind();
+  // The client-side navigation replaces main and the rail wholesale.
+  document.addEventListener('hg:swap',bind);
 })();
 `
 
@@ -952,6 +960,10 @@ const NavJS = `<script>
     // sidebar whose content no longer relates to the page on screen.
     main.focus({preventScroll:true});
     reveal(side,current(side));
+    // Anything bound to the old main or the old rail is now pointing at nodes
+    // that left the document. swap() announces; whatever needs rebinding
+    // listens, so the next thing that needs it does not have to edit this.
+    document.dispatchEvent(new CustomEvent('hg:swap'));
     return true;
   }
 
