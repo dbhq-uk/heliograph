@@ -1,7 +1,7 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.dbhq-uk/heliograph",
-  "description": "Run commands on a machine you cannot SSH into. For air-gapped, bastion-only and change-controlled estates.",
+  "description": "Run commands on a machine you cannot SSH into. Air-gapped, bastion-only, change-controlled.",
   "repository": {
     "url": "https://github.com/dbhq-uk/heliograph",
     "source": "github"

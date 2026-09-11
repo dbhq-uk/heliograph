@@ -225,3 +225,22 @@ func TestManifestToolsMatchTheServer(t *testing.T) {
 		t.Errorf("the manifest advertises %d tools; the server provides 7", len(seen))
 	}
 }
+
+// The registry rejects a description over 100 characters, and it rejects it at
+// publish time: the file validates locally, the schema says nothing, and the
+// first sign is a 422 from a command somebody runs once a release. The
+// description that shipped here was 106 characters and had never been sent.
+func TestServerJSONDescriptionFitsTheRegistry(t *testing.T) {
+	d, _ := read(t, "../server.json")["description"].(string)
+	if d == "" {
+		t.Fatal("server.json has no description")
+	}
+	if n := len([]rune(d)); n > 100 {
+		t.Errorf("the description is %d characters and the registry allows 100: %q", n, d)
+	}
+	// And it must still say what the thing does. "heliograph" alone is the
+	// 19th-century signalling mirror to everything that reads this listing.
+	if !strings.Contains(strings.ToLower(d), "run commands") {
+		t.Errorf("the description does not say what it runs: %q", d)
+	}
+}
