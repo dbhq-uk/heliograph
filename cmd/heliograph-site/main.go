@@ -32,7 +32,8 @@ var order = []string{
 	"claude-code", "codex", "mcp",
 	"station", "bootstrap", "steps", "runner", "conformance",
 	"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped",
-	"transports", "relay", "intercom", "cli", "secrets", "security", "method",
+	"transports", "matrix", "relay", "intercom", "cli", "secrets", "security", "method",
+	"roadmap",
 	"dbhq",
 }
 
@@ -123,7 +124,7 @@ func build(src, out string) (int, error) {
 	if err := os.WriteFile(filepath.Join(out, "llms-full.txt"), []byte(llmsFull(pages)), 0o644); err != nil {
 		return 0, err
 	}
-	if err := os.WriteFile(filepath.Join(out, "style.css"), []byte(site.CSS), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(out, "style.css"), []byte(site.CSS+site.MatrixCSS), 0o644); err != nil {
 		return 0, err
 	}
 	if err := os.WriteFile(filepath.Join(out, "sitemap.xml"), []byte(sitemap(pages)), 0o644); err != nil {
@@ -310,7 +311,7 @@ var groups = []struct {
 	{"Drive it from an agent", []string{"claude-code", "codex", "mcp"}},
 	{"The far side", []string{"station", "bootstrap", "steps", "runner", "conformance"}},
 	{"Where it runs", []string{"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped"}},
-	{"Reference", []string{"transports", "relay", "intercom", "cli", "secrets", "security", "method"}},
+	{"Reference", []string{"transports", "matrix", "relay", "intercom", "cli", "secrets", "security", "method", "roadmap"}},
 	{"More from DBHQ", []string{"dbhq"}},
 }
 
@@ -347,12 +348,14 @@ var labels = map[string]string{
 	"windows":     "Windows",
 	"air-gapped":  "Air-gapped",
 	"transports":  "Transports",
+	"matrix":      "What works with what",
 	"relay":       "Relay",
 	"intercom":    "Intercom",
 	"cli":         "CLI reference",
 	"secrets":     "Secrets",
 	"security":    "Security",
 	"method":      "Debugging method",
+	"roadmap":     "Roadmap",
 	"dbhq":        "DBHQ projects",
 }
 
@@ -604,6 +607,15 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 	if p.Slug != "index" && !o.noindex {
 		crumbs = pageHead(p)
 	}
+	// The matrix behaviour ships only on a page that has a matrix. Inline
+	// script is per-page weight, so a global bundle would put a picker nobody
+	// can see into the HTML of all 29 pages - which is exactly what
+	// TestTheMirrorSavingIsTheOneTheCommentsClaim caught when it was wired
+	// that way.
+	matrixJS := ""
+	if strings.Contains(p.Body, "```matrix") {
+		matrixJS = site.MatrixJS
+	}
 	// The footer names both mirrors: this page, and the whole site for an
 	// agent that wants it in one fetch.
 	mirror := ` &middot; <a href="/llms.txt">llms.txt</a>`
@@ -646,7 +658,7 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 %[12]s
 `, header, hero, shellOpen, wide, site.RenderBody(body), shellClose, railHTML,
 		mirror, consentHTML, site.HeroJS, consentJS, navJS, crumbs, site.CopyJS, site.RailJS,
-		site.OrgJS)
+		site.OrgJS+matrixJS)
 }
 
 // head is everything before the body: the words a search result and a shared
@@ -958,8 +970,10 @@ var titles = map[string]string{
 	"air-gapped":  "Air-gapped servers - run heliograph with no network path at all",
 	"claude-code": "heliograph Claude Code skill - drive a machine it cannot reach",
 	"transports":  "Transports - git, relay, share, and a bundle for air gaps",
+	"matrix":      "What works with what - every transport, station and controller",
 	"cli":         "CLI reference - send, watch, logs --gaps, plant, doctor",
 	"method":      "The method - debugging a server you cannot log into",
+	"roadmap":     "Roadmap - what heliograph might support next, and what it never will",
 	"dbhq":        "DBHQ projects - the other things DBHQ makes",
 	"mcp":         "heliograph MCP server for Claude Code, Codex and any agent",
 	"codex":       "heliograph Codex CLI skill - drive a machine it cannot reach",
@@ -1002,12 +1016,14 @@ var descriptions = map[string]string{
 	"pipelines":   "Run a heliograph station on a GitHub Actions or Azure DevOps agent, which is often the one machine in an estate that can already reach the far side.",
 	"windows":     "heliograph on Windows: hosting the station loop through Git for Windows, and writing steps in PowerShell that are still captured line by line with timestamps.",
 	"transports":  "A transport carries a step out and a log back. heliograph supports git, an HTTPS relay, a file share, a bundle and object store, behind one interface and gates.",
+	"matrix":      "Every heliograph transport, station and controller in one place, which combinations work, and the pigeonhole-versus-intercom split that decides the rest.",
 	"relay":       "The relay runs heliograph over ordinary HTTPS with no git host and no storage account, encrypted end to end so the relay can read nothing and run nothing.",
 	"intercom":    "Intercom submits a step to a heliograph station over HTTPS, for the rarer case where you can reach the machine's network but still cannot log into it.",
 	"cli":         "Every heliograph command: init, bootstrap, plant, send, logs --gaps, station add, mcp and doctor, with the reasoning behind the ones that are not obvious.",
 	"secrets":     "Captured logs are committed to history, so heliograph redacts what it can. How redaction works, where it stops, and how to get a secret to the far side safely.",
 	"security":    "What heliograph refuses to do, what it gates, and what it cannot promise: read-only by default, no root, no credentials, and the account as the blast radius.",
 	"method":      "How to debug across a gap you cannot cross: one question per step, never truncate, keep a control, and change one thing between runs.",
+	"roadmap":     "Every transport, host and control node anyone has proposed for heliograph, each with a verdict - do, later, maybe or never - and the reason behind it.",
 	"dbhq":        "The other free and open-source things DBHQ makes: bbs and modem in a browser, skills for Claude Code and Codex, and two tools that run without a sign-up.",
 }
 

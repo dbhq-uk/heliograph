@@ -26,7 +26,7 @@ polls, runs, delivers and publishes, and it is planted by all three bootstraps.
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
 | PowerShell station | **complete and proven**. Polls, runs, delivers and publishes over git and share, with all four gates. Every conformance property, on 5.1 and on 7. No relay transport (needs `heliograph-seal`, which is Go) |
-| site | 26 pages, near and far side. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
+| site | 29 pages, near and far side, plus `/matrix` (every transport, station and controller, from one source in Go) and `/roadmap`. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
 
 ## Landed 2026-09-08
 
@@ -168,13 +168,30 @@ that is not progress.
 
 ## Next, in order
 
-1. **The bundle's station side.** `/air-gapped` now says plainly that the
-   bundle cannot be read by a station, and the CLI says the same. That page is
-   the first thing to update when it lands
-2. **The PowerShell relay transport.** Deferred deliberately: it needs
-   `heliograph-seal`, which is a Go binary, and a station that must ship a
-   binary is a different bootstrap question on exactly the estates that will
-   not let you install Git for Windows
+Every item is an issue, so a priority can be linked to rather than remembered.
+The ranking rule this repository keeps proving: **a claim that is not true
+outranks a capability that does not exist.**
+
+| | | |
+|---|---|---|
+| 1 | **The bundle's station side** (#68) | `/air-gapped` says plainly that the bundle cannot be read by a station, and the CLI says the same. It is the only transport that makes *air-gapped* literally true, and that page is the first thing to update when it lands |
+| 2 | **The PowerShell relay transport** (#77) | Deferred deliberately: it needs `heliograph-seal`, which is a Go binary, and a station that must ship a binary is a different bootstrap question on exactly the estates that will not let you install Git for Windows. **Decide the bootstrap story before porting anything** |
+| 3 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
+| 4 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
+| 5 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
+| 6 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
+| 7 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
+| 8 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
+| 9 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
+| 10 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
+
+Items 3 to 10 come from a survey of every transport, host and control node
+anyone has proposed, with the ones ruled out and why:
+[`docs/specs/2026-09-10-new-transports-and-stations-design.md`](docs/specs/2026-09-10-new-transports-and-stations-design.md)
+holds the verdicts and
+[`docs/research/2026-09-10-transports-hosts-and-control-nodes.md`](docs/research/2026-09-10-transports-hosts-and-control-nodes.md)
+holds the evidence, measurements and sources. Both are published as
+[`/roadmap`](site/content/roadmap.md).
 
 ## Known defects, recorded rather than fixed
 
