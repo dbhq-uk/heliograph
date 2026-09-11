@@ -847,4 +847,53 @@ PSEOF
   assert_eq "  and every case in the table was actually compared" "8" "$compared"
 fi
 
+
+# =============================================================================
+#  16. A log can be READ while the capture is still writing it
+# =============================================================================
+# THIS IS A WINDOWS ASSERTION THAT COSTS NOTHING ON LINUX, and it is here
+# because the property it guards is invisible on Linux entirely.
+#
+# Invoke-CapRun holds the log open for the whole run through
+# `[System.IO.File]::AppendText`, which opens with FileShare.Read. A SECOND open
+# must also declare a share mode that tolerates the FIRST handle's access, and
+# the first handle is a writer - so `File.ReadAllLines` and `Copy-Item`, which
+# both open with FileShare.Read, throw a sharing violation on Windows against a
+# log that is still being written.
+#
+# Nothing enforces any of that on Linux, so it worked perfectly here while
+# progress NEVER published on Windows - for any step, silently, because the
+# read is inside a try/catch that returns quietly. A long run was a black box on
+# exactly the platform where a black box is most expensive. Found by the
+# conformance run on a real Windows runner, not by reasoning.
+#
+# Section 12b is the behavioural check and is the one that caught it. This is
+# the direct one, so a future reader who breaks the sharing flags gets told what
+# they broke rather than "no progress reached the far side".
+SHARED="$WORK/shared-read.ps1"
+cat > "$SHARED" <<PSEOF
+Import-Module '$(winpath "$PSDIR/caplib.psm1")' -Force
+\$p = [System.IO.Path]::GetTempFileName()
+\$w = [System.IO.File]::AppendText(\$p)   # exactly what Invoke-CapRun holds
+\$w.WriteLine('line one'); \$w.WriteLine('line two'); \$w.Flush()
+try {
+    \$n = (Read-CapSharedLines -Path \$p).Count
+    \$d = "\$p.copy"
+    [void](Copy-CapSharedFile -Source \$p -Destination \$d)
+    # THE COUNT, NOT THE BYTE LENGTH. AppendText uses Environment.NewLine, so
+    # the same two lines are 18 bytes on Linux and 20 on Windows - and this
+    # assertion is about whether the file could be read and copied at all, not
+    # about how long it is.
+    \$b = if ((Get-Item \$d).Length -gt 0) { 'nonempty' } else { 'EMPTY' }
+    Write-Output "OK \$n \$b"
+} catch {
+    Write-Output "THREW \$(\$_.Exception.GetType().Name)"
+} finally {
+    \$w.Close(); Remove-Item \$p,"\$p.copy" -Force -EA SilentlyContinue
+}
+PSEOF
+SHARED_OUT="$( "$PS_BIN" -NoProfile -File "$SHARED" 2>&1 | tr -d '\r' | tail -1 )"
+assert_eq "a log held open by the capture can still be read and copied" \
+  "OK 2 nonempty" "$SHARED_OUT"
+
 t_summary

@@ -625,7 +625,12 @@ function Publish-Progress {
     $count = 0
     $last = ''
     try {
-        foreach ($l in [System.IO.File]::ReadAllLines($LogPath)) {
+        # Read-CapSharedLines, NOT ReadAllLines. The capture holds this file
+        # open for writing, and on Windows a reader that does not declare
+        # FileShare.ReadWrite gets a sharing violation - so this whole function
+        # threw, was swallowed by the catch below, and progress NEVER published
+        # on Windows. Nothing errored; a long run was simply a black box.
+        foreach ($l in (Read-CapSharedLines -Path $LogPath)) {
             $count++
             # The last non-blank, non-divider line says more about where a step
             # is than a line count does - it is usually the probe in flight.

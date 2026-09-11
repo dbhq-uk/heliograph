@@ -146,7 +146,12 @@ function Publish-ShareFile {
     param([string] $Source, [string] $Destination)
     try {
         $tmp = New-ShareTemp -Destination $Destination
-        Copy-Item -LiteralPath $Source -Destination $tmp -ErrorAction Stop
+        # Copy-CapSharedFile, NOT Copy-Item. This publishes a PARTIAL log while
+        # the capture still holds it open for writing, and on Windows Copy-Item
+        # opens with FileShare.Read - which does not tolerate an existing
+        # writer, so every progress publication threw a sharing violation. On
+        # Linux nothing enforces that and it worked perfectly.
+        [void](Copy-CapSharedFile -Source $Source -Destination $tmp)
         return (Move-ShareInto -Temp $tmp -Destination $Destination)
     } catch {
         Write-CapTpError "could not stage $Source for $Destination : $($_.Exception.Message)"
