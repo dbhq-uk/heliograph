@@ -92,20 +92,59 @@ Ed25519 sign and verify      : True
 **So a PowerShell relay does not need a native binary**, whichever route is
 taken. Every primitive the seal uses is available to the floor version.
 
-### The smaller libraries, and why they do not finish the job
+### So the only library needed is an Ed25519
 
-Measured, rather than taken from a description:
+CNG covers three. The question is what supplies the fourth, and the candidates
+were measured **against the standards' own test vectors** rather than
+round-tripped against themselves.
 
-| | size | targets | has |
-|---|---|---|---|
-| `BouncyCastle.Cryptography` 2.7.0 | 8.3 MB | net461, netstandard2.0, net6.0 | all four |
-| `NaCl.Core` | 0.23 MB | net45, net48, netstandard2.0 | ChaCha20-Poly1305 and Poly1305 only - **no X25519, no Ed25519, no HKDF** |
-| `Chaos.NaCl` | source only | - | X25519 and Ed25519, **no AEAD**; unmaintained since 2021, and GitHub reports no declared licence |
+| | DLL | licence | targets | Ed25519 vs RFC 8032 |
+|---|---|---|---|---|
+| **`Rebex.Elliptic.Ed25519`** | 172 KB | **public domain** | net20, net40, netstandard2.0 | **matches** |
+| **`NetSparkleUpdater.Chaos.NaCl`** | 172 KB | **MIT**, maintained | net462, netstandard2.0 | **matches** |
+| `BouncyCastle.Cryptography` | 8.3 MB pkg | MIT | net461, netstandard2.0 | matches |
+| `NaCl.Core` | 0.23 MB pkg | MIT | net45, netstandard2.0 | **has no Ed25519** - ChaCha20-Poly1305 and Poly1305 only |
+| original `Chaos.NaCl` | source | **none declared**, no commit since 2021 | - | - |
 
-NaCl.Core is thirty-six times smaller than BouncyCastle and covers one of the
-four. Chaos.NaCl covers the two CNG lacks but has an undeclared licence and has
-not been touched in five years, which is a poor thing to put on the signature
-path.
+Both of the top two are the same code: Christian Winnerlein's C# port of djb's
+**ref10** from SUPERCOP, which is the reference implementation. Rebex's licence
+file says so in as many words. That is good provenance for the one primitive on
+the signature path, and either is about **48 times smaller than BouncyCastle**.
+
+Measured, not assumed - RFC 8032 section 7.1 TEST 1, the empty message:
+
+```
+Chaos.NaCl  public key matches RFC 8032 : True
+Chaos.NaCl  signature matches RFC 8032  : True
+```
+
+### A trap in the same library, and the reason to measure against a standard
+
+`Chaos.NaCl` also exposes `MontgomeryCurve25519`, which looks like an X25519 to
+reach for if CNG disappoints. **Its `KeyExchange` is not X25519.**
+
+Against RFC 7748 section 6.1:
+
+```
+public key matches RFC 7748        : True
+KeyExchange == RAW X25519 secret   : False
+  KeyExchange gave : 1b27556473e985d462cd51197a9a46c76009549eac6474f206c4ee0844f68389
+  RFC 7748 raw is  : 4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742
+```
+
+It returns NaCl's `crypto_box_beforenm` - the raw secret run through HSalsa20 -
+which is correct for NaCl and wrong for this. The public key is right, so
+enrolment would succeed and every message would then fail to open, or, if both
+sides used the same library, would work while diverging from the protocol.
+
+**BouncyCastle's `X25519Agreement` does give the raw secret**, and matches RFC
+7748 exactly. So the fallback, if CNG's `curve25519` turns out not to yield a
+raw secret, is BouncyCastle rather than Chaos.NaCl.
+
+This is why the vectors matter. An earlier version of this document said all
+four primitives "work", on the strength of a round trip - two sides of the same
+library agreeing with each other. That is not the property. The property is
+agreeing with **Go**, and only a standard's own vectors show it.
 
 ## What is actually in the way
 
@@ -174,8 +213,10 @@ Build it in this order, and do not start at the transport.
 
    | | |
    |---|---|
-   | **Vendor one implementation of Ed25519** | about 1,500 lines of somebody else's code, on the signature path. RFC 8032 ships official test vectors, so it can be proved rather than trusted - which is why this is the recommendation |
-   | **Require BouncyCastle after all** | 8.3 MB, and then the other three primitives may as well come from it too |
+   | **`Rebex.Elliptic.Ed25519`** - 172 KB, public domain, targets back to net20 | the recommendation. One primitive, ref10 lineage, verified against RFC 8032 here |
+   | **`NetSparkleUpdater.Chaos.NaCl`** - 172 KB, MIT, maintained | the same code with a declared licence and recent commits; pick this if "public domain" is harder to get past legal than MIT |
+   | **Vendor the source** rather than the assembly | keeps the payload readable text, which is the property the whole product rests on. Both are permissively licensed, so this is allowed; it is more code to carry and the same vectors prove it |
+   | **Require BouncyCastle after all** | 8.3 MB, and then the other three may as well come from it too. This is also the fallback if CNG's curve25519 does not yield a raw secret, because BouncyCastle's X25519 **does** match RFC 7748 and Chaos.NaCl's does not |
    | **Change the signature algorithm in a seal v2** | `Version` is already a signed field with no negotiation, so a v2 is possible - but it is a protocol change on both sides and the deployed estate's identities are Ed25519. Not worth it to avoid one primitive |
 
 4. **`lib/seal.psm1`**, the construction alone - no networking, exactly as
