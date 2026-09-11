@@ -72,6 +72,17 @@ in CI. The site documents the far side. The PowerShell station has its capture a
 | #54 | **the cancel and the preflight** (Track B/PR 11, part) - a Win32 Job Object with `taskkill /T /F` where `Add-Type` is blocked, which is the estate this station is for. Property 8 stops skipping on Windows. `start.ps1` answers the two questions that decide whether a station can run at all: Constrained Language Mode, and a GPO-set execution policy |
 | #53 | **`run.ps1`** (Track B/PR 10) - the runner and its three gates, a `probe.psm1` and a shipped `env` step. Found three case-sensitivity divergences from `run.sh`, two of them in a security gate, and added a twin comparison that would have caught all three |
 
+## Landed 2026-09-11
+
+| PR | |
+|---|---|
+| #71 | **HTTPS enforced, and `llms.txt` announced** (#70) - a `<link rel=alternate>` in every head and a visible footer anchor. It had been reachable only by an agent that already knew the path |
+| #72 | **the rest of #70's code half** - `author` splits from `publisher`, so a named person writes the pages and DBHQ publishes them, with a footer byline saying so; `datePublished` from the first commit beside `dateModified`; and Googlebot and Bingbot are kept off the `.md` mirrors, under their own groups so no other agent is. Also corrected: the "roughly 31 times more bytes" claim, quoted in four files and never measured. It is three to sixteen times, about eight on the median page, and a test now measures it on every build |
+
+The rest of #70 is off-site and stays on that issue: publishing `server.json`
+to the MCP registry, the social previews on both repositories, the awesome-list
+entries, and the Glama listing.
+
 ## Next, in order
 
 1. **Track B: the loop.** `station.ps1` now has something to poll: the

@@ -7,6 +7,9 @@ worldwide (English, no location), United States (2840) and United Kingdom
 split from DataForSEO clickstream data.
 **Raw data:** `~/dbhq-uk/dbhq-seo/reports/heliograph/raw/` (38 JSON files).
 **Cost:** USD 1.0937 across 38 calls. See section 6.
+**Read section 7 first.** The volumes and SERPs below are a measurement taken
+on one day and are left as they were taken. Where a later finding changed what
+to do about one, section 7 says so.
 
 ## 1. Summary
 
@@ -79,7 +82,7 @@ Overflow, a GitHub list).
 |---|---|---|---|---|---|---|---|---|
 | claude code skills | 60,500 | 12,100 | 1,900 | 30 | informational | JP 18%, US 15%, IN 8%, DE 8%, GB 3% | claude-code | heliograph Claude Code skill - a machine it cannot reach |
 | claude code mcp server | 2,900 | 880 | 140 | 3 | navigational | JP 19%, US 15%, DE 14%, IN 9% | mcp | heliograph MCP server for Claude Code, Codex and any agent |
-| air gapped environment | 880 | 210 | 30 | 19 | informational | IN 36%, US 21%, IT 14% | transports | Transports - git, relay, share, and a bundle for air gaps |
+| air gapped environment | 880 | 210 | 30 | 19 | informational | IN 36%, US 21%, IT 14% | air-gapped | Air-gapped servers - run heliograph with no network path at all |
 | codex cli skills | 720 | 140 | 30 | 1 | transactional | JP 35%, DE 15%, VN 9% | codex | heliograph Codex CLI skill - a machine it cannot reach |
 | air gapped installation | 590 | 480 | 10 | 0 | informational | sparse (MX, TR) | bootstrap | Plant a station - by CLI, by hand, or air-gapped by bundle |
 | azure run command | 140 | 40 | 10 | 9 | navigational | IN 55%, ZA 30% | azure | Azure - five station templates, and Run Command compared |
@@ -93,29 +96,29 @@ only take the long tail with heliograph in it.
 No keyword with measurable volume was found for install, quickstart,
 station, steps, runner, conformance, hosts, service, pipelines, windows,
 relay, intercom, cli, secrets or security. Their current titles are fine.
-The security page has an adjacent cluster (see long tail and gap 5) that
+The security page has an adjacent cluster (see long tail and gap 1) that
 should be handled in a section, not a title.
 
 ### Long tail
 
 | Keyword | WW | US | UK | KD | Intent | Countries | Page | Note |
 |---|---|---|---|---|---|---|---|---|
-| claude code dangerously skip permissions | 5,400 | 1,600 | 210 | 10 | transactional | US 26%, GB 15%, NO 11%, AU 8% | security | section only, see gap 5; not a page title |
-| claude code sandbox | 4,400 | 1,000 | 210 | 8 | navigational | JP 34%, US 20%, DE 8% | security | section only, see gap 5 |
-| claude code permissions | 2,900 | 720 | 110 | 10 | transactional | US 24%, JP 20%, PL 6% | security | section only, see gap 5 |
+| claude code dangerously skip permissions | 5,400 | 1,600 | 210 | 10 | transactional | US 26%, GB 15%, NO 11%, AU 8% | security | see gap 1; a section, not a page title |
+| claude code sandbox | 4,400 | 1,000 | 210 | 8 | navigational | JP 34%, US 20%, DE 8% | security | see gap 1; a section, not a page title |
+| claude code permissions | 2,900 | 720 | 110 | 10 | transactional | US 24%, JP 20%, PL 6% | security | see gap 1; a section, not a page title |
 | best claude code skills | 1,900 | 590 | 90 | 12 | commercial | US 20%, DE 12%, IN 10% | claude-code | listicle intent; better won by being listed in the existing listicles than by a page |
 | codex cli mcp | 1,600 | 260 | 50 | 5 | navigational | JP 48%, US 7% | mcp | H2: "From Codex CLI" |
 | claude code ssh | 1,300 | 320 | 40 | n/a | navigational | JP 22%, US 15%, DE 9%, TW 8% | claude-code | H2: "Claude Code without SSH", see gap 3 |
 | ssh mcp server | 480 | 90 | 10 | n/a | navigational | US 21%, JP 15%, IN 11%, DE 10% | mcp | one line of disambiguation: this is the no-SSH counterpart |
-| aws ssm send-command | 320 | 90 | 20 | 10 | transactional | TR 47%, US 30% | none yet, see gap 2 | comparison page |
-| air gapped server | 170 | 70 | 10 | 15 | informational | DE (sparse) | transports | see gap 1 |
-| air gapped deployment | 170 | 30 | 10 | 6 | informational | IN 50%, DE 20% | transports | see gap 1 |
-| aws ssm run command | 140 | 30 | 10 | 8 | transactional | CA (sparse) | none yet, see gap 2 | comparison page |
+| aws ssm send-command | 320 | 90 | 20 | 10 | transactional | TR 47%, US 30% | compared | see gap 4 |
+| air gapped server | 170 | 70 | 10 | 15 | informational | DE (sparse) | air-gapped | see gap 2 |
+| air gapped deployment | 170 | 30 | 10 | 6 | informational | IN 50%, DE 20% | air-gapped | see gap 2 |
+| aws ssm run command | 140 | 30 | 10 | 8 | transactional | CA (sparse) | compared | see gap 4 |
 | terminal mcp server | 90 | 20 | 10 | 21 | navigational | not sampled | mcp | disambiguation line |
 | claude code remote server | 70 | 20 | 10 | n/a | navigational | not sampled | claude-code | see gap 3 |
-| remote script execution | 30 | 10 | 10 | n/a | transactional | not sampled | method | see gap 4 |
+| remote script execution | 30 | 10 | 10 | n/a | transactional | not sampled | method | see gap 5 |
 | claude code remote execution | 30 | 10 | 10 | n/a | transactional | not sampled | claude-code | see gap 3 |
-| run command on remote server | 10 | 10 | 10 | n/a | transactional | not sampled | method | see gap 4 |
+| run command on remote server | 10 | 10 | 10 | n/a | transactional | not sampled | method | see gap 5 |
 
 The following phrases match heliograph's intent exactly (DataForSEO scores
 them transactional at 0.96 to 1.00) but have no measured volume in any
@@ -137,7 +140,7 @@ but do not expect traffic from them, and do not spend a title tag on one.
 | install claude code, claude code, codex cli, mcp server, claude code plugins, claude code plugin marketplace, claude code hooks, claude code agents, claude code github actions | 74,000; 550,000 (US Labs); 165,000; 246,000; 22,200; 4,400; 12,100; 22,200; 2,900 | | Vendor brand and vendor-doc terms. Anthropic and OpenAI own them and always will. "claude code github actions" is Anthropic's GitHub Action, not the pipelines page. |
 | bastion host, jump host, what is bastion, bastion server | 9,900; 4,400; 1,900 (Labs); 2,400 (Labs) | 2,400; 480 | Definitional. Teleport, AWS and Wikipedia rank with explainers. heliograph has no reason to write one. Keep the words in copy for the long tail ("behind a bastion you are not allowed through"). |
 | ansible alternative, rundeck alternative, ansible without ssh | 1,300; 170; 20 | 260; 30; 10 | Listicle intent for configuration management and runbook automation. heliograph is neither, and the SERP will be G2 and comparison sites. |
-| aws ssm, aws ssm run command (as a head term) | 18,100; 140 | 4,400; 30 | Navigational to AWS. Five of nine organic results are docs.aws.amazon.com. Reachable only through the comparison page in gap 2. |
+| aws ssm, aws ssm run command (as a head term) | 18,100; 140 | 4,400; 30 | Navigational to AWS. Five of nine organic results are docs.aws.amazon.com. Reachable only through the comparison page in gap 4. |
 | air gapped, air gapped computer, air gapped laptop, air gapped wallet, air gapped installation (head term) | 22,200; 2,400; 260 (Labs); 140 (Labs); 590 | 8,100 (Labs); 1,300 (Labs) | The bare term is a definition; the hardware and crypto-wallet terms are shopping queries; "installation" means a named product's offline install. Only the environment, server, deployment and kubernetes variants fit. |
 | remote desktop, remote access trojan, git remote, run as administrator | large | | Noise from the category expansion of "run script on remote machine". Listed so nobody mistakes them for opportunities. |
 
@@ -181,7 +184,7 @@ docs.rke2.io #7, Reddit r/kubernetes #9, HashiCorp Terraform Enterprise
 #10, kubeops.net #11. Every result is a specific product's offline install
 guide. The high CPC is enterprise vendors bidding. heliograph cannot own the
 head term. It can own "heliograph air gapped installation" and the bundle
-transport story (gap 1).
+transport story (gap 2).
 
 **run command on remote machine** (110 WW, KD 0). Spiceworks #2, Superuser
 "with ssh, how can you run a command on the remote machine" #3, Microsoft
@@ -189,12 +192,12 @@ Learn "Running remote commands - PowerShell" #4, Stack Overflow (Windows)
 #5, vsupalov.com #7, Reddit r/bash #8, NetBeez "Execute remote commands with
 SSH" #9, Ask Ubuntu #10. Pure how-to, and every answer assumes SSH,
 PowerShell Remoting or PsExec. Q&A pages with no vendor. A method-style page
-that starts from those answers and then covers "and when you cannot" (gap 4)
+that starts from those answers and then covers "and when you cannot" (gap 5)
 fits the SERP shape and the difficulty score.
 
 **aws ssm run command** (140 WW, KD 8). docs.aws.amazon.com at #2, #3, #4,
 #6 and #11, YouTube #5 and #10, re:Post #8, OneUptime blog #9. Navigational
-to AWS. Not winnable head-on. The comparison page in gap 2 is the only
+to AWS. Not winnable head-on. The comparison page in gap 4 is the only
 route, and its job is the secondary intent: people whose estate is not on
 AWS, or who cannot install the SSM agent, and want the same thing.
 
@@ -296,3 +299,42 @@ Budget cap was USD 3.00. Nothing was dropped to stay under it. The
 remote machine" returned git and Remote Desktop. `keyword_suggestions`
 (phrases containing the seed) found everything of value in the agent
 cluster and should be the first expansion call next time.
+
+## 7. Corrections
+
+Later findings that change what to do about something measured above. The
+tables keep the measurement; this section keeps the decision. All four below
+come from the nine-dimension audit of 2026-09-11 (#70).
+
+**The air-gap rows now point at `/air-gapped`.** They were assigned to
+`transports` because no air-gapped page existed when this was written. One was
+built the same day (#46), so "air gapped environment", "air gapped server" and
+"air gapped deployment" belong to it, and gap 2 is built. Its shipped title
+runs to 63 characters against the 60 this document asks for. It is left alone
+until there are impressions to judge it by.
+
+**The "see gap N" cells were off by a reordering.** Section 5 was ordered by
+cluster volume after the tables were written, and the cells still pointed at
+the old sequence. They now agree with section 5.
+
+**`claude code skills` (60,500) cannot be won by a page.** A fresh SERP pull
+returns no single-vendor product page in the top ten: Anthropic's own
+documentation takes four of the ten, and the rest are curated directories,
+listicles, a Reddit thread and two videos. No rebuild of `/claude-code` places
+in that. This document already had the answer in the long tail - the
+neighbouring term is "better won by being listed in the existing listicles
+than by a page" - so it is an outreach task, not a content one: the MCP
+registry, and the awesome-lists. The effort goes instead to two terms the same
+pull says are winnable. `claude code mcp server` (2,900, KD 3), where a single
+implementation's repository already ranks at #7 and `/mcp` is built to that
+shape. And `codex cli skills` (720, KD 1), where, unlike the skills SERP,
+single-tool pages rank at #7 and #8.
+
+**Never publish the bare word off-site.** A Hacker News search for
+"heliograph" returns 53 results, every one about the 19th-century optical
+signalling mirror, the top two linking to its Wikipedia page. The established
+entity owns the word. Every title on this site already pairs the name with
+what it does, and the same rule holds for anything published elsewhere - a
+directory listing, a pull request to an awesome-list, a Show HN title, a post:
+"heliograph - run a command on a machine you can't SSH into", never
+"heliograph" on its own.

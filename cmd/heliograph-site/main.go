@@ -3,9 +3,13 @@
 // Three renderings of one source: HTML at /page, the markdown mirror at
 // /page.md, and llms.txt at the root.
 //
-// The markdown mirror is not a nicety. The same page costs roughly 31 times
-// more bytes as HTML than as markdown, so serving chrome to an agent is a token
-// tax on every read, and agents read these pages far more often than people do.
+// The markdown mirror is not a nicety. Measured across all 27 pages, the same
+// page costs three to sixteen times more bytes as HTML than as markdown - about
+// eight times on the median page, six times across the whole site - so serving
+// chrome to an agent is a token tax on every read, and agents read these pages
+// far more often than people do. The figure used to say "roughly 31 times",
+// which nobody had measured; TestTheMirrorSavingIsTheOneTheCommentsClaim now
+// measures it on every build, so this sentence cannot drift again.
 package main
 
 import (
@@ -79,7 +83,11 @@ func build(src, out string) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		pages = append(pages, site.Page{Slug: slug, Title: title, Body: body, Modified: mod})
+		pub, err := firstPublished(src, e.Name(), mod)
+		if err != nil {
+			return 0, err
+		}
+		pages = append(pages, site.Page{Slug: slug, Title: title, Body: body, Modified: mod, Published: pub})
 		seen[slug] = true
 	}
 	if len(pages) == 0 {
@@ -123,7 +131,20 @@ func build(src, out string) (int, error) {
 	}
 	// robots.txt names the sitemap and the markdown mirrors. Agents are the
 	// heavier readership here, and llms.txt is not discoverable on its own.
-	robots := "User-agent: *\nAllow: /\n\nSitemap: " + baseURL + "/sitemap.xml\n" +
+	//
+	// Googlebot and Bingbot are kept off the mirrors, and NOTHING else is. The
+	// mirrors are the same content at a second address: rel="alternate" is not
+	// a documented deduplication signal, each page links its mirror three
+	// times, and on GitHub Pages a .md file can carry neither a canonical tag
+	// nor an X-Robots-Tag header. So a search index would be offered every page
+	// twice. The same rule under `User-agent: *` would shut out every AI agent
+	// as well, which is the readership the mirrors exist for.
+	robots := "User-agent: *\nAllow: /\n\n" +
+		"# The markdown mirrors are for agents, not for search indexes: the same\n" +
+		"# page at a second address, with no way to carry a canonical tag here.\n" +
+		"User-agent: Googlebot\nDisallow: /*.md$\n\n" +
+		"User-agent: Bingbot\nDisallow: /*.md$\n\n" +
+		"Sitemap: " + baseURL + "/sitemap.xml\n" +
 		"\n# Markdown mirrors of every page at <path>.md, and " + baseURL + "/llms.txt\n"
 	if err := os.WriteFile(filepath.Join(out, "robots.txt"), []byte(robots), 0o644); err != nil {
 		return 0, err
@@ -589,7 +610,12 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 	if !o.noindex {
 		mirror = fmt.Sprintf(` &middot; <a href="/%s.md">This page as markdown</a>`, p.Slug) + mirror
 	}
-
+	// The footer's second line is a byline, and it is not the block #54
+	// removed. That one repeated the company and three of its links on all 27
+	// pages, at the point a reader has already left. This one names the human
+	// the JSON-LD calls the author: dated, first-hand failure reports are the
+	// strongest thing here, and they were signed by nobody a reader or a model
+	// could check.
 	body := p.Body
 	if p.Slug == "index" {
 		// The hero carries the page's H1. The source keeps its own for the
@@ -609,6 +635,7 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 %[7]s
 <footer><div class="inner">
 <p><a href="https://github.com/dbhq-uk/heliograph">`+site.GitHubMark+`Source</a>%[8]s</p>
+<p>Written and maintained by <a href="/dbhq">Daniel Grimes</a> at DBHQ</p>
 </div></footer>
 %[9]s
 <script>%[10]s
@@ -695,9 +722,24 @@ func description(p site.Page) string {
 // and its breadcrumb on every other. Built with encoding/json rather than a
 // template because Marshal escapes < and >, so nothing in a page's title can
 // close the script tag early.
+//
+// author and publisher were the same Organization node on every page, which
+// left the strongest material here - dated, measured, first-hand accounts of
+// what failed - attributed to a company and to no person at all. A search
+// engine and a model both want to know who, and both want somewhere to check
+// him. So the company publishes and a named person writes, with a profile in
+// sameAs. The site said this on one page already, in the last sidebar group:
+// site/content/dbhq.md, "DBHQ is Daniel Grimes".
 func structuredData(p site.Page) string {
 	canonical := canonicalURL(p)
 	org := map[string]any{"@type": "Organization", "name": "DBHQ", "url": "https://dbhq.uk"}
+	person := map[string]any{
+		"@type":    "Person",
+		"name":     "Daniel Grimes",
+		"url":      "https://dbhq.uk/",
+		"sameAs":   []string{"https://github.com/grinidx"},
+		"worksFor": org,
+	}
 	var blocks []map[string]any
 	if p.Slug == "index" {
 		blocks = append(blocks, map[string]any{
@@ -714,7 +756,7 @@ func structuredData(p site.Page) string {
 			"downloadUrl":         "https://github.com/dbhq-uk/heliograph/releases/latest",
 			"sameAs":              []string{"https://github.com/dbhq-uk/heliograph"},
 			"image":               baseURL + "/assets/og.png",
-			"author":              org,
+			"author":              person,
 			"publisher":           org,
 		}, map[string]any{
 			"@context": "https://schema.org",
@@ -722,20 +764,22 @@ func structuredData(p site.Page) string {
 			"name":     "DBHQ",
 			"url":      "https://dbhq.uk",
 			"sameAs":   []string{"https://github.com/dbhq-uk"},
+			"founder":  person,
 		})
 	} else {
 		blocks = append(blocks, map[string]any{
-			"@context":     "https://schema.org",
-			"@type":        "TechArticle",
-			"headline":     p.Title,
-			"description":  description(p),
-			"url":          canonical,
-			"dateModified": p.Modified,
-			"inLanguage":   "en-GB",
-			"image":        baseURL + "/assets/og.png",
-			"author":       org,
-			"publisher":    org,
-			"isPartOf":     map[string]any{"@type": "WebSite", "name": "heliograph", "url": baseURL + "/"},
+			"@context":      "https://schema.org",
+			"@type":         "TechArticle",
+			"headline":      p.Title,
+			"description":   description(p),
+			"url":           canonical,
+			"datePublished": p.Published,
+			"dateModified":  p.Modified,
+			"inLanguage":    "en-GB",
+			"image":         baseURL + "/assets/og.png",
+			"author":        person,
+			"publisher":     org,
+			"isPartOf":      map[string]any{"@type": "WebSite", "name": "heliograph", "url": baseURL + "/"},
 		}, map[string]any{
 			"@context": "https://schema.org",
 			"@type":    "BreadcrumbList",
@@ -801,6 +845,28 @@ func lastModified(dir, name string) (string, error) {
 		return time.Now().UTC().Format("2006-01-02"), nil
 	}
 	return date, nil
+}
+
+// firstPublished is the date of the first commit that touched name, following
+// renames, for the datePublished the structured data carries beside
+// dateModified.
+//
+// Without it a page says when it changed and never says when it arrived, so a
+// page written in September and corrected in March reads as a March page. This
+// site's strongest material is first-hand and dated - what deploying the Azure
+// templates taught us, three ways a twin lies - and a correction should not
+// make it look like something written yesterday.
+//
+// It never fails the build. A directory that is not a checkout, or a page not
+// committed yet, falls back to the date the page already carries, because that
+// is the only honest date there is and the sitemap is already using it.
+func firstPublished(dir, name, modified string) (string, error) {
+	out, err := git(dir, "log", "--follow", "--format=%cs", "--", name)
+	if err != nil || out == "" {
+		return modified, nil
+	}
+	lines := strings.Split(out, "\n")
+	return strings.TrimSpace(lines[len(lines)-1]), nil
 }
 
 func git(dir string, args ...string) (string, error) {

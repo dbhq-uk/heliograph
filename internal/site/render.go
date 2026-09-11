@@ -7,8 +7,9 @@
 //
 // It emits three renderings of one source, which is the 2026 consensus for
 // developer documentation: HTML for people, a `.md` mirror at the same path for
-// agents, and `llms.txt` at the root. The same page costs roughly 31 times more
-// bytes as HTML than as markdown, so serving chrome to an agent is a token tax
+// agents, and `llms.txt` at the root. Measured across all 27 pages, the same
+// page costs three to sixteen times more bytes as HTML than as markdown, about
+// eight times on the median page, so serving chrome to an agent is a token tax
 // on every read.
 package site
 
@@ -27,6 +28,10 @@ type Page struct {
 	// Modified is the date of the last commit that touched the source, as
 	// YYYY-MM-DD, for the sitemap and the structured data.
 	Modified string
+	// Published is the date of the FIRST commit that touched it, same format,
+	// for datePublished. The sitemap does not use it: lastmod answers "has
+	// this changed", and a first-commit date would answer it wrongly.
+	Published string
 }
 
 var (
