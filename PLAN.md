@@ -174,16 +174,17 @@ outranks a capability that does not exist.**
 
 | | | |
 |---|---|---|
-| 1 | **The bundle's station side** (#68) | `/air-gapped` says plainly that the bundle cannot be read by a station, and the CLI says the same. It is the only transport that makes *air-gapped* literally true, and that page is the first thing to update when it lands |
-| 2 | **The PowerShell relay transport** (#77) | Deferred deliberately: it needs `heliograph-seal`, which is a Go binary, and a station that must ship a binary is a different bootstrap question on exactly the estates that will not let you install Git for Windows. **Decide the bootstrap story before porting anything** |
-| 3 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
-| 4 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
-| 5 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
-| 6 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
-| 7 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
-| 8 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
-| 9 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
-| 10 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
+| 1 | **A service installer for the PowerShell payload** | `service.ps1` ships in the *bash* payload, registers the task against the launcher, and refuses to install without `start.sh` beside it - so `--flavour powershell` plants no way to survive a logout at all. [The service page](site/content/service.md) documents the scheduled task to register by hand, built from the settings `service.ps1` itself uses, and that is a workaround rather than an answer. It must carry the transport's variables into the task, and set a restart policy, because a PowerShell station asks for a restart by **exiting 75** |
+| 2 | **The bundle's station side** (#68) | `/air-gapped` says plainly that the bundle cannot be read by a station, and the CLI says the same. It is the only transport that makes *air-gapped* literally true, and that page is the first thing to update when it lands |
+| 3 | **The PowerShell relay transport** (#77) | **The reason this was deferred does not hold.** It was "the seal needs a native binary"; BouncyCastle is MIT, pure managed, targets `net461` and `netstandard2.0`, and all four primitives were measured working from PowerShell. What is actually in the way is that an 8.3 MB third-party assembly ends the payload's "plain text you can read before you run" property, and that byte-compatibility with the Go seal needs test vectors first. **Decide how to ship the assembly before porting anything**; the design for that is in flight |
+| 4 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
+| 5 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
+| 6 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
+| 7 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
+| 8 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
+| 9 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
+| 10 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
+| 11 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
 
 Items 3 to 10 come from a survey of every transport, host and control node
 anyone has proposed, with the ones ruled out and why:

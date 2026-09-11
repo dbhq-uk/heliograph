@@ -501,3 +501,70 @@ func TestThePlanIsPresentAndAgreesWithTheCode(t *testing.T) {
 		}
 	}
 }
+
+// A CLAIM THAT HAS STOPPED BEING TRUE IS WORSE THAN A MISSING ONE, and the
+// tests above cannot see it. They ask whether something is documented; they say
+// nothing about a page that documents the opposite.
+//
+// This is not hypothetical. When the PowerShell loop landed, three places went
+// on saying it did not exist:
+//
+//   - conformance.md said gate 3 "lives in the loop, which is a later PR"
+//   - station.md said a native PowerShell station was "designed and not built"
+//   - start.ps1 - THE ONE COMMAND THE OPERATOR TYPES - printed "the loop is not
+//     implemented for PowerShell yet", refused to hand over, and exited 0. Every
+//     check in its table passed, so it read as a successful preflight rather
+//     than as a station that never started.
+//
+// An assertion in test-station-ps1.sh was holding the last one in place: it
+// REQUIRED the words "does not yet RECEIVE". A test can pin a stale sentence as
+// firmly as a correct one.
+//
+// So each entry here is a phrase that was true once and is not now. The code is
+// searched as well as the prose, because the worst instance was in the code.
+func TestNothingStillClaimsTheStationCannotPoll(t *testing.T) {
+	roots := []string{"../../site/content", "../../skills", "../../station/powershell"}
+	stale := []struct{ phrase, why string }{
+		{"does not yet RECEIVE", "the PowerShell station polls"},
+		{"loop is not implemented for PowerShell", "station.ps1 is the loop"},
+		{"there is no loop, so a request", "there is a loop"},
+		{"designed and not built", "it is built"},
+		{"which is a later PR", "the later PR landed"},
+		{"cannot RECEIVE", "it receives"},
+	}
+
+	checked := 0
+	for _, root := range roots {
+		err := filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
+			if err != nil || fi.IsDir() {
+				return nil
+			}
+			switch filepath.Ext(p) {
+			case ".md", ".ps1", ".psm1", ".sh":
+			default:
+				return nil
+			}
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return nil
+			}
+			checked++
+			// THIS FILE IS EXEMPT FROM ITSELF. It has to quote the phrases in
+			// order to search for them, and a guard that fails on its own
+			// evidence is a guard nobody can write.
+			body := string(b)
+			for _, s := range stale {
+				if strings.Contains(body, s.phrase) {
+					t.Errorf("%s still says %q, and %s", p, s.phrase, s.why)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Skipf("%s is not here: %v", root, err)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no files were searched, so this check asserted nothing")
+	}
+}

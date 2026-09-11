@@ -55,7 +55,7 @@ error no bash 4 or newer on this Mac, and /bin/bash is 3.2.
 
 `brew install bash` and run it again.
 
-## Windows: `service.ps1`
+## Windows, with Git for Windows: `service.ps1`
 
 ```powershell
 .\service.ps1 install
@@ -84,6 +84,54 @@ Three settings that are not incidental:
   and stores no password. The trade is that it gets no network *credentials*,
   which does not matter here: git authenticates with a token from a file or an
   ssh key, not with the Windows identity
+
+## The PowerShell station has no service installer yet
+
+`service.ps1` ships in the **bash** payload and registers the task against
+`station/bash/station.ps1`, the launcher - so it requires `start.sh` beside it
+and refuses to install without one. The [pure PowerShell
+station](/windows#the-powershell-station-for-a-box-with-no-bash) has no
+equivalent, and `--flavour powershell` plants no service installer at all.
+
+So on a box with no bash, keeping the loop alive after a logout is currently
+something you arrange yourself. A scheduled task that works today:
+
+The settings below are the ones `service.ps1` itself registers, which CI proves
+on a real Windows runner - only the command it runs differs.
+
+```powershell
+$payload = 'C:\ops\payments'
+# Set-Location first: the station resolves its payload from its own path, but
+# the transport's variables and any relative LOG_DIR come from the working
+# directory.
+$inner = "Set-Location '$payload'; .\station.ps1"
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+            -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"$inner`""
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+            -LogonType S4U -RunLevel Limited
+$settings = New-ScheduledTaskSettingsSet `
+            -ExecutionTimeLimit ([TimeSpan]::Zero) `
+            -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 1) `
+            -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName heliograph -Action $action -Trigger $trigger `
+            -Principal $principal -Settings $settings
+```
+
+`-RestartCount` and `-RestartInterval` are not optional here, and they matter
+more than they do for the bash station. A PowerShell station that updates
+itself **exits 75** rather than re-executing - PowerShell has no `exec`, and a
+respawn is killed by the Job Object its own cancel depends on. Without a
+restart policy, a self-update stops the station instead of replacing it.
+
+**What this does not do, and the installer would.** It does not carry the
+transport's variables into the task. A detached process inherits nothing from
+your shell, which is the next section and is where an unattended loop actually
+fails - so set them machine-wide, or add them to `$inner` before
+`.\station.ps1`.
+
+This is a gap rather than a decision, and it is recorded as the next thing to
+build for that payload.
 
 ## The credential is where an unattended loop actually fails
 

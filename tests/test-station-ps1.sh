@@ -103,10 +103,26 @@ assert_contains "and the transport contributes its OWN lines, so a channel's req
   "scope" "$PRE_OUT"
 assert_contains "and reachability is PROVED, not inferred from the variables being set" \
   "reach" "$PRE_OUT"
-# AND WHAT IT STILL CANNOT DO, because a station that delivers but cannot
-# receive is not a round trip, and silence there would imply one.
-assert_contains "and it says plainly that it cannot yet receive" \
-  "does not yet RECEIVE" "$PRE_OUT"
+# AND WHAT IT STILL CANNOT DO, because a preflight that lists only what works
+# reads as a full feature set.
+#
+# THIS ASSERTION USED TO PIN A CLAIM THAT HAD STOPPED BEING TRUE. It demanded
+# the words "does not yet RECEIVE", which the preflight printed for as long as
+# there was no loop - and went on printing after the loop landed, because the
+# test required it. A test can hold a stale sentence in place as firmly as it
+# holds a correct one, and this one did: the operator was told to "use the bash
+# station" by a station that polls perfectly well.
+#
+# So what is asserted now is the set of limits that are ACTUALLY true, each of
+# which changes what an operator has to plan for. When one of these stops being
+# true, this fails - which is the point.
+assert_contains "it says the payload has no service installer" "service" "$PRE_OUT"
+assert_contains "  and what to do instead" "scheduled task" "$PRE_OUT"
+assert_contains "and it says what a self-update will and will not do" "self-update" "$PRE_OUT"
+# AND IT NO LONGER CLAIMS IT CANNOT POLL. Named explicitly rather than left to
+# the absence of a string, because that is the sentence that outlived its truth.
+assert_eq "and it no longer says it cannot receive, because it can" "no" \
+  "$(printf '%s' "$PRE_OUT" | grep -q 'does not yet RECEIVE' && echo yes || echo no)"
 
 # --check CHANGES NOTHING, AND THE WHOLE TREE IS COMPARED.
 #
@@ -137,9 +153,35 @@ assert_eq "and a file with the probe's own name is intact" \
   "do not touch me" "$(cat "$WORK/ops-logs/.heliograph-write-check" 2>/dev/null)"
 assert_contains "and it says so" "nothing was changed" "$PRE_OUT"
 
-# A REAL START PROVES WRITABILITY, and must not clobber that file either.
+# --- A REAL START, WHICH NOW HANDS OVER TO THE LOOP --------------------------
+# These two checks are about the PREFLIGHT's write probe - that a real start
+# proves the directory accepts a write, where `--check` does not. They are not
+# about the loop, and until the loop existed `start.ps1` simply exited here.
+#
+# NOW IT HANDS OVER, AND THAT HUNG WINDOWS CI FOR FIFTEEN MINUTES. `pre` has no
+# timeout, `start.ps1 ""` reached the loop with no usable argument, and the loop
+# did what a loop does: it polled. On PowerShell 7 the empty string arrives as
+# an unknown option and the loop exits 2; on Windows PowerShell 5.1 `-File`
+# drops an empty argument entirely, so the loop started cleanly and polled for
+# ever. The two editions disagreeing about an empty argument is exactly the kind
+# of difference this job exists to find, and it found it in the harness rather
+# than in the station.
+#
+# A TIMEOUT WOULD NOT FIX IT. `timeout` kills start.ps1; the loop is its
+# grandchild, survives, and keeps the pipe open - so the command substitution
+# blocks anyway.
+#
+# So the far side is given something that makes the loop leave: `stop: yes` is
+# honoured from the far side precisely because nobody is sitting at the station.
+# The preflight still runs in full, the probe still happens, and the loop starts,
+# reads its instruction and stops.
+mkdir -p "$WORK/farside/preflight"
+printf 'id: preflight-stop\nstop: yes\n' > "$WORK/farside/preflight/request"
+
 pre "${BASE_ENV[@]+"${BASE_ENV[@]}"}" -- ""
 assert_contains "a real start proves the directory accepts a write" "writable" "$PRE_OUT"
+assert_contains "and it hands over rather than stopping at the table" \
+  "Handing over to the loop" "$PRE_OUT"
 assert_eq "and its probe did not reuse a name that was already taken" \
   "do not touch me" "$(cat "$WORK/ops-logs/.heliograph-write-check" 2>/dev/null)"
 left="$(find "$WORK/ops-logs" -name '.heliograph-write-check.*' 2>/dev/null | wc -l | tr -d ' ')"
@@ -305,5 +347,61 @@ fi
 # REMOVED, which makes it worse than nothing: it would have reported a guard as
 # proven while proving something else. The guard stays in the module, marked
 # as untested.
+
+
+# =============================================================================
+#  THE PREFLIGHT HAS TO HAND OVER, and for one release it did not
+# =============================================================================
+# start.ps1's own header says "preflight, then hand over to the loop", and
+# start.sh execs station.sh at exactly this point. When the PowerShell loop
+# landed, the preflight was not updated: `.\start.ps1` - THE ONE COMMAND THE
+# OPERATOR TYPES - printed "the loop is not implemented for PowerShell yet" and
+# exited 0.
+#
+# Every check in the table above passed, so it read as a successful preflight
+# rather than as a station that never started. Nothing failed, and the operator
+# walks away from a machine that is not running anything.
+#
+# So the assertion is NOT that start.ps1 exits 0, and not that it prints
+# something encouraging. It is that A LOG REACHES THE FAR SIDE, because only a
+# loop that actually started can put one there.
+HANDOVER="$WORK/handover"
+mkdir -p "$HANDOVER/steps" "$HANDOVER/ops-logs" "$HANDOVER/far/scope"
+cp -r "$PSDIR/." "$HANDOVER/"
+printf '# heliograph-mode: read-only\nWrite-Output "the handover evidence"\n' \
+  > "$HANDOVER/steps/probe.ps1"
+printf 'id: h1\nstep: ./steps/probe.ps1\n' > "$HANDOVER/far/scope/request"
+
+handover() {  # handover <args...>
+  ( cd "$HANDOVER" && env -u ALLOW_ROOT TRANSPORT=share \
+      "SHARE_DIR=$(winpath "$HANDOVER/far")" SHARE_SCOPE=scope \
+      "${BASE_ENV[@]+"${BASE_ENV[@]}"}" \
+      timeout 120 "$PS_BIN" -NoProfile -File ./start.ps1 "$@" 2>&1 )
+}
+hstatus() { sed -n "s/^$1:[[:space:]]*//p" "$HANDOVER/far/scope/status" 2>/dev/null | head -1; }
+
+# --check FIRST, because it must NOT hand over. A preflight that started the
+# loop from --check would break the promise the whole flag exists for: that it
+# can be run on a node where nobody is permitted to alter anything.
+CHECK_OUT="$(handover --check)"
+assert_eq "--check does not start the loop" "no" \
+  "$([ -e "$HANDOVER/far/scope/status" ] && echo yes || echo no)"
+assert_contains "  and says it changed nothing" "nothing was changed" "$CHECK_OUT"
+
+# Then the real thing. `--` passes the rest to the loop, exactly as start.sh
+# does - without it, `--once` would reach the loop as an unknown option, and
+# this test would hang until the timeout instead of failing.
+REAL_OUT="$(handover -- --once --interval 1)"
+assert_contains "start.ps1 says it is handing over" "Handing over to the loop" "$REAL_OUT"
+assert_eq "  and the loop really ran: the far side has a status" "idle" "$(hstatus state)"
+assert_eq "  answering the request that was queued" "h1" "$(hstatus id)"
+assert_eq "  and a log reached the far side, which only a running loop can do" "1" \
+  "$(ls -1 "$HANDOVER/far/scope/ops-logs/"*.txt 2>/dev/null | wc -l | tr -d ' ')"
+
+# THE ARGUMENTS AFTER `--` REALLY REACHED THE LOOP. Without the pass-through
+# the loop would have polled for ever rather than exiting after one run, so a
+# `--once` that was silently dropped shows up here as a timeout - which is a
+# failure, but one that reads as a hang rather than as a dropped argument.
+assert_contains "  and --once reached the loop, so it stopped by itself" "stopped" "$REAL_OUT"
 
 t_summary

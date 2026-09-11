@@ -707,8 +707,38 @@ function Start-Step {
     #>
     param([string] $Step, [string[]] $Assignments)
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $Shell
-    $psi.Arguments = ConvertTo-CapArgumentString -Argv @('-NoProfile', '-File', $Runner, $Step)
+
+    # --- ON UNIX, GIVE THE STEP ITS OWN PROCESS GROUP ------------------------
+    # Or a cancel reaches run.ps1 and stops there, leaving the step running.
+    #
+    # `Process.Start` gives the child this station's process group, so
+    # Stop-CapTree - which refuses to signal a group the caller is in, for the
+    # very good reason that it would kill the station - can only signal the one
+    # pid. run.ps1 dies, the capture stops, the log stops growing, and the
+    # assertion that the cancel worked passes. The STEP carries on changing the
+    # estate, with the operator told it was cancelled. Measured: the step
+    # survived by minutes.
+    #
+    # `setsid` is what station.sh uses for exactly this. Windows needs none of
+    # it: there are no process groups, and taskkill /T walks the tree.
+    #
+    # IT IS SAFE WHEN setsid MISBEHAVES. setsid forks instead of exec'ing when
+    # it is already a group leader, which would make the pid below the wrong
+    # one - but Stop-CapTree MEASURES the group rather than assuming it, so a
+    # wrong pid falls back to signalling one process, which is where this
+    # started. Nothing is worse than before, and usually it is right.
+    $useSetsid = $false
+    if (-not (Test-CapWindows) -and (Get-Command setsid -CommandType Application -ErrorAction SilentlyContinue)) {
+        $useSetsid = $true
+    }
+    if ($useSetsid) {
+        $psi.FileName = 'setsid'
+        $psi.Arguments = ConvertTo-CapArgumentString -Argv @(
+            $Shell, '-NoProfile', '-File', $Runner, $Step)
+    } else {
+        $psi.FileName = $Shell
+        $psi.Arguments = ConvertTo-CapArgumentString -Argv @('-NoProfile', '-File', $Runner, $Step)
+    }
     $psi.UseShellExecute = $false
     $psi.WorkingDirectory = $RepoRoot
     # NOT REDIRECTED. The child inherits this station's console, so an operator

@@ -40,7 +40,7 @@ any agent through the [MCP server](/mcp).
 |---|---|
 | **control** | your machine: the `heliograph` CLI, the [skill](/claude-code) that drives it, and you |
 | **transport** | the channel: git, relay, file share, bundle, object store |
-| **station** | the far side: plain bash, planted by `heliograph bootstrap`, and the loop running on it |
+| **station** | the far side: plain bash - or plain PowerShell, for an estate with no bash - planted by `heliograph bootstrap`, and the loop running on it |
 
 One repository carries all three, and the boundary is the gap: everything
 under `station/` runs on the far side and depends on nothing - bash 4+, git,

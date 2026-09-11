@@ -45,6 +45,23 @@ still needs is in
 This page describes each one as designed, so that the design can be reviewed -
 not as though you could reach for it this afternoon.
 
+### Which of them the PowerShell station has
+
+The table above is the **bash** station. The [PowerShell
+twin](/windows#the-powershell-station-for-a-box-with-no-bash), for an estate
+with no bash at all, ships **git and share** and nothing else.
+
+It has no relay, and that is not an oversight waiting to be filled in. The
+relay is the one transport needing `heliograph-seal`, a native binary, because
+its construction is X25519, HKDF-SHA256, ChaCha20-Poly1305 and Ed25519. The
+PowerShell station exists for machines where you were refused permission to
+install Git for Windows, and a native executable is a harder request than the
+one already turned down.
+
+Both implementations read and write the **same layout** on whichever channel
+they share, so a control side cannot tell them apart - and a test asserts that
+by comparing the documents they publish.
+
 ### Selecting one on the station
 
 `TRANSPORT` picks the channel, and it is the same command whichever you pick:

@@ -119,6 +119,35 @@ winev)  ps_step ./steps/win-events.ps1 ;;
 log - CRLF, OSC 8 hyperlinks, encoding, and the exit code - in one place rather
 than in every step by every author who remembers. See [Windows](/windows).
 
+### On the PowerShell station, a step is just a step
+
+The above is the **bash** station running a PowerShell step. On the [PowerShell
+station](/windows#the-powershell-station-for-a-box-with-no-bash) every step is
+PowerShell already, so there is no `ps_step` and nothing to wrap. Register it in
+`run.ps1`'s table:
+
+```powershell
+$StepTable['winev'] = 'steps/win-events.ps1'
+```
+
+That table is **case-sensitive** - ordinal, deliberately - because `run.sh`'s
+`case` is, and a step name that resolves on one implementation and is unknown on
+the other is the kind of difference that makes a twin useless.
+
+Two rules that differ from the bash side, both of which refuse the step rather
+than mangling it:
+
+- **Save the file as UTF-8 without a BOM.** Windows editors add one by default.
+  A BOM is three invisible bytes before the first character, so the
+  `# heliograph-mode:` line stops being first on its line. `run.ps1` refuses a
+  BOM outright and says so, because "your editor added three invisible bytes"
+  is a fixable answer and "declares no mode" is not.
+- **Do not redact anything yourself.** `caplib.psm1` masks secrets on the way
+  into the log, line by line. A step that masks its own output hides what the
+  redactor would have caught and proves nothing about whether it works.
+
+`steps/_template.ps1` in that payload is the one to copy.
+
 ## What ships on `main`
 
 | | |
