@@ -172,6 +172,19 @@ func RenderBody(md string) string {
 					svg, inline(caption))
 				continue
 			}
+			// ```matrix is the same idea as ```diagram: a name in the
+			// markdown, the thing itself in Go. The data belongs in one
+			// place that a test can check, not typed into a page where it
+			// drifts from the page next to it.
+			if info := strings.TrimSpace(strings.TrimPrefix(l, "```")); !inCode &&
+				info == "matrix" {
+				for i+1 < len(lines) && !reFence.MatchString(lines[i+1]) {
+					i++
+				}
+				i++ // the closing fence
+				out.WriteString(Matrix() + "\n")
+				continue
+			}
 			if inCode {
 				// The button sits after the <pre> and is found from it by the
 				// handler, so a copy never depends on where in the block the

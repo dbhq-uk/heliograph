@@ -46,6 +46,10 @@ twenty untested templates would spend the credibility of the ones that work.
 
 ## Which transport works on which host
 
+The interactive version of this table, with the controllers alongside it, is
+[what works with what](/matrix). Pick what you already have and it dims
+whatever cannot go with it.
+
 `start.sh` asks the transport rather than assuming git. Set `TRANSPORT` and that
 transport's variables and the preflight checks *that* channel - so a relay or
 blob station now starts with the same command, and gets the same table.

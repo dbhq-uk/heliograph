@@ -19,6 +19,13 @@ side, so a container can start cleanly on a host with no network at all.
 a log; the station side picks the request up and sends the log back. One half on
 its own moves nothing, so the status column below names both.
 
+**Every transport is one of two shapes**, and it decides more about an estate's
+answer than anything else here: a **pigeonhole** is a dead letter drop that
+needs nothing to be reachable, and an **intercom** talks to the station
+directly. All six below are pigeonholes.
+[What works with what](/matrix) sets the two out side by side, along with every
+station and controller and which combinations actually run.
+
 | transport | reach for it when | control side | station side |
 |---|---|---|---|
 | **git** | the far side can reach a git host | works | works |
