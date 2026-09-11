@@ -365,6 +365,12 @@ jobs:
   windows:
     name: The station runs on Windows
     runs-on: windows-latest
+    # THE DEFAULT IS SIX HOURS, and this job's whole purpose is to exercise
+    # loops, cancels and process trees - the things that hang. A green run
+    # takes about fourteen minutes; a run that has been going for forty is not
+    # slow, it is stuck, and six hours of a Windows runner to learn that is a
+    # bad trade. Fail, and let the per-file timeouts below say which one.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
@@ -626,10 +632,11 @@ jobs:
             command -v "$ps" >/dev/null 2>&1 || {
               echo "::error::$ps is not on this runner, so that edition was NOT tested"; rc=1; continue; }
             echo "--- $ps"
+            _t0=$SECONDS
             # Over the SHARE, which needs nothing but a directory. The git
             # transport is covered by the Linux sweep; here the question is the
             # interpreter, not the channel.
-            CONF_PS_SHELL="$ps" CONF_TRANSPORT=share ./tests/conformance/conformance.sh \
+            CONF_PS_SHELL="$ps" CONF_TRANSPORT=share timeout 900 ./tests/conformance/conformance.sh \
               tests/conformance/drivers/powershell.sh 2>&1 | tee "/tmp/conf-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::conformance failed under $ps"; rc=1; }
             # NOTHING MAY SKIP HERE ANY MORE, and the allowance that used to be
@@ -652,7 +659,7 @@ jobs:
             # run.ps1's gates under the same edition. The conformance suite
             # asks whether they fail closed; this asks the exact exit codes and
             # compares them against run.sh's, case by case.
-            CONF_PS_SHELL="$ps" ./tests/test-run-ps1.sh 2>&1 | tee "/tmp/gates-$ps.out"
+            CONF_PS_SHELL="$ps" timeout 900 ./tests/test-run-ps1.sh 2>&1 | tee "/tmp/gates-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::run.ps1 gates failed under $ps"; rc=1; }
             grep -q '^SKIP' "/tmp/gates-$ps.out" && {
               echo "::error::run.ps1's gates skipped under $ps"; rc=1; }
@@ -660,13 +667,13 @@ jobs:
             # WINDOWS CAN ANSWER: everywhere else it is a process group, and
             # here it is a Job Object with taskkill behind it. A grandchild
             # surviving is the defect, and only a real Windows tree shows it.
-            CONF_PS_SHELL="$ps" ./tests/test-station-ps1.sh 2>&1 | tee "/tmp/pre-$ps.out"
+            CONF_PS_SHELL="$ps" timeout 900 ./tests/test-station-ps1.sh 2>&1 | tee "/tmp/pre-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the preflight or cancel failed under $ps"; rc=1; }
             # The transports: what they refuse, what they never say, and what
             # they do when a delivery fails. Property 9 cannot see the last one
             # - from the far side of a working channel, a delivery that
             # succeeded and one that lied look the same.
-            CONF_PS_SHELL="$ps" ./tests/test-transports-ps1.sh 2>&1 | tee "/tmp/tp-$ps.out"
+            CONF_PS_SHELL="$ps" timeout 900 ./tests/test-transports-ps1.sh 2>&1 | tee "/tmp/tp-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the transports failed under $ps"; rc=1; }
             # A SKIP HERE IS ALLOWED ONLY FOR THE LINK CASES, which need a
             # privilege or Developer Mode to construct. Everything else must
@@ -696,7 +703,7 @@ jobs:
             # that publishes `cancelled` while the step carries on changing the
             # estate is the worst outcome available to this file, and only a
             # real Windows tree shows it.
-            CONF_PS_SHELL="$ps" ./tests/test-station-loop-ps1.sh 2>&1 | tee "/tmp/loop-$ps.out"
+            CONF_PS_SHELL="$ps" timeout 1200 ./tests/test-station-loop-ps1.sh 2>&1 | tee "/tmp/loop-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the loop or gate 3 failed under $ps"; rc=1; }
             bad="$(grep '^SKIP' "/tmp/loop-$ps.out" || true)"
             [ -z "$bad" ] || { echo "::error::the loop skipped something it may not under $ps:"; echo "$bad"; rc=1; }
@@ -712,6 +719,7 @@ jobs:
               grep -qF "$want" "/tmp/loop-$ps.out" || {
                 echo "::error::$ps did not run the assertion '$want'"; rc=1; }
             done
+            echo "--- $ps finished in $((SECONDS - _t0))s"
           done
           exit $rc
 
@@ -725,7 +733,7 @@ jobs:
                    tests/test-station-ps1.sh tests/test-transports-ps1.sh \
                    tests/test-station-loop-ps1.sh; do
             echo "--- $f"
-            ./$f 2>&1 | tee "/tmp/$(basename "$f").out"
+            timeout 1200 ./$f 2>&1 | tee "/tmp/$(basename "$f").out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || rc=1
             if grep -q '^SKIP' "/tmp/$(basename "$f").out"; then
               echo "::error::$f skipped an assertion on Windows, where it should not"; rc=1
