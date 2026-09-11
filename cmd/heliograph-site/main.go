@@ -583,9 +583,11 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 	if p.Slug != "index" && !o.noindex {
 		crumbs = pageHead(p)
 	}
-	mirror := ""
+	// The footer names both mirrors: this page, and the whole site for an
+	// agent that wants it in one fetch.
+	mirror := ` &middot; <a href="/llms.txt">llms.txt</a>`
 	if !o.noindex {
-		mirror = fmt.Sprintf(` &middot; <a href="/%s.md">This page as markdown</a>`, p.Slug)
+		mirror = fmt.Sprintf(` &middot; <a href="/%s.md">This page as markdown</a>`, p.Slug) + mirror
 	}
 
 	body := p.Body
@@ -657,6 +659,10 @@ func head(p site.Page, o pageOptions) string {
 		// The markdown mirror, announced so an agent does not have to guess.
 		fmt.Fprintf(&b, "<link rel=\"alternate\" type=\"text/markdown\" href=\"/%s.md\">\n", p.Slug)
 	}
+	// llms.txt, announced rather than left to a crawler's guess. The per-page
+	// mirror above is this page; this is the whole site in one file, and it
+	// was reachable only by an agent that already knew the path.
+	b.WriteString("<link rel=\"alternate\" type=\"text/plain\" title=\"llms.txt\" href=\"/llms.txt\">\n")
 	// The two fonts the CSS actually names. This list once preloaded two files
 	// that had been renamed away, and every page view 404ed twice for weeks.
 	b.WriteString(`<link rel="preload" href="/assets/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin>

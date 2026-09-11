@@ -547,3 +547,23 @@ func TestTheNavigationAnnouncesASwapAndTheRailListens(t *testing.T) {
 		t.Error("the rail does not disconnect its previous observer, so they stack")
 	}
 }
+
+// llms.txt is the best agent-facing thing on a site whose whole argument is
+// that agents read it more than people do, and nothing in the HTML pointed at
+// it. The only references were a comment in robots.txt, which nothing parses,
+// and the body of the 404 page.
+func TestEveryPagePointsAtLLMSTxt(t *testing.T) {
+	out := buildSite(t)
+	for name, h := range htmlPages(t, out) {
+		if !strings.Contains(h, `<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">`) {
+			t.Errorf("%s does not announce llms.txt in its head", name)
+		}
+		i := strings.Index(h, "<footer>")
+		if i < 0 || !strings.Contains(h[i:], `href="/llms.txt"`) {
+			t.Errorf("%s has no visible link to llms.txt", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(out, "llms.txt")); err != nil {
+		t.Fatalf("llms.txt is announced and missing: %v", err)
+	}
+}
