@@ -34,10 +34,46 @@ Measured on this machine, PowerShell 7.6.5 / .NET 10.0.11:
 not scheduled. The original proposal `#14741` was closed as completed in favour
 of it. So Ed25519 is coming to .NET and is not there yet, on any version.
 
+### Windows itself has three of the four
+
+Asked before reaching for a library, and it should have been asked first.
+
+| primitive | CNG identifier | supported from |
+|---|---|---|
+| ChaCha20-Poly1305 | `BCRYPT_CHACHA20_POLY1305_ALGORITHM`, `L"CHACHA20_POLY1305"` | Windows 10 |
+| HKDF | `BCRYPT_HKDF_ALGORITHM`, `L"HKDF"` | Windows 10 |
+| X25519 | `BCRYPT_ECDH_ALGORITHM` with `BCRYPT_ECC_CURVE_NAME` set to `BCRYPT_ECC_CURVE_25519` - name `curve25519`, 255 bits | Windows 10 / Server 2016 |
+| **Ed25519** | **not in the list** | - |
+
+Server 2016 is older than the floor this payload already targets, so on any
+machine that can run this station at all, three of the four primitives are in
+the operating system. No package, no assembly, nothing to get approved.
+
+**Ed25519 is the only gap.** It is not an algorithm identifier, and
+`BCRYPT_ECDSA_ALGORITHM` over `curve25519` is not a substitute: ECDSA on that
+curve is a different signature scheme from Ed25519 and would not verify against
+anything the Go side produces.
+
+**THIS IS DOCUMENTED API SURFACE, NOT A MEASUREMENT.** Everything above comes
+from Microsoft's own reference pages; none of it has been run, because there is
+no Windows here. Two things in particular have to be proved on a real machine
+before anybody builds on them:
+
+- whether CNG's `curve25519` ECDH yields the **raw** RFC 7748 shared secret.
+  `BCryptSecretAgreement` returns a handle and `BCryptDeriveKey` decides what
+  comes out; `BCRYPT_KDF_RAW_SECRET` is the one that must be used and must
+  match what Go's `crypto/ecdh` produces for the same keys.
+- whether the ChaCha20-Poly1305 provider takes the nonce and AAD the way RFC
+  8439 specifies, byte for byte.
+
+Getting either wrong is silent. This document recommends measuring them as the
+first task, not trusting this table - which is the whole lesson of the section
+above it.
+
 ### BouncyCastle: all four, pure managed, measured
 
-`bcgit/bc-csharp` - MIT, 1,920★, last pushed 2026-09-07 - carries `Ed25519`,
-`X25519`, `ChaCha20Poly1305` and `HkdfBytesGenerator`. The
+`bcgit/bc-csharp` - MIT, 1,920 stars, last pushed 2026-09-07 - carries
+`Ed25519`, `X25519`, `ChaCha20Poly1305` and `HkdfBytesGenerator`. The
 `BouncyCastle.Cryptography` 2.7.0 package targets **`net461`, `netstandard2.0`
 and `net6.0`**, and the repository contains **no committed native binaries**: it
 is managed code, one assembly, 8.3 MB packaged.
@@ -53,91 +89,105 @@ ChaCha20-Poly1305 round trip : True
 Ed25519 sign and verify      : True
 ```
 
-**So a PowerShell relay does not need a native binary.** Every primitive the
-seal uses is available to the floor version, in managed code, under a licence
-that permits redistribution.
+**So a PowerShell relay does not need a native binary**, whichever route is
+taken. Every primitive the seal uses is available to the floor version.
+
+### The smaller libraries, and why they do not finish the job
+
+Measured, rather than taken from a description:
+
+| | size | targets | has |
+|---|---|---|---|
+| `BouncyCastle.Cryptography` 2.7.0 | 8.3 MB | net461, netstandard2.0, net6.0 | all four |
+| `NaCl.Core` | 0.23 MB | net45, net48, netstandard2.0 | ChaCha20-Poly1305 and Poly1305 only - **no X25519, no Ed25519, no HKDF** |
+| `Chaos.NaCl` | source only | - | X25519 and Ed25519, **no AEAD**; unmaintained since 2021, and GitHub reports no declared licence |
+
+NaCl.Core is thirty-six times smaller than BouncyCastle and covers one of the
+four. Chaos.NaCl covers the two CNG lacks but has an undeclared licence and has
+not been touched in five years, which is a poor thing to put on the signature
+path.
 
 ## What is actually in the way
 
-Three things, none of which is "the crypto does not exist".
+Not "the crypto does not exist". Three things, in descending order of how much
+they should worry anybody.
 
-### 1. The payload stops being plain text
+### 1. Byte-compatibility with the Go implementation
 
-The proposition is *"plain text you can read before you run it"*, and CI
-enforces it: no Go, no binary and no package under `station/`. `station/embed_test.go`
-caps the embedded payload at 4 MB and refuses anything that is not part of the
-station - a guard written for a different reason that would reject an 8.3 MB
-third-party assembly on both counts.
-
-That guard is right, and this would be the second deliberate exception to it.
-The first - `heliograph-seal` - was argued for explicitly rather than smuggled
-in, and this needs the same treatment rather than a quiet limit bump.
-
-**A managed DLL is a genuinely easier ask than a native one.** It is MIT, it is
-already present in a great many estates, and it comes from a publisher a change
-board has heard of. That is a different conversation from an unsigned executable
-we compiled ourselves, and it is the part I got wrong.
-
-### 2. Add-Type, and the estate that blocks it
-
-Loading the assembly needs `Add-Type -Path` or
-`[Reflection.Assembly]::LoadFrom`. **Constrained Language Mode refuses both.**
-
-This is not an additional obstacle, and it is worth being precise rather than
-alarmed: CLM already stops the whole PowerShell station dead, because the
-capture is mostly .NET method calls. `start.ps1` checks for it first and says
-so. An estate in CLM has no station at all, relay or otherwise.
-
-So CLM does not argue against the relay. It argues for the preflight naming the
-assembly as one more thing it checks before starting.
-
-### 3. Byte-compatibility with the Go implementation is the real work
-
-The seal is not just four primitives. `internal/seal/seal.go` also specifies:
+The seal is not four primitives in a bag. `internal/seal/seal.go` also
+specifies:
 
 - **Sign-then-encrypt**, so the signature travels inside the encryption
 - **The recipient's fingerprint is a signed field**, which is the standard
   mitigation for sign-then-encrypt's re-encryption weakness
-- **Length-prefixed canonical metadata** - big-endian `uint64` length before
+- **Length-prefixed canonical metadata** - a big-endian `uint64` length before
   each field, never a delimiter, because a delimiter that can appear inside a
   value lets two different messages serialise identically
 - **`base64.RawURLEncoding`** for identities and fingerprints
 - **A signed version field**, with no negotiation and no plaintext fallback
 
 None of that is hard. All of it is exacting, and a mistake in any of it is
-silent - which is the same argument that produced the Go binary in the first
-place. The framing is plain byte manipulation and reproduces fine in PowerShell;
-what it needs is **cross-implementation test vectors**, not cleverness.
+silent - which is the argument that produced the Go binary in the first place.
+The framing is plain byte manipulation and reproduces fine in PowerShell; what
+it needs is **cross-implementation test vectors**, which do not exist yet.
+
+### 2. Ed25519, and only Ed25519
+
+CNG has the other three. Whatever is chosen for the signature is the one piece
+of third-party or hand-written crypto on the path, and it is the piece where
+being wrong is worst: a forged request is code execution inside the estate.
+
+RFC 8032 ships official test vectors, so this is provable rather than trusted -
+which is what makes vendoring one implementation acceptable where vendoring four
+would not be.
+
+### 3. The payload stops being plain text, if a library is shipped
+
+The proposition is *"plain text you can read before you run it"*, and CI
+enforces it: no Go, no binary and no package under `station/`.
+`station/embed_test.go` caps the embedded payload at 4 MB and refuses anything
+that is not part of the station - a guard written for a different reason that
+would reject an 8.3 MB third-party assembly on both counts, correctly.
+
+The CNG route avoids this entirely, which is most of why it is the
+recommendation. A vendored Ed25519 is source, and readable, so it keeps the
+property; an 8.3 MB assembly does not.
 
 ## Recommendation
 
-Build it, in this order, and do not start at the transport.
+**Use Windows CNG for X25519, HKDF and ChaCha20-Poly1305, and solve Ed25519 on
+its own.** That is one gap rather than four, and it leaves the payload with no
+third-party assembly to ship, approve or keep up to date.
 
-1. **Test vectors first.** `internal/seal` gains a golden-vector test that emits
-   a fixed set of sealed messages from known keys. The PowerShell
-   implementation is written against those vectors before it is wired to
-   anything, and the Go side verifies what PowerShell produced. Two
-   implementations of a crypto format that have never been compared are two
-   formats.
-2. **`lib/seal.psm1`**, the construction alone - no networking, exactly as
+Build it in this order, and do not start at the transport.
+
+1. **Prove the three CNG primitives on a real Windows machine**, against Go's
+   output for the same inputs. Specifically: `BCRYPT_KDF_RAW_SECRET` from a
+   `curve25519` secret agreement must equal what `crypto/ecdh` gives. If it does
+   not, this recommendation collapses and BouncyCastle is the answer - so this
+   is the first task and not an afterthought.
+2. **Golden test vectors from `internal/seal`**, emitted from fixed keys. The
+   PowerShell implementation is written against those, and the Go side verifies
+   what PowerShell produced. Two implementations of a crypto format that have
+   never been compared are two formats.
+3. **Decide Ed25519**, which is the only real choice left:
+
+   | | |
+   |---|---|
+   | **Vendor one implementation of Ed25519** | about 1,500 lines of somebody else's code, on the signature path. RFC 8032 ships official test vectors, so it can be proved rather than trusted - which is why this is the recommendation |
+   | **Require BouncyCastle after all** | 8.3 MB, and then the other three primitives may as well come from it too |
+   | **Change the signature algorithm in a seal v2** | `Version` is already a signed field with no negotiation, so a v2 is possible - but it is a protocol change on both sides and the deployed estate's identities are Ed25519. Not worth it to avoid one primitive |
+
+4. **`lib/seal.psm1`**, the construction alone - no networking, exactly as
    `heliograph-seal` does sealing and leaves curl in the shell.
-3. **`transports/relay.psm1`**, which is then an ordinary transport.
-4. **Conformance over the relay**, with the existing stub, on both editions.
+5. **`transports/relay.psm1`**, which is then an ordinary transport.
+6. **Conformance over the relay**, with the existing stub, on both editions.
 
-**How to ship BouncyCastle is the decision this document cannot make**, because
-it changes what the payload is. The options, with what each costs:
-
-| | |
-|---|---|
-| **Require it to be present** and refuse to start without it | keeps the payload plain text; makes the relay unavailable until somebody installs a DLL, which is the problem we started with |
-| **Ship the assembly in the payload** | works immediately; an 8.3 MB binary blob in a payload whose proposition is that you can read it |
-| **Vendor the needed source** (MIT permits it) and compile with `Add-Type` at runtime | payload stays readable text; several thousand lines of somebody else's crypto to carry, and a compile step at station start |
-
-My recommendation is the **first**, with the preflight naming the assembly and
-where to get it - because it preserves the property the whole product rests on,
-and because an estate that will permit a relay at all is an estate having a
-conversation about egress anyway. The third is the interesting one if that
-proves too slow in practice, and it should not be reached for first.
+**One thing this does not escape.** P/Invoke into `bcrypt.dll` needs
+`Add-Type`, and Constrained Language Mode refuses it. That is not an extra cost:
+CLM already stops the whole station, because the capture is mostly .NET method
+calls and `start.ps1` checks for it first. An estate in CLM has no station at
+all, relay or otherwise.
 
 ## What I would tell a reviewer
 
