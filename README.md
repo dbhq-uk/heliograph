@@ -48,9 +48,11 @@ The boundary is the gap, and the layout states it once:
 | **transport** | the channel: git, relay, file share, bundle, object store - all behind one interface, so the read-only gates live in one place and cannot drift per transport |
 | **station** | the far side: [`station/bash/`](station/), planted into a private transport repo. Bash 4+, git and GNU coreutils. No packages, no credentials, no tunnel |
 
-**Nothing is ever installed on the far side.** The station is plain bash you
-can read before you run, and no Go will ever appear under `station/bash/` -
-CI enforces it. That constraint is the entire proposition on a locked-down
+**Nothing is ever installed on the far side.** The station is plain text you
+can read before you run - bash 4+, or PowerShell 5.1 for a Windows estate that
+has no bash and will not be given any - and no Go will ever appear under
+`station/` beyond the one file that lets the CLI carry the payload. CI
+enforces it. That constraint is the entire proposition on a locked-down
 box where installing anything is its own change request.
 
 ## Install

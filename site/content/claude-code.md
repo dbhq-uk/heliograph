@@ -102,5 +102,5 @@ The skill is one component. The full set, all in
 | the skill | the method, the workflow, and how to write a step. Drives the CLI |
 | the CLI | `heliograph bootstrap`, `send`, `watch`, `logs --gaps`, `plant` - and the gates |
 | the MCP server | `heliograph mcp`, the same CLI as typed tools |
-| the station | plain bash on the far side, nothing to install, planted by the CLI |
+| the station | plain bash on the far side - or plain PowerShell where there is none - nothing to install, planted by the CLI |
 | the relay | when there is no git host, no storage and no share |

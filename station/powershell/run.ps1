@@ -15,8 +15,11 @@
 #  run.sh - one implementation is better than two wherever there is a choice.
 #
 #  THE GATES IT CARRIES ARE 1, 2 AND 4. Gate 3 - the station must have been
-#  started with --allow-actions - lives in the loop, which is station.ps1, and
-#  the loop is a later PR. Nothing here silently stands in for it.
+#  STARTED with --allow-actions - lives in station.ps1, because it is a
+#  property of how the station was started and a runner invoked by hand has no
+#  station behind it to ask. Nothing here silently stands in for it, which is
+#  why `.\run.ps1 <an action>` with CONFIRM=yes runs: the operator typing that
+#  IS the authorisation gate 3 exists to check for.
 #
 #  EXIT CODES ARE THE CONTRACT, and they are run.sh's:
 #     2  unknown step, or a step file that cannot be run

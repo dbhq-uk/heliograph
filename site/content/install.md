@@ -37,9 +37,11 @@ The skill drives the binary above, so install both.
 
 ## The far side
 
-Nothing to install, ever. The station is plain bash - no interpreter, no
-packages, no credentials of its own - and `heliograph bootstrap` plants the
-copy the binary was built with into your transport repo. The source is
+Nothing to install, ever. The station is plain bash - no packages, no
+credentials of its own - and `heliograph bootstrap` plants the copy the binary
+was built with into your transport repo. A Windows estate with no bash and no
+permission to install any gets `--flavour powershell` instead, which needs only
+the Windows PowerShell already on the box; see [Windows](/windows). The source is
 [`station/bash/`](https://github.com/dbhq-uk/heliograph/tree/main/station/bash),
 readable before you run it.
 

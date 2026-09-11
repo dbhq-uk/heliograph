@@ -29,9 +29,10 @@ and becomes a procedure, and the value is that the format, the gates and the log
 are identical to every other transport, so the [method](/method) survives the
 walk.
 
-**Plant the station by hand.** The station is plain bash and stands on its own.
+**Plant the station by hand.** The station is plain text and stands on its own.
 Clone this repository on a machine that can, carry the clone across, and run the
-bootstrap from it:
+bootstrap from it. On a Windows box with no bash, `station/bootstrap.ps1` does
+the same job with only the PowerShell already installed:
 
 ```bash
 git clone https://github.com/dbhq-uk/heliograph          # near side

@@ -1,6 +1,6 @@
 # The station
 
-The far side. A directory of plain bash, planted into a private transport repo,
+The far side. A directory of plain text, planted into a private transport repo,
 that watches for a request, runs one step, and sends the log back.
 
 It is the half of heliograph you cannot reach, so it is the half most worth
@@ -11,57 +11,83 @@ the machine it will run on.
 The operator starts it once. Everything after that is the transport.
 ```
 
-## There is one station, and one launcher
+## Two stations, and a launcher
 
 | | what it is |
 |---|---|
-| **`station/bash/`** | the station. Bash 4+, and what every host runs |
-| **`station.ps1`** | a **launcher**, not a port. It finds the bash that Git for Windows installed and hands over to `start.sh`. It re-implements nothing |
+| **`station/bash/`** | the station. Bash 4+, and what almost every host runs |
+| **`station/powershell/`** | the twin, for a Windows estate with **no bash and no permission to install any**. Plant it with `--flavour powershell` |
+| **`station/bash/station.ps1`** | a **launcher**, not a station. It finds the bash that Git for Windows installed and hands over to `start.sh`. Do not confuse it with `station/powershell/station.ps1`, which is the loop itself |
 
-**One implementation of the capture, and it must not be forked.** A PowerShell
-copy would be a second one, drifting in the least visible way possible: a
-buffered port gives every line the same timestamp, which reads like a working
-log while destroying the only property the log is for.
+**Prefer the bash station wherever it will run.** One implementation of the
+capture is better than two, and a Windows box with Git for Windows should use
+the launcher rather than the twin.
 
-A native PowerShell station is
-[designed](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-08-powershell-station-and-full-documentation-design.md)
-and not built. That design also proposes relaxing the rule above - a second
-implementation permitted **only** while it passes [the capture
-contract](/conformance) - and that relaxation is a draft, not current policy.
+### A second implementation is permitted only while it passes the contract
+
+That is the rule, and it replaced a blanket prohibition. The argument against a
+port was never about PowerShell - it was about **untested drift**, and a
+buffered port is the worst kind: it gives every line the same timestamp, which
+reads like a working log while destroying the only property the log is for.
+
+So the rule is now a gate rather than a ban. `station/powershell/` passes all
+ten properties of [the capture contract](/conformance), over both transports it
+ships, on Windows PowerShell 5.1 and on 7, in CI, on every change. If it ever
+stops passing, it stops shipping.
+
+The twin carries the same request document, the same published status, the same
+four gates and the same exit codes. A control side reads one document and
+cannot tell which of them wrote it, and a test asserts exactly that.
+
+What it does **not** have is recorded on [Windows](/windows): no relay
+transport, a self-update that needs a restart, and no service installer of its
+own.
 
 ## What it depends on
 
-Bash 4+ and GNU coreutils, plus whatever the transport needs: `git` for the git
-transport, `curl` for blob and relay. That is the whole list, and it is the
-entire proposition - on a locked-down box, installing anything is its own change
-request. **Nothing is ever installed on the far side.**
+The bash station needs bash 4+ and GNU coreutils. The PowerShell station needs
+Windows PowerShell 5.1, which is in-box on Server 2016 and later. Then whatever
+the transport needs: `git` for the git transport, `curl` for blob and relay,
+nothing at all for a file share.
 
-CI enforces it. No Go, no binary, no interpreter and no package may appear
-under `station/`. The one Go file permitted is `station/embed.go`, which never
-ships anywhere.
+That is the whole list, and it is the entire proposition - on a locked-down box,
+installing anything is its own change request. **Nothing is ever installed on
+the far side.**
+
+CI enforces it. No Go, no binary and no package may appear under `station/`.
+The only Go permitted is `station/embed.go`, which lets the CLI carry the
+payload, and its test - neither ships anywhere.
 
 There is exactly one exception, argued for explicitly rather than smuggled in:
 the relay transport needs `heliograph-seal`, because its construction is
 X25519, HKDF-SHA256, ChaCha20-Poly1305 and Ed25519, and hand-assembling those
 in shell across openssl versions is where crypto bugs live and where they are
-silent. Every other transport stays pure bash.
+silent. Every other transport is pure text.
+
+That exception is also why the PowerShell station has **no relay**: it exists
+for estates that would not let you install Git for Windows, and a native binary
+is a harder request than the one they already refused.
 
 ## The files
 
-| | |
-|---|---|
-| `start.sh` | the preflight, then hand over. The one command the operator types |
-| `station.sh` | the loop: poll, decide, dispatch, publish |
-| `run.sh` | the step runner. Owns the log, the timestamps and the delivery |
-| `caprun.sh` | the same capture around an arbitrary command, for ad-hoc use |
-| `caplib.sh` | the capture itself, and the only implementation of it |
-| `transports/` | `git.sh`, `blob.sh`, `relay.sh` - one file per channel |
-| `steps/` | one file per question. `_template.sh` to start from |
-| `lib/` | helpers a step can source: probes, ansible, terraform, remote hosts |
-| `ops-logs/` | where captured logs land, and are committed from |
-| `station/request` | what to run. `station/status` - what happened |
+| | bash | PowerShell |
+|---|---|---|
+| the preflight, and the one command the operator types | `start.sh` | `start.ps1` |
+| the loop: poll, decide, dispatch, publish | `station.sh` | `station.ps1` |
+| the step runner. Owns the log, the timestamps and the delivery | `run.sh` | `run.ps1` |
+| the capture itself | `caplib.sh` | `caplib.psm1` |
+| one file per channel | `transports/git.sh`, `share.sh`, `blob.sh`, `relay.sh` | `transports/git.psm1`, `share.psm1` |
+| one file per question, and a template to start from | `steps/` | `steps/` |
+| helpers a step can use | `lib/` | `lib/` |
+| where captured logs land | `ops-logs/` | `ops-logs/` |
+| what to run, and what happened | `station/request`, `station/status` | the same |
 
-Details of each: [the runner](/runner), [writing a step](/steps).
+The bash payload also carries `caprun.sh` - the same capture around an arbitrary
+command, for ad-hoc use - `secret.sh`, and the service installers. The
+PowerShell payload has no equivalent of any of those yet.
+
+Details of each: [the runner](/runner), [writing a step](/steps),
+[Windows](/windows).
 
 ## The loop, precisely
 
