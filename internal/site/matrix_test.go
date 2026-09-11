@@ -1,13 +1,15 @@
 package site
 
 import (
+	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 )
 
 // A pairing naming a transport that does not exist is a cell that silently
-// does nothing: the picker never lights it, the table never prints it, and
-// nothing anywhere says a word. This is the only thing that would notice.
+// does nothing: the grid draws it as impossible, the count treats it as dead,
+// and nothing anywhere says a word. This is the only thing that would notice.
 func TestEveryPairingNamesATransportThatExists(t *testing.T) {
 	known := map[string]bool{}
 	for _, tr := range Transports {
@@ -29,21 +31,18 @@ func TestEveryPairingNamesATransportThatExists(t *testing.T) {
 	}
 }
 
-// Two rows with the same ID is two rows the picker cannot tell apart: the
-// filter would light both and dim neither.
+// Two rows with the same ID is two rows the grid cannot tell apart: the cell
+// key is station.transport, so a duplicate silently overwrites a whole row of
+// the payload the panel reads from.
 func TestIDsAreUnique(t *testing.T) {
-	for _, group := range []struct {
+	for _, g := range []struct {
 		name string
 		ids  []string
-	}{
-		{"transport", transportIDs()},
-		{"station", stationIDs()},
-		{"controller", controllerIDs()},
-	} {
+	}{{"transport", transportIDs()}, {"station", stationIDs()}, {"controller", controllerIDs()}} {
 		seen := map[string]bool{}
-		for _, id := range group.ids {
+		for _, id := range g.ids {
 			if seen[id] {
-				t.Errorf("duplicate %s id %q", group.name, id)
+				t.Errorf("duplicate %s id %q", g.name, id)
 			}
 			seen[id] = true
 		}
@@ -74,49 +73,118 @@ func controllerIDs() []string {
 	return out
 }
 
-// A transport with no station side cannot work however the picker lights up,
-// so the table has to say so in the column for that side. This asserts the
-// claim the page makes about itself.
-func TestATransportMissingAHalfSaysWhichHalf(t *testing.T) {
-	html := Matrix()
+// A transport with no station side cannot run ANYWHERE, whatever a host row
+// claims about it. resolve() checks that first for exactly this reason, and
+// without the check the object store and the bundle light up four rows each
+// that can never run.
+func TestATransportWithNoStationSideRunsNowhere(t *testing.T) {
 	for _, tr := range Transports {
 		if tr.Station != Missing {
 			continue
 		}
-		if !strings.Contains(html, "no station side") {
-			t.Fatalf("transport %q has no station side and the matrix never says so", tr.ID)
+		for _, s := range Stations {
+			if c := resolve(s, tr); c.State != CellNone {
+				t.Errorf("%q has no station side, but %q resolves to %q", tr.Name, s.Name, c.State)
+			}
 		}
 	}
 }
 
-// The whole matrix has to be in the HTML before a line of script runs. Most
-// of this site's readers are agents, and a picker that assembles itself on
-// click is an empty page to every one of them.
-func TestTheMatrixIsCompleteWithoutJavaScript(t *testing.T) {
-	html := Matrix()
-	for _, tr := range Transports {
-		if !strings.Contains(html, esc(tr.Name)) {
-			t.Errorf("transport %q is not in the rendered matrix", tr.Name)
+// Every cell that cannot run has to say why. "No" with no reason is the thing
+// a reader has to go and ask somebody about, which is the failure this whole
+// page exists to avoid.
+func TestEveryDeadCellCarriesItsReason(t *testing.T) {
+	for _, s := range Stations {
+		for _, tr := range Transports {
+			c := resolve(s, tr)
+			if c.State == CellNone && strings.TrimSpace(c.Note) == "" {
+				t.Errorf("%s over %s cannot run and says nothing about why", s.Name, tr.Name)
+			}
 		}
+	}
+}
+
+// The grid has to be complete in the HTML before a line of script runs. Most
+// of this site's readers are agents, and a grid that assembles itself on load
+// is an empty page to every one of them.
+func TestTheGridIsCompleteWithoutJavaScript(t *testing.T) {
+	h := Matrix()
+	for _, s := range Stations {
+		for _, tr := range Transports {
+			key := s.ID + "." + tr.ID
+			if !strings.Contains(h, `data-cell="`+key+`"`) {
+				t.Errorf("cell %q is not in the rendered grid", key)
+			}
+		}
+	}
+	// Every state must be on the cell itself, not applied later from the
+	// payload, or the no-script reader sees seventy identical squares.
+	for _, want := range []string{`data-state="proven"`, `data-state="none"`} {
+		if !strings.Contains(h, want) {
+			t.Errorf("the grid renders no %s cell", want)
+		}
+	}
+	// Nothing may start filtered out: dimming is what a control means, and a
+	// reader with no script has pressed nothing.
+	if strings.Contains(h, "data-dim") {
+		t.Error("the grid ships with something already dimmed, so a no-script reader sees a filtered view")
+	}
+}
+
+// The panel reads from this payload. If a cell key is absent the panel shows
+// the wrong pair or nothing at all, and neither is visible from the grid.
+func TestThePayloadCoversEveryCell(t *testing.T) {
+	h := Matrix()
+	const open = `<script type="application/json" id="mx-data">`
+	i := strings.Index(h, open)
+	if i < 0 {
+		t.Fatal("the matrix renders no data payload, so nothing can be interactive")
+	}
+	raw := h[i+len(open):]
+	raw = raw[:strings.Index(raw, "</script>")]
+
+	var p struct {
+		Cells map[string]Cell `json:"cells"`
+	}
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		t.Fatalf("the payload is not valid JSON, so every reader gets a dead grid: %v", err)
 	}
 	for _, s := range Stations {
-		if !strings.Contains(html, esc(s.Name)) {
-			t.Errorf("station %q is not in the rendered matrix", s.Name)
+		for _, tr := range Transports {
+			key := s.ID + "." + tr.ID
+			if _, known := p.Cells[key]; !known {
+				t.Errorf("cell %q is drawn in the grid and missing from the payload", key)
+			}
 		}
 	}
-	for _, c := range Controllers {
-		if !strings.Contains(html, esc(c.Name)) {
-			t.Errorf("controller %q is not in the rendered matrix", c.Name)
-		}
+}
+
+// A "<" reaching the browser unescaped inside a script tag ends the script
+// early and takes the rest of the page with it. The JSON-LD block guards the
+// same trap; this one carries prose written by whoever edits the data.
+func TestThePayloadCannotCloseItsOwnScriptTag(t *testing.T) {
+	h := Matrix()
+	i := strings.Index(h, `id="mx-data">`)
+	raw := h[i:]
+	raw = raw[:strings.Index(raw, "</script>")]
+	if strings.Contains(raw, "<") {
+		t.Error("the payload contains a raw < inside a script tag, which truncates the page")
 	}
-	// Nothing may start dimmed, because dimming is what a selection means.
-	if strings.Contains(html, "data-off") {
-		t.Error("the matrix ships with something already dimmed, so a reader with no script sees a filtered view")
+	// Prove the assertion can see the thing it guards, rather than passing on
+	// data that happens to contain no angle bracket. This is the liveness
+	// check PLAN.md's redaction-corpus lesson asks for: without it, a payload
+	// with no "<" in it and no escaping at all reads exactly like a pass.
+	hostile, err := json.Marshal(map[string]string{"n": "</script><img onerror=alert(1)>"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(hostile), "<") {
+		t.Error("encoding/json is not escaping < any more, so the payload can close its own tag")
 	}
 }
 
 // Both shapes have to appear, or the page's central claim is decoration. The
-// intercom is the only member of its kind and would be the one lost.
+// intercom is the only member of its kind and is the one that would be lost.
 func TestBothTransportShapesArePresent(t *testing.T) {
 	var pig, ic int
 	for _, tr := range Transports {
@@ -130,56 +198,122 @@ func TestBothTransportShapesArePresent(t *testing.T) {
 		}
 	}
 	if pig == 0 || ic == 0 {
-		t.Fatalf("want both shapes represented, got %d pigeonhole and %d intercom", pig, ic)
+		t.Fatalf("want both shapes present, got %d pigeonhole and %d intercom", pig, ic)
 	}
 }
 
-// The picker filters both ways, so the link data has to be symmetric. If a
-// station lists a transport but that transport does not list the station,
-// clicking the station lights the transport and clicking the transport dims
-// the station - the same pair, two different answers, depending which column
-// the reader started in. That is the defect a user would actually hit.
-func TestThePickerFiltersTheSameBothWays(t *testing.T) {
-	links := map[string]map[string]bool{}
-	for _, group := range [][]cell{transportCells(), stationCells(), controllerCells()} {
-		for _, c := range group {
-			links[c.id] = map[string]bool{}
-			for _, l := range c.links {
-				links[c.id][l] = true
-			}
+// The count above the grid is a claim about the grid. If it is computed any
+// other way than the cells are drawn, it is a number that disagrees with what
+// the reader can see and count themselves.
+func TestTheCountMatchesTheCellsDrawn(t *testing.T) {
+	// Counted off the CELLS, not off the whole page: the legend and the panel
+	// carry a data-state too, and counting those made this pass at 37 against
+	// a grid drawing 36.
+	h := Matrix()
+	drawn := 0
+	for _, m := range regexp.MustCompile(`data-cell="[^"]*" data-state="([a-z]+)"`).FindAllStringSubmatch(h, -1) {
+		if m[1] != "none" {
+			drawn++
 		}
 	}
-	for id, out := range links {
-		for target := range out {
-			back, known := links[target]
-			if !known {
-				t.Errorf("%s links to %s, which is not in the picker at all", id, target)
-				continue
-			}
-			if !back[id] {
-				t.Errorf("%s lights %s, but %s does not light %s back", id, target, target, id)
-			}
-		}
+	if got := countRunnable(); got != drawn {
+		t.Errorf("the bar claims %d runnable combinations, the grid draws %d", got, drawn)
 	}
 }
 
-// A transport with no station side must light no station, or the picker
-// promises a combination that cannot run. The object store and the bundle are
-// the two that would.
-func TestATransportWithNoStationSideLightsNoStation(t *testing.T) {
-	byID := map[string]Transport{}
+// A column head with no short name is a column head that wraps to three lines
+// and pushes the grid into a scrollbar.
+func TestEveryRowAndColumnHasAShortName(t *testing.T) {
 	for _, tr := range Transports {
-		byID[tr.ID] = tr
-	}
-	for _, c := range transportCells() {
-		tr := byID[strings.TrimPrefix(c.id, "t:")]
-		if tr.Station != Missing {
-			continue
+		if len(tr.Short) == 0 || len(tr.Short) > 10 {
+			t.Errorf("transport %q has short name %q, want 1 to 10 characters", tr.ID, tr.Short)
 		}
-		for _, l := range c.links {
-			if strings.HasPrefix(l, "s:") {
-				t.Errorf("%q has no station side but the picker lights station %q", tr.Name, strings.TrimPrefix(l, "s:"))
+	}
+	for _, s := range Stations {
+		if len(s.Short) == 0 || len(s.Short) > 20 {
+			t.Errorf("station %q has short name %q, want 1 to 20 characters", s.ID, s.Short)
+		}
+	}
+}
+
+// Exactly one cell button may be in the tab order. Seventy tabbable buttons
+// is a grid nobody reaches the far side of, and the script moves this one
+// rather than adding to it. Found by an adversarial review, not by use.
+func TestExactlyOneCellIsInTheTabOrder(t *testing.T) {
+	// Counted on the CELL buttons only. The filter chips are a radiogroup and
+	// carry a roving tabindex of their own, which made a first version of this
+	// test report four when it meant one.
+	h := Matrix()
+	if n := strings.Count(h, `tabindex="0" aria-pressed=`); n != 1 {
+		t.Errorf("want exactly 1 cell button in the tab order, found %d", n)
+	}
+	want := len(Stations)*len(Transports) - 1
+	if n := strings.Count(h, `tabindex="-1" aria-pressed=`); n != want {
+		t.Errorf("want %d cells out of the tab order, found %d", want, n)
+	}
+}
+
+// Colour alone cannot carry five states. Every state must differ in SHAPE as
+// well as hue, or the two solid swatches read identically to a colour-blind
+// reader - which is exactly how proven and works shipped the first time.
+func TestEveryStateHasItsOwnShapeNotJustItsOwnColour(t *testing.T) {
+	shapes := map[State]string{}
+	for _, st := range []State{CellProven, CellWorks, CellNeeds, CellUntest} {
+		i := strings.Index(MatrixCSS, `[data-state="`+string(st)+`"] .mxa-dot{`)
+		if i < 0 {
+			t.Fatalf("no rule for state %q", st)
+		}
+		rule := MatrixCSS[i:]
+		rule = rule[:strings.Index(rule, "}")]
+		// The shape is what is left once the hue is taken out of the rule.
+		var geom []string
+		for _, decl := range strings.Split(rule, ";") {
+			d := strings.TrimSpace(decl)
+			switch {
+			case strings.HasPrefix(d, "border-radius:"), strings.HasPrefix(d, "border:"):
+				geom = append(geom, d)
+			case strings.HasPrefix(d, "background:none"):
+				geom = append(geom, d)
 			}
 		}
+		key := strings.Join(geom, "|")
+		if prev, clash := shapes[State(key)]; clash {
+			t.Errorf("states %q and %q are the same shape (%s) and differ only by colour", prev, st, key)
+		}
+		shapes[State(key)] = string(st)
+	}
+}
+
+// Mutually exclusive options are radios. aria-pressed on a set of them tells a
+// screen reader they are independent switches, and three reading as "pressed"
+// with nothing saying only one can be is worse than no markup at all.
+func TestTheFilterChipsAreRadiosNotToggles(t *testing.T) {
+	h := Matrix()
+	if strings.Contains(h, `class="mxa-chip" role="radio"`) == false {
+		t.Error("the filter chips are not radios")
+	}
+	if strings.Contains(h, `class="mxa-chip" data-f`) {
+		t.Error("a filter chip has no role, so it reads as an independent toggle")
+	}
+	for _, group := range []string{"kind", "ctl", "only"} {
+		n := strings.Count(h, `data-f="`+group+`" data-v=`)
+		checked := strings.Count(h, `data-f="`+group+`" data-v="`+onValue(group)+`" aria-checked="true"`)
+		if n < 2 {
+			t.Errorf("filter group %q has %d options, want at least 2", group, n)
+		}
+		if checked != 1 {
+			t.Errorf("filter group %q has %d options checked, want exactly 1", group, checked)
+		}
+	}
+}
+
+func onValue(group string) string {
+	switch group {
+	case "kind":
+		return "all"
+	case "ctl":
+		return "any"
+	default:
+		return "all"
 	}
 }

@@ -45,13 +45,17 @@ endpoint, no tunnel. That single property is what makes this permissible in
 estates where a reverse connection would be a breach, and it is why [a raw TCP
 transport was dropped](/security) rather than built.
 
-## Pick what you have
+## Seventy combinations, and most of them do not work
+
+Ten stations by seven transports. Pick a cell for the whole story, filter by
+the controller you would drive it from, or use the arrow keys. Every cell that
+cannot run says why rather than leaving you to go and ask somebody.
 
 ```matrix
-Every transport, station and controller, and what each one can work with.
+Every transport, station and controller, and which combinations run.
 ```
 
-## Two things the matrix cannot show you
+## Two things the grid cannot show you
 
 **A transport needs both halves.** The object store and the bundle are
 implemented on your side and have no station side at all, so the combination
