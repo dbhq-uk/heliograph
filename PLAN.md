@@ -88,6 +88,12 @@ in CI. The site documents the far side. The PowerShell station has its capture a
 
 ## Operational notes
 
+- **HTTPS is enforced on the Pages site** as of 2026-09-11. Plain HTTP served
+  the whole site with no redirect until then, which for a `curl | chmod`
+  install page is worse than untidy. The setting is
+  `gh api -X PUT repos/dbhq-uk/heliograph/pages -F https_enforced=true`, and
+  it survives a deploy. GitHub adds HSTS with it
+
 - **A relay station in a container was driven against the deployed relay on
   2026-09-09.** The image carries `heliograph-seal` built from the same commit,
   and the log came back with a non-zero exit reported honestly. The station name
