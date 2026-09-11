@@ -527,6 +527,87 @@ jobs:
           Write-Output "registered, reported and removed"
           Pop-Location
 
+      # PLANTED AND DRIVEN WITH NOTHING BUT POWERSHELL, which is the entire
+      # premise of this payload. Everything else in this job reaches for bash
+      # at some point - even the steps that test PowerShell run the harness
+      # under Git-Bash - so none of them can answer the question this estate
+      # actually asks: does it work on a box where bash is not an option.
+      #
+      # bootstrap.ps1 plants it, station.ps1 runs one request, and the ASSERTION
+      # IS THE FAR SIDE. The share transport is used because it needs nothing
+      # but a directory; the question here is the platform, not the channel.
+      - name: Planted and driven with PowerShell alone, no bash anywhere
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP 'psonly'
+          $payload = Join-Path $work 'payload'
+          $share = Join-Path $work 'share'
+          New-Item -ItemType Directory -Force -Path (Join-Path $share 'ci') | Out-Null
+
+          # Windows PowerShell 5.1, deliberately: the floor this targets, and
+          # the edition a locked-down Server box actually has.
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+              -File .\station\bootstrap.ps1 $payload | Out-Null
+          foreach ($f in 'station.ps1', 'run.ps1', 'start.ps1', 'caplib.psm1', 'transports\share.psm1') {
+            if (-not (Test-Path (Join-Path $payload $f))) {
+              Write-Output "::error::bootstrap.ps1 did not plant $f"; exit 1
+            }
+          }
+
+          # -Encoding ascii, NOT utf8, and this is the trap this whole payload
+          # exists to survive: Windows PowerShell 5.1's `Set-Content -Encoding
+          # utf8` writes a BOM. A BOM is three invisible bytes in front of the
+          # `# heliograph-mode:` line, so it stops being the first thing on its
+          # line and run.ps1 refuses the step with exit 3 - correctly, and the
+          # step would be blamed rather than the editor. Both files here are
+          # pure ASCII, which is byte-identical to UTF-8 and carries no BOM on
+          # either edition.
+          Set-Content -Path (Join-Path $payload 'steps\ci-probe.ps1') -Encoding ascii -Value @(
+            '# heliograph-mode: read-only'
+            "Write-Output 'the evidence from a box with no bash'"
+            'exit 3'
+          )
+          Set-Content -Path (Join-Path $share 'ci\request') -Encoding ascii -Value @(
+            'id: ci-1'
+            'step: ./steps/ci-probe.ps1'
+          )
+
+          $env:TRANSPORT = 'share'
+          $env:SHARE_DIR = $share
+          $env:SHARE_SCOPE = 'ci'
+          # The runner is an Administrator, so gate 4 refuses every step unless
+          # this says the estate has no other account. That gate has its own
+          # assertions in tests/test-station-loop-ps1.sh, which do NOT set it.
+          $env:ALLOW_ROOT = '1'
+          Push-Location $payload
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+              -File .\station.ps1 --once --interval 1 2>&1 | Out-String | Write-Output
+          Pop-Location
+
+          $status = Get-Content (Join-Path $share 'ci\status') -Raw
+          Write-Output "--- published status`n$status"
+          foreach ($want in 'state:    idle', 'id:       ci-1', 'exit:     3') {
+            if ($status -notmatch [regex]::Escape($want)) {
+              Write-Output "::error::the published status does not say '$want'"; exit 1
+            }
+          }
+          $logs = @(Get-ChildItem (Join-Path $share 'ci\ops-logs') -Filter *.txt -EA SilentlyContinue)
+          if ($logs.Count -ne 1) {
+            Write-Output "::error::expected one delivered log on the far side, found $($logs.Count)"; exit 1
+          }
+          $body = Get-Content $logs[0].FullName -Raw
+          if ($body -notmatch 'the evidence from a box with no bash') {
+            Write-Output "::error::the delivered log does not carry the step's own output"; exit 1
+          }
+          # A COMPLETE log, not a progress snapshot. Delivery ships a finished
+          # log or it ships nothing, and a reader must never have to wonder
+          # whether the file they are holding is the whole run.
+          if ($body -notmatch 'finished UTC') {
+            Write-Output "::error::the delivered log has no footer, so it is not a complete run"; exit 1
+          }
+          Write-Output "planted, polled, ran and delivered, with no bash involved"
+
       # THE FLOOR, EXERCISED. Windows PowerShell 5.1 is what caplib.psm1
       # targets, and until this ran nothing had ever tested it: the driver
       # preferred pwsh, so on a runner with both editions the 5.1 path was
@@ -551,13 +632,18 @@ jobs:
             CONF_PS_SHELL="$ps" CONF_TRANSPORT=share ./tests/conformance/conformance.sh \
               tests/conformance/drivers/powershell.sh 2>&1 | tee "/tmp/conf-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::conformance failed under $ps"; rc=1; }
-            # WHICH skipped, not how many. On Windows the cancel property
-            # legitimately skips too - Git-Bash has no setsid and a Job Object
-            # is PR 11 - so a count would either fail here or be loosened to
-            # the point where a capture property could drop out unnoticed.
-            bad="$(grep '^SKIP' "/tmp/conf-$ps.out" | grep -vE 'SKIP (p8):' || true)"
+            # NOTHING MAY SKIP HERE ANY MORE, and the allowance that used to be
+            # in this line is gone rather than left as a courtesy.
+            #
+            # It permitted p8, the cancel, because Git-Bash has no setsid and
+            # the Job Object had not been written. Both of those stopped being
+            # true: lib/cancel.psm1 ships a Job Object with taskkill behind it,
+            # and the driver answers `cancel` on Windows. A permission that
+            # outlives its reason is how a property drops out unnoticed - it
+            # reads as a deliberate exemption for ever after.
+            bad="$(grep '^SKIP' "/tmp/conf-$ps.out" || true)"
             [ -z "$bad" ] || { echo "::error::$ps skipped something it may not:"; echo "$bad"; rc=1; }
-            for prop in p1 p2 p3 p4 p5 p6 p7 p9 p10; do
+            for prop in p1 p2 p3 p4 p5 p6 p7 p8 p9 p10; do
               grep -qE "^ok +$prop:" "/tmp/conf-$ps.out" || {
                 echo "::error::$ps did not answer $prop"; rc=1; }
             done
@@ -597,6 +683,35 @@ jobs:
             # and failed a run in which every test had passed.
             grep -qE 'established a Job Object|fell back to taskkill' "/tmp/pre-$ps.out" || {
               echo "::error::$ps did not report which Windows cancel mechanism it used"; rc=1; }
+            # THE LOOP, AND GATE 3. The conformance suite cannot ask about
+            # either: it asks whether a CAPTURE is honest, and a loop is not a
+            # capture. This asks the questions nobody can answer by reading a
+            # log afterwards - whether a step ran at all, and whether the far
+            # side was told why it did not.
+            #
+            # It has to run HERE, on Windows, rather than only on the Linux
+            # sweep. The loop starts a child process and later has to kill its
+            # whole tree, and that is a different mechanism on each platform:
+            # a process group on Unix, taskkill or a Job Object here. A cancel
+            # that publishes `cancelled` while the step carries on changing the
+            # estate is the worst outcome available to this file, and only a
+            # real Windows tree shows it.
+            CONF_PS_SHELL="$ps" ./tests/test-station-loop-ps1.sh 2>&1 | tee "/tmp/loop-$ps.out"
+            [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the loop or gate 3 failed under $ps"; rc=1; }
+            bad="$(grep '^SKIP' "/tmp/loop-$ps.out" || true)"
+            [ -z "$bad" ] || { echo "::error::the loop skipped something it may not under $ps:"; echo "$bad"; rc=1; }
+            # The assertions that would be the most expensive to lose, named so
+            # that a file which stopped containing them fails loudly rather
+            # than reporting a smaller suite as a clean run.
+            for want in 'gate 3: an action is refused' \
+                        'gate 3: the same action RUNS' \
+                        'a cancel publishes state cancelled' \
+                        'the log STOPS GROWING' \
+                        'a run whose delivery failed publishes undelivered' \
+                        'station.ps1 and station.sh publish the same status keys'; do
+              grep -qF "$want" "/tmp/loop-$ps.out" || {
+                echo "::error::$ps did not run the assertion '$want'"; rc=1; }
+            done
           done
           exit $rc
 
@@ -607,7 +722,8 @@ jobs:
           set -uo pipefail
           rc=0
           for f in tests/test-powershell.sh tests/test-remote.sh tests/test-run-ps1.sh \
-                   tests/test-station-ps1.sh tests/test-transports-ps1.sh; do
+                   tests/test-station-ps1.sh tests/test-transports-ps1.sh \
+                   tests/test-station-loop-ps1.sh; do
             echo "--- $f"
             ./$f 2>&1 | tee "/tmp/$(basename "$f").out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || rc=1

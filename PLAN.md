@@ -13,7 +13,8 @@ for the 19-PR breakdown. This file says where we are and what is next.
 ## Where we are
 
 Git, the file share and the relay work end to end, each with its own round trip
-in CI. The site documents the far side. The PowerShell station has its capture and its runner; it has no loop and no transports.
+in CI. The site documents the far side. **The PowerShell station is complete**: it
+polls, runs, delivers and publishes, and it is planted by all three bootstraps.
 
 | | |
 |---|---|
@@ -24,7 +25,7 @@ in CI. The site documents the far side. The PowerShell station has its capture a
 | file share | **works end to end**, proved by a CLI round trip in CI |
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
-| PowerShell station | **captures and DELIVERS** - every conformance property, over git and share, with gates 1, 2 and 4. No loop, so it cannot RECEIVE: a request is handed to `run.ps1` by whoever is driving |
+| PowerShell station | **complete and proven**. Polls, runs, delivers and publishes over git and share, with all four gates. Every conformance property, on 5.1 and on 7. No relay transport (needs `heliograph-seal`, which is Go) |
 | site | 26 pages, near and far side. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
 
 ## Landed 2026-09-08
@@ -78,24 +79,116 @@ in CI. The site documents the far side. The PowerShell station has its capture a
 |---|---|
 | #71 | **HTTPS enforced, and `llms.txt` announced** (#70) - a `<link rel=alternate>` in every head and a visible footer anchor. It had been reachable only by an agent that already knew the path |
 | #72 | **the rest of #70's code half** - `author` splits from `publisher`, so a named person writes the pages and DBHQ publishes them, with a footer byline saying so; `datePublished` from the first commit beside `dateModified`; and Googlebot and Bingbot are kept off the `.md` mirrors, under their own groups so no other agent is. Also corrected: the "roughly 31 times more bytes" claim, quoted in four files and never measured. It is three to sixteen times, about eight on the median page, and a test now measures it on every build |
+| - | **the PowerShell station, finished** (Track B, PRs 13-14 merged into one). `station.ps1` - the loop, gate 3, the receive half of both transports, the bootstrap that plants it, and the documentation. Split no further on purpose: every earlier PR was split so that each piece could be *proved*, and once the loop exists the remaining pieces are provable end to end together. See below for what it found |
 
 The rest of #70 is off-site and stays on that issue: publishing `server.json`
 to the MCP registry, the social previews on both repositories, the awesome-list
 entries, and the Glama listing.
 
+### What that change found
+
+Five defects, three of them in code that had already shipped.
+
+- **`./station.sh --allow-root` has never worked.** It set a shell variable
+  that was never exported, so it satisfied the LOOP's root gate and reached
+  nothing else. `run.sh` is a separate process with a gate of its own, so every
+  step was refused with exit 5 while the published status said only *"the
+  runner exited before it reached delivery"* - the symptom, and not one word of
+  the cause. `ALLOW_ROOT=1 ./station.sh` worked the whole time, because that
+  form is already in the environment. **Fixed** (one `export`), and reproduced
+  end to end against the real station before and after
+- **The release binary embedded 912 MB of Terraform providers.** `go:embed
+  all:bash` reads the WORKING TREE, so `station/bash/azure/*/.terraform`, left
+  by `terraform init` - which is what `terraform test` runs - went into the
+  binary. Measured here: **239 MB, down to 11.3 MB** once cleared. The
+  repository never noticed because those paths are gitignored; CI never noticed
+  because a runner starts clean. `internal/bootstrap` prunes `.terraform`, and
+  its comment names this exact risk, but it prunes at INSTALL time - by then
+  the files are already in the binary. **Fixed** with a guard in
+  `station/embed_test.go`, which is where the embed is
+- **The same build carried `station/bash/.station-delivery`** - a runtime record
+  naming a path under `/tmp` on the machine that built it - and `bootstrap.sh`
+  planted it into every repo bootstrapped from that checkout. A station's own
+  runtime state is now pruned by name in all three bootstraps and refused by the
+  embed guard. `.station-env` is in that list and holds a token.
+
+  **Where it came from**: `tests/test-intercom.sh` drove `intercom.py`, which
+  finds its toolkit by walking up from its own file - which in a checkout is
+  `station/bash`. So it ran the SHIPPED `run.sh` in place, and `run.sh` wrote
+  its delivery record there, which is exactly right on a real station and wrong
+  in a checkout. The test now runs against a bootstrapped copy via a new
+  `HELIOGRAPH_TOOLKIT` override, read from the environment only - it chooses
+  which `run.sh` executes, so a request must never be able to set it.
+  `tests/run-tests.sh` now FAILS if any test leaves runtime state in a payload
+  directory, which is a different thing from its existing leak counter: that one
+  is a hint for diagnosing a flaky suite, this is a defect with a blast radius
+- **`Stop-CapTree` would have killed the station.** On Unix it signalled
+  `-$pid` unconditionally; a child started by `Process.Start` inherits its
+  parent's process group, so the negative pid resolves to the STATION'S OWN
+  GROUP. It does not fail - it succeeds at the wrong thing, so the fallback
+  never fires. Nothing caught it because the only caller until now was the
+  conformance driver, which starts its target under `setsid`. It now measures
+  `pgid` first and says how far a cancel would reach
+
+- **Progress never published on Windows, and nothing said so.** `Invoke-CapRun`
+  holds the log open through `[System.IO.File]::AppendText`, which opens with
+  `FileShare.Read`. That is only half the check: a SECOND open must also declare
+  a share mode that tolerates the FIRST handle's access, and the first handle is
+  a WRITER - so `File.ReadAllLines` and `Copy-Item`, which both open with
+  `FileShare.Read`, throw a sharing violation against a log still being written.
+  Nothing enforces any of that on Linux, so it worked perfectly there. The
+  loop's read is inside a `try/catch` that returns quietly, because losing a
+  race with a live writer is not a reason to stop publishing progress - so on
+  Windows a long run was a black box, for every step, silently. **Found by the
+  conformance run on a real Windows runner**, not by reasoning. caplib gains
+  `Read-CapSharedLines` and `Copy-CapSharedFile`
+
+Three of my own assertions proved nothing and were fixed: a metacharacter check
+that passed with the guard removed (a *different* guard caught the case); a
+"reason names the variable" check asserted once after a loop, so it only ever
+saw the last of four spellings; and an `--allow-root` regression check that read
+a status the previous sub-test had left, because `VAR=x` arriving through `"$@"`
+is taken as the command name rather than as an assignment.
+
+A fourth was timing rather than measuring: the progress check waited 400
+iterations of `sleep 0.1`, which on a Windows runner outlasts the 40-second step
+it is watching - so it read a DELIVERED log and called it partial. Every wait in
+that file is bounded by the clock now, and the condition requires a `progress:`
+key AND the step's own output, because each alone is satisfiable by something
+that is not progress.
+
 ## Next, in order
 
-1. **Track B: the loop.** `station.ps1` now has something to poll: the
-   transports deliver, and the RECEIVE half of the contract - fetching a
-   request, publishing a status - lands with the loop that can test it end to
-   end. Gate 3 (`ALLOW_ACTIONS`) lives there. The PowerShell relay is deferred
-   with it: it needs `heliograph-seal`, which is Go, and a station that must
-   ship a binary is a different bootstrap question
-2. **Bootstrap plants the PowerShell payload** (PR 13), and the rest of
-   Windows CI (PR 14)
-3. **The bundle's station side.** `/air-gapped` now says plainly that the
+1. **The bundle's station side.** `/air-gapped` now says plainly that the
    bundle cannot be read by a station, and the CLI says the same. That page is
    the first thing to update when it lands
+2. **The PowerShell relay transport.** Deferred deliberately: it needs
+   `heliograph-seal`, which is a Go binary, and a station that must ship a
+   binary is a different bootstrap question on exactly the estates that will
+   not let you install Git for Windows
+
+## Known defects, recorded rather than fixed
+
+- **Delivery pushes to the configured upstream, not to `origin` explicitly.**
+  `cap_push` (bash) and `Send-TpLog` (PowerShell) both use a bare `git push`, so
+  a branch tracking another remote takes every log somewhere the control side
+  never reads and reports success. The status path on both sides names `origin`
+  and the branch explicitly and is not affected. **Both implementations share
+  this**, so it must be fixed on both together with a test that watches the
+  remote rather than the exit code - fixing one side would make the twins
+  disagree about where a log goes, which is the one thing they may not do
+- **A push the server completed can be reported as failed** if the
+  acknowledgement is lost. Shared by both implementations, same argument
+- **Progress publishes on the FIRST in-run poll**, not after `PROGRESS_EVERY`
+  seconds: `LAST_PROGRESS=0` in bash and `DateTime.MinValue` in PowerShell both
+  compare as "long overdue". Every run lasting more than one `INTERVAL` gets an
+  extra status and partial-log publication that the documentation does not
+  promise. Harmless, arguably useful, and worth knowing before reading a git
+  history and wondering where the extra commit came from
+- **A PowerShell station killed with SIGTERM leaves `.station.lock`.** Windows
+  PowerShell 5.1 cannot catch the signal, so the `finally` never runs. The next
+  station reads the pid, finds it dead, and clears it - which is the designed
+  recovery and is tested. `station.sh` traps the signal and does remove it
 
 ## Operational notes
 

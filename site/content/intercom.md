@@ -67,3 +67,17 @@ Leaving `HELIOGRAPH_ACCOUNT` unset leaves intercom off. Setting
 `HELIOGRAPH_SCHEDULE` to a date that never comes leaves the blob timer off.
 Running both is fine and is what the reference deployment does. See
 [Azure](/azure).
+
+## Where the station payload is
+
+`intercom.py` shells out to `run.sh` rather than reimplementing the capture -
+one implementation of the capture, and `run.sh` owns the mode gate as well. It
+finds the payload by looking for `run.sh` and `caplib.sh` beside itself and then
+upwards, which covers both shapes it ships in: flattened in the deployment
+package, and nested under `azure/function/` in a checkout.
+
+`HELIOGRAPH_TOOLKIT` overrides that with an explicit path, for a deployment that
+mounts the payload somewhere else. It is read from the **environment only, never
+from a request**: it chooses which `run.sh` executes, so a request able to set it
+would be a request able to choose the code. A path that has no `run.sh` and
+`caplib.sh` in it is refused rather than silently falling back to the search.

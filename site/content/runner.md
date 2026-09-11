@@ -1,7 +1,9 @@
 # The runner
 
 `start.sh`, `station.sh`, `run.sh` and `caprun.sh`, and every knob each one
-honours. This is the reference for the far side's own scripts.
+honours. This is the reference for the far side's own scripts. Their PowerShell
+twins - `start.ps1`, `station.ps1`, `run.ps1` and `caplib.psm1`, for an estate
+with no bash - are at the bottom of this page.
 
 The division of labour is the thing to hold onto: **a runner owns the log, and
 a step just prints to stdout.** That is what makes a step runnable on its own,
@@ -174,6 +176,48 @@ destroy the only property these logs exist for.
 is world-readable: any other user on the box can read the token out of `ps`.
 `/proc/<pid>/environ` is owner-only. A reduction in exposure, not a guarantee -
 root still reads either.
+
+## The PowerShell twin
+
+For an estate with no bash. `start.ps1`, `station.ps1`, `run.ps1` and
+`caplib.psm1` are the twins of the four above: the same request document, the
+same published status, the same four gates, the same exit codes. See
+[Windows](/windows) for what decides whether that machine can run one at all.
+
+```powershell
+.\start.ps1 --check              # will this work here, changing nothing
+.\run.ps1 <step>                 # one step, by hand
+.\station.ps1                    # poll, run, deliver, repeat - READ-ONLY
+.\station.ps1 --once --interval 15 --allow-actions --allow-root --pin
+```
+
+Every variable in the `station.sh` table above is honoured, with the same name
+and the same default. Two things differ, and both are stated where they are
+rather than smoothed over:
+
+**Pinning uses `.station-approved-ps`.** The two payloads approve different
+files - `run.sh`/`caplib.sh`/`lib/*.sh` against `run.ps1`/`caplib.psm1`/
+`lib/*.psm1` - and each `--pin` truncates before writing. One shared file would
+mean each implementation silently unapproved the other's, so in a repo carrying
+both payloads every request would be refused by whichever station pinned last.
+
+**A self-update exits rather than re-executing.** PowerShell has no `exec`, and
+starting a replacement is worse than useless under the Job Object the cancel
+depends on: the moment the old process exits, the kernel terminates the new one.
+`run.ps1`, `caplib.psm1` and the steps still come forward with no restart,
+because every run is a fresh process that loads them again - only the loop
+itself needs one, and it exits **75**, which a scheduled task treats as
+*restart me*.
+
+Transports: `git.psm1` and `share.psm1`. There is **no relay transport** for
+PowerShell - it needs `heliograph-seal`, which is a Go binary, and a station
+that must ship a binary is a different bootstrap question on the estates this
+payload exists for.
+
+It is permitted only on one condition, which is the condition the whole
+argument turns on: a second implementation of the capture is allowed **only
+while it passes [the conformance suite](/conformance)**. It passes all ten
+properties, over both transports, on Windows PowerShell 5.1 and PowerShell 7.
 
 ## Conventions
 

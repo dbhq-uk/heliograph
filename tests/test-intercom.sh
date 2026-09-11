@@ -33,8 +33,27 @@ trap 'rm -rf "$TMP"' EXIT
 
 # --- half one: the Python -----------------------------------------------------
 
+# A BOOTSTRAPPED COPY, NOT THE SHIPPED PAYLOAD.
+#
+# intercom.py finds its toolkit by walking up from its own file, which in a
+# checkout lands on station/bash - so driving it here ran the SHIPPED run.sh in
+# place, and run.sh wrote `.station-delivery` into station/bash. That is
+# correct behaviour on a real station, where the toolkit directory IS the
+# payload. In a checkout it is a local artifact with a /tmp path in it, and
+# `go:embed all:bash` reads the working tree - so it went into the release
+# binary, and `bootstrap.sh` planted it into every repo bootstrapped from that
+# checkout. station/embed_test.go is the guard that found it; this is one of the
+# two ways it got there.
+#
+# HELIOGRAPH_TOOLKIT is read from the environment only, never from a request:
+# it chooses which run.sh executes, so a request that could set it would be a
+# request that chooses the code.
+PYTOOLKIT="$TMP/toolkit"
+"$HERE/../station/bootstrap.sh" "$PYTOOLKIT" >/dev/null 2>&1
+
 if command -v python3 >/dev/null 2>&1; then
-  if (cd "$HERE/.." && python3 -m unittest discover -s tests -p 'test_intercom.py' -q) \
+  if (cd "$HERE/.." && HELIOGRAPH_TOOLKIT="$PYTOOLKIT" \
+        python3 -m unittest discover -s tests -p 'test_intercom.py' -q) \
        > "$TMP/py.out" 2>&1; then
     t_ok "test_intercom.py: $(sed -n 's/^Ran \([0-9]*\) tests.*/\1 assertions/p' "$TMP/py.out")"
   else

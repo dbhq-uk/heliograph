@@ -102,20 +102,35 @@ jobs:
       # them is two sides that each work perfectly and never meet. The relay's
       # is the one that has earned it most: four defects surfaced within an
       # hour of it first running, and none of them errored anywhere.
-      - name: the CLI drives a stock station, and both bootstraps agree
+      - name: the CLI drives a stock station, and all three bootstraps agree
         run: |
-          out="$(go test ./cmd/heliograph/ -run 'TestCLIDrivesAStockStation|TestCLIDrivesAShareStation|TestCLIDrivesARelayStation|TestBootstrapMatchesTheShellScript' -v -count=1)"
+          out="$(go test ./cmd/heliograph/ -run 'TestCLIDrivesAStockStation|TestCLIDrivesAShareStation|TestCLIDrivesARelayStation|TestBootstrapsAgree|TestBootstrapBothPlantsTwoPayloads' -v -count=1)"
           echo "$out"
           if echo "$out" | grep -q -- '--- SKIP'; then
             echo "::error::the end-to-end test skipped instead of running."
             exit 1
           fi
-          for want in CLIDrivesAStockStation CLIDrivesAShareStation CLIDrivesARelayStation BootstrapMatchesTheShellScript; do
+          # THE SUBTESTS ARE NAMED, not just the parent. TestBootstrapsAgree is
+          # a table over flavours, and a parent passes when its table is empty -
+          # so naming only the parent would let the powershell payload drop out
+          # of this check without a word.
+          for want in CLIDrivesAStockStation CLIDrivesAShareStation CLIDrivesARelayStation \
+                      BootstrapsAgree BootstrapsAgree/bash BootstrapsAgree/powershell \
+                      BootstrapBothPlantsTwoPayloads; do
             echo "$out" | grep -q -- "--- PASS: Test$want" || {
               echo "::error::Test$want did not run. If it was renamed, rename it here too."
               exit 1
             }
           done
+          # bootstrap.ps1 is the third planter and the only one that needs
+          # neither the CLI nor bash, which is the whole premise of the
+          # PowerShell payload. It logs a SKIP of its own where there is no
+          # PowerShell; this runner has one, so a skip here means it stopped
+          # being compared rather than that it could not be.
+          if echo "$out" | grep -q 'no PowerShell here, so bootstrap.ps1 was NOT compared'; then
+            echo "::error::bootstrap.ps1 was not compared against the other two planters."
+            exit 1
+          fi
 
       # THE DEPLOYED RELAY, on main only.
       #
@@ -182,13 +197,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Everything under station/ ships to the far side, where "plain bash,
-      # you can read it before you run it" is the entire proposition. The one
-      # exception is station/embed.go, which exists so the binary can carry
-      # the payload and never ships anywhere.
-      - name: the only Go under station/ is embed.go
+      # Everything under station/ ships to the far side, where "plain bash or
+      # plain PowerShell, you can read it before you run it" is the entire
+      # proposition.
+      #
+      # TWO EXCEPTIONS, BOTH AT THE TOP LEVEL AND BOTH NAMED. station/embed.go
+      # exists so the binary can carry the payload, and station/embed_test.go
+      # is its test - the one that refuses to let a release embed somebody's
+      # local .terraform or a captured log. Neither is under bash/ or
+      # powershell/, so neither is ever embedded or planted; a test cannot be a
+      # dependency of the far side by construction.
+      #
+      # The rule stays deliberately blunt: named files, not a pattern. `*_test.go`
+      # would let somebody add a test beside a payload and call it exempt.
+      - name: the only Go under station/ is embed.go and its test
         run: |
-          bad="$(find station -name '*.go' ! -path 'station/embed.go')"
+          bad="$(find station -name '*.go' \
+                   ! -path 'station/embed.go' ! -path 'station/embed_test.go')"
           if [ -n "$bad" ]; then
             echo "$bad"
             echo "::error::Go under station/ beyond embed.go. The far side never gets a binary dependency."

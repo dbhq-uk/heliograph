@@ -474,6 +474,81 @@ function Add-CapContent {
     [System.IO.File]::AppendAllLines($Path, $Lines, (Get-CapEncoding))
 }
 
+# --- reading a log while it is still being written ----------------------------
+# WINDOWS FILE SHARING IS WHY THESE EXIST, and the failure they fix was silent
+# on the one platform this implementation is for.
+#
+# Invoke-CapRun holds the log open for the whole run through
+# `[System.IO.File]::AppendText`, which opens with FileShare.Read. That sounds
+# like it permits a reader, and it is only half of the check: a SECOND open must
+# also declare a share mode that tolerates the FIRST handle's access, and the
+# first handle is a WRITER. `File.ReadAllLines` and `Copy-Item` both open with
+# FileShare.Read, which does not tolerate a writer - so on Windows they throw a
+# sharing violation, every time, against a log that is still being written.
+#
+# On Linux nothing enforces any of this, so it worked perfectly there.
+#
+# WHAT IT COST: the loop publishes progress by reading the running log, and its
+# read was wrapped in a try/catch that returns quietly - losing a race with a
+# live writer is not a reason to stop publishing progress. So on Windows
+# progress NEVER published, for any step, and a long run was a black box on
+# exactly the platform where a black box is most expensive. Nothing errored.
+# Found by the conformance run on a real Windows runner.
+#
+# FileShare.Delete as well as ReadWrite, because a log can be rotated or removed
+# under a reader and refusing to open it then would be the same class of bug one
+# step further on.
+function Open-CapSharedRead {
+    param([Parameter(Mandatory = $true)][string] $Path)
+    return [System.IO.File]::Open(
+        $Path,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+}
+
+function Read-CapSharedLines {
+    <#
+      .SYNOPSIS
+      Every line of a file that something else may be writing to right now.
+    #>
+    param([Parameter(Mandatory = $true)][string] $Path)
+    $out = New-Object System.Collections.Generic.List[string]
+    $fs = Open-CapSharedRead -Path $Path
+    try {
+        $sr = New-Object System.IO.StreamReader($fs)
+        try {
+            while ($null -ne ($line = $sr.ReadLine())) { $out.Add($line) }
+        } finally { $sr.Dispose() }
+    } finally { $fs.Dispose() }
+    return , $out.ToArray()
+}
+
+function Copy-CapSharedFile {
+    <#
+      .SYNOPSIS
+      Copy a file that something else may be writing to. $true when it landed.
+      .DESCRIPTION
+      A SNAPSHOT, and never a lock: the writer is not blocked and is not waited
+      for. What lands is whatever had been flushed when this read it, which is
+      exactly what a progress snapshot is supposed to be.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string] $Source,
+        [Parameter(Mandatory = $true)][string] $Destination
+    )
+    $fs = Open-CapSharedRead -Path $Source
+    try {
+        $out = [System.IO.File]::Open(
+            $Destination,
+            [System.IO.FileMode]::Create,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None)
+        try { $fs.CopyTo($out) } finally { $out.Dispose() }
+    } finally { $fs.Dispose() }
+    return $true
+}
+
 Export-ModuleMember -Function @(
     'ConvertTo-CapArgumentString',
     'ConvertTo-CapPosixArgumentString',
@@ -486,5 +561,10 @@ Export-ModuleMember -Function @(
     'Get-CapHostname',
     'Get-CapUser',
     'Test-CapPrivileged',
-    'Test-CapPrivilegedAllowed'
+    'Test-CapPrivilegedAllowed',
+    # Reading a log while the capture is still writing it - see the comment
+    # above these. Windows file sharing, and it was silent.
+    'Open-CapSharedRead',
+    'Read-CapSharedLines',
+    'Copy-CapSharedFile'
 )

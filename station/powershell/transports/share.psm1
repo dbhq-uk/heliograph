@@ -146,10 +146,41 @@ function Publish-ShareFile {
     param([string] $Source, [string] $Destination)
     try {
         $tmp = New-ShareTemp -Destination $Destination
-        Copy-Item -LiteralPath $Source -Destination $tmp -ErrorAction Stop
+        # Copy-CapSharedFile, NOT Copy-Item. This publishes a PARTIAL log while
+        # the capture still holds it open for writing, and on Windows Copy-Item
+        # opens with FileShare.Read - which does not tolerate an existing
+        # writer, so every progress publication threw a sharing violation. On
+        # Linux nothing enforces that and it worked perfectly.
+        [void](Copy-CapSharedFile -Source $Source -Destination $tmp)
         return (Move-ShareInto -Temp $tmp -Destination $Destination)
     } catch {
         Write-CapTpError "could not stage $Source for $Destination : $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Publish-ShareBody {
+    <#
+      .SYNOPSIS
+      Write text into place atomically. The status document's path.
+      .DESCRIPTION
+      `File.WriteAllText` rather than Set-Content, for the encoding: PowerShell
+      5.1's Set-Content writes a BOM, and the control side parses this file as
+      line-oriented `key: value` with the first key anchored. Three invisible
+      bytes in front of `state:` and the first key is not found.
+
+      NO TRAILING NEWLINE IS ADDED. The caller composes the whole document and
+      transports/share.sh publishes it with `printf '%s'`, which adds none - so
+      a byte-for-byte comparison of the two implementations' output is a
+      meaningful test rather than one that has to normalise first.
+    #>
+    param([string] $Body, [string] $Destination)
+    try {
+        $tmp = New-ShareTemp -Destination $Destination
+        [System.IO.File]::WriteAllText($tmp, $Body)
+        return (Move-ShareInto -Temp $tmp -Destination $Destination)
+    } catch {
+        Write-CapTpError "could not stage a document for $Destination : $($_.Exception.Message)"
         return $false
     }
 }
@@ -231,6 +262,111 @@ function Send-TpLog {
                               -Destination (Join-Path (Join-Path $script:ShareBase 'ops-logs') $name))
 }
 
+# =============================================================================
+#  The RECEIVE half - what the loop polls and publishes
+# =============================================================================
+# `$null` MEANS FAILED. An empty string means "there is nothing queued", which
+# is the ordinary state of a station that has just started.
+#
+# Collapsing the two is how a station goes permanently deaf without anybody
+# being told: a share that can no longer be read - a permissions change, a
+# stale SMB handle, an I/O error, or `request` having somehow become a
+# directory - would be reported as an empty queue, and the station would poll it
+# for ever reporting itself idle. transports/share.sh separates them by exit
+# status for the same reason; here it is $null against ''.
+#
+# THE CALLER MUST TEST `$null -eq $body`, not `-not $body`, because '' is falsy
+# too and the difference is the whole point. station.ps1 does.
+# =============================================================================
+
+function Receive-TpRequest {
+    <#
+      .SYNOPSIS
+      The queued request document, '' when there is none, $null when the share
+      could not be read.
+    #>
+    $req = Join-Path $script:ShareBase 'request'
+    if (-not (Test-Path -LiteralPath $req)) { return '' }
+    if (Test-Path -LiteralPath $req -PathType Container) {
+        Write-CapTpError "$req is a directory, not a request. Nothing can be read from it, and this station will not run anything until that is fixed"
+        return $null
+    }
+    try {
+        # ReadAllText, NOT Get-Content: Get-Content returns an ARRAY of lines
+        # and the caller wants a document. Worse, a one-line request would come
+        # back as a bare string and a two-line one as an array, so the caller's
+        # handling of it would differ by the number of lines in the file.
+        return [System.IO.File]::ReadAllText($req)
+    } catch {
+        Write-CapTpError "the request at $req is there and cannot be read: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+# The same read. There is no working tree here and nothing to disturb, so the
+# live verb is the ordinary verb - which is what makes `cancel` reach a running
+# step within one poll on a share.
+function Receive-TpRequestLive { return (Receive-TpRequest) }
+
+function Send-TpStatus {
+    <#
+      .SYNOPSIS
+      Publish the status document. $true only when it landed.
+      .DESCRIPTION
+      AlsoFile is a partial log from a cancelled run. On git it is committed
+      alongside the status so the cancellation is not stranded behind a dirty
+      tree; here it is simply the last thing the far side will ever see of that
+      run, and losing it is losing the only evidence there is.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string] $Body,
+        [string] $Message = '',
+        [string] $AlsoFile = ''
+    )
+    if (-not (Publish-ShareBody -Body $Body -Destination (Join-Path $script:ShareBase 'status'))) {
+        return $false
+    }
+    if ($AlsoFile -and (Test-Path -LiteralPath $AlsoFile -PathType Leaf)) {
+        return (Publish-ShareFile -Source $AlsoFile `
+                    -Destination (Join-Path (Join-Path $script:ShareBase 'ops-logs') (Split-Path -Leaf $AlsoFile)))
+    }
+    return $true
+}
+
+function Send-TpProgress {
+    <#
+      .SYNOPSIS
+      Publish a snapshot of a running step's log, under its FINAL name.
+      .DESCRIPTION
+      The name is deliberate. The blob transport puts progress under a fixed
+      `log` object because there the two are different objects; here the control
+      side lists one directory and reads by name, so publishing progress under
+      the final name means a reader following a long step watches it grow and
+      then be completed in place - rather than finding a stale snapshot beside
+      the real thing and having to work out which is which.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string] $Body,
+        [string] $Message = '',
+        [string] $LogPath = ''
+    )
+    if (-not (Publish-ShareBody -Body $Body -Destination (Join-Path $script:ShareBase 'status'))) {
+        return $false
+    }
+    if (-not $LogPath -or -not (Test-Path -LiteralPath $LogPath -PathType Leaf)) { return $true }
+    return (Publish-ShareFile -Source $LogPath `
+                -Destination (Join-Path (Join-Path $script:ShareBase 'ops-logs') (Split-Path -Leaf $LogPath)))
+}
+
+# Cannot self-update: nothing publishes a payload to a share, so `self` is
+# absent from Get-TpCapabilities and the loop never calls this. Defined anyway,
+# so that calling it would be a refusal rather than "the term is not recognised"
+# - which would read as a broken payload rather than as a transport saying no.
+#
+# 0 = something changed, 1 = nothing to do, 2 = it could not be done. The same
+# three the bash loop reads.
+function Sync-TpSelf { return 1 }
+
 function Test-TpPreflight {
     <#
       .SYNOPSIS
@@ -262,5 +398,11 @@ Export-ModuleMember -Function @(
     'Get-TpDescribe',
     'Test-Tp',
     'Send-TpLog',
-    'Test-TpPreflight'
+    'Test-TpPreflight',
+    # The receive half.
+    'Receive-TpRequest',
+    'Receive-TpRequestLive',
+    'Send-TpStatus',
+    'Send-TpProgress',
+    'Sync-TpSelf'
 )

@@ -35,6 +35,70 @@ type Report struct {
 	LeftAlone []string
 }
 
+// Flavours are the payloads a station can be planted from, in the order they
+// are planted when more than one is asked for.
+//
+// A MACHINE GETS ONE OF THEM. An estate with bash runs the bash station,
+// because one implementation is better than two wherever there is a choice;
+// the PowerShell payload is for the estate that has none. "both" exists for the
+// repo that serves two machines of different kinds, not as a recommendation.
+//
+// WHEN BOTH ARE PLANTED THE FIRST ONE WINS the files they share - the ignore
+// file, the attributes file, TASK.md, station/request. Install never
+// overwrites, so the second plant reports them as left alone rather than
+// silently replacing a file the first one put there. That is why the ignore
+// files carry an identical shared block: the rules that keep a credential out
+// of the repository must not depend on the order somebody typed two commands
+// in.
+var Flavours = []string{"bash", "powershell"}
+
+// StationRuntimeState names the files a running station writes for itself.
+// Never planted, never embedded - see the prune in Install and the guard in
+// station/embed_test.go, which enforce the same list from opposite ends.
+var StationRuntimeState = []string{
+	".station.lock",
+	".station-state",
+	".station-approved",
+	".station-approved-ps",
+	".station-delivery",
+	".station-env",
+	".station-relay-state",
+	".agent-service.pid",
+	".station-service.log",
+}
+
+func isStationRuntimeState(name string) bool {
+	for _, s := range StationRuntimeState {
+		if name == s {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidFlavour reports whether name is a payload this binary carries.
+func ValidFlavour(name string) bool {
+	for _, f := range Flavours {
+		if f == name {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseFlavours turns the --flavour value into the payload roots to plant.
+func ParseFlavours(spec string) ([]string, error) {
+	switch spec {
+	case "", "bash":
+		return []string{"bash"}, nil
+	case "powershell":
+		return []string{"powershell"}, nil
+	case "both":
+		return append([]string(nil), Flavours...), nil
+	}
+	return nil, fmt.Errorf("unknown --flavour %q: use bash, powershell or both", spec)
+}
+
 // Install writes every file under root in fsys into target. It creates target
 // if it is missing and refuses nothing else: the caller owns the "is this a
 // fresh private repo" conversation, exactly as with bootstrap.sh.
@@ -74,6 +138,22 @@ func Install(fsys fs.FS, root, target string) (Report, error) {
 			case ".terraform", ".git", "node_modules":
 				return fs.SkipDir
 			}
+			return nil
+		}
+		// A STATION'S OWN RUNTIME STATE IS NOT PART OF THE PAYLOAD.
+		//
+		// Every one of these is written by a running station, is local to one
+		// machine, and is in the payload's .gitignore because it is nobody
+		// else's. Planting one means a brand-new transport repo arrives holding
+		// the last machine's lock pid, its approved hashes, or - worst -
+		// .station-env, which holds a token.
+		//
+		// Found in the same pass as the embed guard: a checkout that had run
+		// the test suite carried station/bash/.station-delivery, and
+		// bootstrap.sh's `find` planted it. go:embed carried it too; that half
+		// is caught in station/embed_test.go, and this is the half that matters
+		// when somebody runs bootstrap.sh straight out of a working checkout.
+		if isStationRuntimeState(d.Name()) {
 			return nil
 		}
 		files = append(files, p)

@@ -4,7 +4,7 @@ Every command the control side has, and the reasoning behind the ones that are
 not obvious.
 
 ```
-heliograph bootstrap <dir>
+heliograph bootstrap <dir> [--flavour bash|powershell|both]
 heliograph init <estate> --dir <path> [--transport git|share|bundle|objstore]
                           [--scope <name>] [--bucket <b>] [--prefix <p>] [--region <r>]
 heliograph estates
@@ -31,8 +31,21 @@ answer as "which binary planted it".
 
 Nothing is overwritten, ever: an existing file is left alone and reported,
 because the second run is usually an upgrade over a repo with a task in
-flight. `station/bootstrap.sh` in the repository lays down the same files for
-a machine with no CLI, and CI asserts the two produce identical trees.
+flight.
+
+`--flavour bash | powershell | both` chooses the payload, and `bash` is the
+default. `powershell` plants the pure PowerShell station for an estate with no
+bash at all - see [Windows](/windows). `both` puts both in one repo for a
+transport repo serving two kinds of machine; it is not a recommendation.
+
+`station/bootstrap.sh` and `station/bootstrap.ps1` lay down the same files for
+a machine with no CLI - the second for a Windows box with no bash either - and
+CI asserts all three produce identical trees, for both flavours.
+
+A station's own runtime state is never planted and never embedded:
+`.station-env` holds a token, and `go:embed` reads the working tree rather than
+the repository, so a build on a machine that had run a station would otherwise
+carry it into every download.
 
 ## init
 

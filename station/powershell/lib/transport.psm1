@@ -4,22 +4,32 @@
 # The station-side half of a channel. `TRANSPORT` names one, this loads it, and
 # everything above talks to the same four functions whichever it is.
 #
-# WHAT IS HERE IS DELIVERY, AND ONLY DELIVERY:
+# THE WHOLE CONTRACT, both halves:
 #
-#     Initialize-Tp     the variables this channel needs, checked and named
-#     Test-Tp           it is reachable and the credential is accepted
-#     Get-TpDescribe    what it is, with no credential in the answer
-#     Send-TpLog        a finished log reaches the far side
+#   the channel
+#     Get-TpCapabilities     which of the verbs below this channel has
+#     Initialize-Tp          the variables it needs, checked and named
+#     Test-Tp                it is reachable and the credential is accepted
+#     Get-TpScope            what a run is bound to: a branch, a directory
+#     Get-TpRevision         which payload this is
+#     Get-TpDescribe         what it is, with NO credential in the answer
+#     Test-TpPreflight       the lines it contributes to the preflight table
 #
-# The RECEIVE half - fetching a request, publishing a status - is not here, and
-# that is the same call as leaving the loop out of the last PR. Nothing can poll
-# yet, so a `Receive-TpRequest` written now could not be tested end to end, and
-# an untested request path is the one that decides what runs on somebody's
-# machine. It arrives with the loop that can prove it.
+#   sending - run.ps1's half
+#     Send-TpLog             a finished log reaches the far side
 #
-# So a PowerShell station today can DELIVER and cannot RECEIVE. `run.ps1 <step>`
-# captures and ships; a request still has to be handed over by whoever is
-# driving. The preflight says exactly that rather than implying a round trip.
+#   receiving - station.ps1's half
+#     Receive-TpRequest      the queued request, or '' , or $null for failed
+#     Receive-TpRequestLive  the same, read without disturbing a running step
+#     Send-TpStatus          what this station is doing, published
+#     Send-TpProgress        a snapshot of a log while the step is still running
+#     Sync-TpSelf            bring a newer payload in: 0 changed, 1 no, 2 failed
+#
+# A CAPABILITY IS A PROMISE THE LOOP HOLDS THE TRANSPORT TO. `self` and `live`
+# are both optional and the loop asks before it calls: a share cannot
+# self-update because nothing publishes a payload to a share, and declaring a
+# verb with no implementation behind it is worse than not having it - the loop
+# calls what is declared.
 #
 # THE NAME IS VALIDATED BEFORE IT BECOMES A PATH. It selects a file that gets
 # imported, so a name from a config file is a name that chooses code to run.
@@ -91,6 +101,29 @@ function Import-Tp {
 
 function Get-TpName { return $script:TpName }
 
+function Test-TpCapability {
+    <#
+      .SYNOPSIS
+      $true when the loaded transport declares the named capability.
+
+      .DESCRIPTION
+      READ ONCE, AT START, by the caller - not per poll. A station that cannot
+      self-update is a working station; one that finds that out when an update
+      is needed, with nobody on this side to tell, has cost a round trip.
+
+      The match is on WHOLE WORDS, which is why the haystack and the needle are
+      both padded with spaces. `history` contains `stor`... nothing, but
+      `request` is a substring of nothing here only by luck, and a capability
+      list is exactly the kind of string that grows a member which contains
+      another. transports/git.sh pads the same way for the same reason.
+    #>
+    param([Parameter(Mandatory = $true)][string] $Name)
+    $caps = ''
+    try { $caps = Get-TpCapabilities } catch { return $false }
+    if (-not $caps) { return $false }
+    return (" $caps ").Contains(" $Name ")
+}
+
 function Write-CapTpError {
     param([string] $Text)
     [Console]::Error.WriteLine("station: $Text")
@@ -121,6 +154,7 @@ Export-ModuleMember -Function @(
     'Get-TpNames',
     'Import-Tp',
     'Get-TpName',
+    'Test-TpCapability',
     'Test-TpNeed',
     'Write-CapTpError'
 )

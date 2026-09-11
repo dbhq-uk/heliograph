@@ -46,6 +46,7 @@ var initTransports = []string{"git", "share", "bundle", "objstore", "relay"}
 const usage = `heliograph - run things on a machine you cannot log into
 
   heliograph bootstrap <dir>                plant the station payload into a transport repo
+      [--flavour bash|powershell|both]      bash by default; powershell for an estate with none
   heliograph init <estate> --dir <path>     remember a transport repo by name
       [--transport git|share|bundle|objstore|relay]
       objstore: --dir <https endpoint> --bucket <name> --scope <lane> [--prefix p] [--region r]
@@ -418,28 +419,50 @@ func estateFlag(fs *flag.FlagSet) *string {
 // next instruction reads the same.
 func cmdBootstrap(args []string) error {
 	fs := flag.NewFlagSet("bootstrap", flag.ExitOnError)
+	flavour := fs.String("flavour", "bash", "which station payload: bash | powershell | both")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: heliograph bootstrap <target-dir>\n  the target should be a fresh, PRIVATE repo - captured logs are committed to it")
+		return fmt.Errorf("usage: heliograph bootstrap <target-dir> [--flavour bash|powershell|both]\n  the target should be a fresh, PRIVATE repo - captured logs are committed to it")
 	}
 	target, err := filepath.Abs(pos[0])
 	if err != nil {
 		return err
 	}
-	r, err := bootstrap.Install(station.Bash, "bash", target)
+	roots, err := bootstrap.ParseFlavours(*flavour)
 	if err != nil {
 		return err
 	}
-	for _, f := range r.Installed {
-		fmt.Printf("  installed          : %s\n", f)
+	// COUNTED ACROSS ALL OF THEM, so `--flavour both` reports one total rather
+	// than two the reader has to add up. The per-file lines still name the
+	// flavour, because with both planted "exists, left alone" on the second one
+	// is the interesting line: it says which payload supplied a shared file.
+	var installed, leftAlone int
+	for _, root := range roots {
+		payload := station.Bash
+		if root == "powershell" {
+			payload = station.PowerShell
+		}
+		r, err := bootstrap.Install(payload, root, target)
+		if err != nil {
+			return err
+		}
+		prefix := ""
+		if len(roots) > 1 {
+			prefix = root + ": "
+		}
+		for _, f := range r.Installed {
+			fmt.Printf("  installed          : %s%s\n", prefix, f)
+		}
+		for _, f := range r.LeftAlone {
+			fmt.Printf("  exists, left alone : %s%s\n", prefix, f)
+		}
+		installed += len(r.Installed)
+		leftAlone += len(r.LeftAlone)
 	}
-	for _, f := range r.LeftAlone {
-		fmt.Printf("  exists, left alone : %s\n", f)
-	}
-	fmt.Printf("\nheliograph: %d file(s) installed, %d left alone, in %s\n", len(r.Installed), len(r.LeftAlone), target)
+	fmt.Printf("\nheliograph: %d file(s) installed, %d left alone, in %s\n", installed, leftAlone, target)
 	if _, err := os.Stat(filepath.Join(target, ".git")); err != nil {
 		fmt.Printf("\n%s is not a git repository yet, and git is the transport. Next:\n", target)
 		fmt.Printf("  cd %s && git init && git add -A && git commit -m 'heliograph: transport repo'\n", target)

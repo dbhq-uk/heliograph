@@ -62,11 +62,54 @@ before="$(leak_counts)"
 baseline="$before"
 leaked_by=""
 
+# --- AND THE PAYLOAD ITSELF, which is a different kind of leak ---------------
+# A test that runs a station INSIDE station/bash or station/powershell leaves
+# the station's own runtime state there. That is correct behaviour for a
+# station - the payload directory IS where `.station-delivery` belongs - and in
+# a checkout it is a local artifact that nothing shows you: those paths are
+# gitignored, so `git status` is clean.
+#
+# It is not cosmetic. `go:embed all:bash` reads the WORKING TREE, so an artifact
+# sitting there goes into the release binary, and `bootstrap.sh` plants it into
+# every transport repo made from that checkout. `.station-env` holds a token.
+# This is how station/bash/.station-delivery - carrying a /tmp path from the
+# machine that built it - came to be in a 239 MB binary.
+#
+# UNLIKE THE LEAK COUNTER ABOVE, THIS FAILS THE RUN. The counter is a hint for
+# diagnosing a flaky suite; this is a defect with a blast radius, and
+# station/embed_test.go refuses to build a release while it is there.
+payload_artifacts() {
+  local d f out=""
+  for d in "$HERE/../station/bash" "$HERE/../station/powershell"; do
+    [ -d "$d" ] || continue
+    for f in .station.lock .station-state .station-approved .station-approved-ps \
+             .station-delivery .station-env .station-relay-state \
+             .agent-service.pid .station-service.log; do
+      [ -e "$d/$f" ] && out="$out ${d#"$HERE/../"}/$f"
+    done
+  done
+  printf '%s' "${out# }"
+}
+
+pre_artifacts="$(payload_artifacts)"
+[ -n "$pre_artifacts" ] && printf 'note: the payload already carried these before the suite ran:%s\n' " $pre_artifacts"
+
 for t in "$HERE"/test-*.sh; do
   [ -f "$t" ] || continue
   name="${t##*/}"
   printf '\n=== %s ===\n' "$name"
   "$t" || rc=1
+
+  now_artifacts="$(payload_artifacts)"
+  if [ "$now_artifacts" != "$pre_artifacts" ]; then
+    printf '\n::error::%s wrote a station'"'"'s runtime state into the SHIPPED payload:\n' "$name"
+    printf '  %s\n' "$now_artifacts"
+    printf '  go:embed reads the working tree, so that ends up in the release binary,\n'
+    printf '  and bootstrap.sh plants it into every repo made from this checkout.\n'
+    printf '  The test should run against a bootstrapped COPY - see test-intercom.sh.\n'
+    rc=1
+    pre_artifacts="$now_artifacts"
+  fi
 
   after="$(leak_counts)"
   if [ "$after" != "$before" ]; then

@@ -110,7 +110,22 @@ PIN_ONLY=0
 # changed is not a default anything should ship.
 ALLOW_ACTIONS="${ALLOW_ACTIONS:-0}"
 # Running as root makes the blast radius the whole machine - see SAFETY above.
-ALLOW_ROOT="${ALLOW_ROOT:-0}"
+#
+# EXPORTED, and it was not, which made `--allow-root` do half of what it says.
+#
+# run.sh is a separate process and has its OWN root gate, reading ALLOW_ROOT
+# from its environment. Set as a plain shell variable this reached the loop's
+# check and nothing else, so `./station.sh --allow-root` started perfectly and
+# then refused every single step with exit 5 - publishing `undelivered` with
+# "the runner exited before it reached delivery", which names the symptom and
+# not one word of the cause.
+#
+# `ALLOW_ROOT=1 ./station.sh` worked the whole time, because that form is
+# already in the environment. So the variable worked and the flag documented
+# beside it did not, which is the worst of the two to get wrong: the flag is
+# what the appliance and minimal-image case in SAFETY tells people to use, and
+# that case is precisely the one with no other account to fall back to.
+export ALLOW_ROOT="${ALLOW_ROOT:-0}"
 # 1 = refuse any step whose file hash is not in .station-approved.
 REQUIRE_PIN="${REQUIRE_PIN:-0}"
 
@@ -517,7 +532,12 @@ while :; do
       # run.sh would refuse this too, and its message is better. Catching it
       # here means the far side gets a status rather than an exit code buried in
       # a log it has to go and find.
-      refuse "step '$STEP' declares no usable mode ($MODE) - see run.sh --mode" \
+      # THE REMEDY IS FOR THE SIDE THAT READS THIS. "see run.sh --mode" sends
+      # the reader to a command on the machine they cannot log into, which is
+      # the whole reason there is a status document at all. The person reading
+      # it is the person who wrote the step, and what they need is the line to
+      # add. run.sh's own message already says this; the published one did not.
+      refuse "step '$STEP' declares no mode ($MODE), so it will not run. Add '# heliograph-mode: read-only' (measures, changes nothing) or '# heliograph-mode: action' (changes state, needs CONFIRM=yes) in its first 30 lines" \
              "'$STEP' does not declare 'heliograph-mode: read-only' or 'action', so it will not run"
       sleep "$INTERVAL"; continue ;;
   esac
