@@ -184,6 +184,82 @@ jobs:
             | ./node_modules/.bin/heliograph mcp \
             | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const t=JSON.parse(s).result.tools;if(t.length!==7){console.error('::error::got '+t.length+' tools, want 7');process.exit(1)}console.log('installed from npm and served '+t.length+' tools')})"
 
+  registry:
+    name: Publish to the MCP registry
+    # After npm, not beside it. The registry entry tells a client to install
+    # @dbhq/heliograph at this version, so publishing it before npm has the
+    # package advertises an install that fails for as long as the gap lasts.
+    needs: npm
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      # OIDC again, and for a sharper reason than convenience. The registry
+      # decides what you may publish from who you are: a GitHub user token
+      # only carries `io.github.<user>/*` unless it can also read the org, so
+      # the first publish of `io.github.dbhq-uk/heliograph` was refused with a
+      # 403 naming the personal namespace. An Actions OIDC token proves the
+      # repository, and the repository is the organisation's, so the namespace
+      # follows from it. No PAT, and nothing to rotate.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          check-latest: true
+
+      - name: Get the publisher
+        # Pinned. `@latest` in a release job means the tool that publishes can
+        # change between two releases with nothing in this repository moving.
+        run: go install github.com/modelcontextprotocol/registry/cmd/publisher@v1.8.1
+
+      - name: server.json must be the tag
+        # Same reasoning as the npm job above. The registry entry names a
+        # package version; if it names one the release did not produce, every
+        # client that follows the listing installs nothing.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          want="${TAG#v}"
+          got="$(jq -r .version server.json)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::server.json is $got but the tag is $want. The registry would advertise a version that was never released."
+            exit 1
+          fi
+          echo "server.json is $got, matching the tag"
+
+      - name: Publish
+        run: |
+          set -euo pipefail
+          publisher login github-oidc
+          publisher publish
+
+      - name: The registry serves what we published
+        # Publishing is not the same as listed. This asks the registry the
+        # question a client asks, and fails if the answer is the old version.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          want="${TAG#v}"
+          for attempt in $(seq 1 10); do
+            # Matched by name, not by taking the first result: "heliograph" is
+            # a word somebody else may publish under, and the 19th-century
+            # mirror gives them every reason to.
+            got="$(curl -sS 'https://registry.modelcontextprotocol.io/v0/servers?search=heliograph' \
+              | jq -r '[.servers[].server | select(.name == "io.github.dbhq-uk/heliograph")][0].version // ""')"
+            if [ "$got" = "$want" ]; then
+              echo "the registry serves $got"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::the registry still serves '${got}', not ${want}"
+          exit 1
+
   image:
     name: Publish the container image
     needs: build

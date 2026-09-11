@@ -81,9 +81,17 @@ polls, runs, delivers and publishes, and it is planted by all three bootstraps.
 | #72 | **the rest of #70's code half** - `author` splits from `publisher`, so a named person writes the pages and DBHQ publishes them, with a footer byline saying so; `datePublished` from the first commit beside `dateModified`; and Googlebot and Bingbot are kept off the `.md` mirrors, under their own groups so no other agent is. Also corrected: the "roughly 31 times more bytes" claim, quoted in four files and never measured. It is three to sixteen times, about eight on the median page, and a test now measures it on every build |
 | - | **the PowerShell station, finished** (Track B, PRs 13-14 merged into one). `station.ps1` - the loop, gate 3, the receive half of both transports, the bootstrap that plants it, and the documentation. Split no further on purpose: every earlier PR was split so that each piece could be *proved*, and once the loop exists the remaining pieces are provable end to end together. See below for what it found |
 
-The rest of #70 is off-site and stays on that issue: publishing `server.json`
-to the MCP registry, the social previews on both repositories, the awesome-list
-entries, and the Glama listing.
+**The MCP registry lists heliograph** as of 2026-09-11, at
+`io.github.dbhq-uk/heliograph`. Published by hand once; the release workflow
+republishes it from now on, so the advertised version cannot drift from the
+package. Two things had to be fixed first, and both fail only at publish time:
+the description was 106 characters against a limit of 100, and the `$schema`
+was a revision the registry now calls deprecated. Publishing as the
+organisation needs the Actions OIDC token - a user token carries
+`io.github.<user>/*` only, even with public org membership.
+
+The rest of #70 is off-site and stays on that issue: the social previews on
+both repositories, the awesome-list entries, and the Glama listing.
 
 ### What that change found
 
