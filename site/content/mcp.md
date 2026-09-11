@@ -10,7 +10,7 @@ If you were looking for an MCP server that runs commands over SSH, this is the
 one for when there is no SSH. A tool call publishes a request; a station on the
 far side, started by somebody with legitimate access, decides whether to run it.
 
-## Configure it
+## How do I add heliograph as an MCP server?
 
 Claude Code, one command:
 

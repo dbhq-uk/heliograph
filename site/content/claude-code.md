@@ -57,9 +57,10 @@ read the log that just came back and tell me what it measured
 What you decide is which question to ask next. Claude writes the step,
 publishes it, waits, and reads the captured log.
 
-## Claude Code without SSH
+## Can Claude Code run commands without SSH?
 
-In the estates this is for, there is no SSH to give. The machine is
+Yes, and it is the only way this runs them: no SSH is involved anywhere in the
+loop. In the estates this is for, there is no SSH to give. The machine is
 behind a bastion you are not on, or in a client's estate where only their staff
 may log in, or the access is blocked by policy rather than capability:
 regulated, restricted, change-controlled.

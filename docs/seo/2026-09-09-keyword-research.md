@@ -349,3 +349,15 @@ what it does, and the same rule holds for anything published elsewhere - a
 directory listing, a pull request to an awesome-list, a Show HN title, a post:
 "heliograph - run a command on a machine you can't SSH into", never
 "heliograph" on its own.
+
+**Gap 5 is built, and two H2s are questions.** `/method` gains "Running a
+command on a remote machine, when SSH is not an option", written the way the
+SERP for that query is written: it starts from the `ssh`, `Invoke-Command`,
+PsExec and cloud-agent answers every result on that page gives, and then covers
+the case where each has been refused. `/claude-code` and `/mcp` get one
+question-form H2 each - "Can Claude Code run commands without SSH?" and "How do
+I add heliograph as an MCP server?" - and no other page does, because the form
+costs the site's voice and wins nothing where no query matches it. Their anchor
+slugs changed with the wording: headings are slugified from their text and this
+site has no explicit-anchor syntax. Nothing linked to either, on this site or
+in the skills, so nothing broke - checked before the change, not after.
