@@ -133,6 +133,32 @@ loop_briefly() {  # loop_briefly <seconds> [station args...]
   rm -f "$D/.station.lock"
 }
 
+# WAIT BY THE CLOCK, NOT BY A COUNT OF ITERATIONS.
+#
+# `for i in 1..400; sleep 0.1` is not 40 seconds. Every iteration of these waits
+# spawns several processes - a sed, an ls, a cat, a grep - and process creation
+# on Windows costs an order of magnitude more than on Linux. The first version
+# of the progress check counted iterations, and on the Windows runner those 400
+# iterations took longer than the 40-second step they were watching: by the time
+# the condition was met the run had finished and DELIVERED, so the assertions
+# read a complete log and called it a partial one.
+#
+# A deadline in seconds means the same wait on both platforms, which is what
+# "wait for up to 90 seconds" was supposed to mean in the first place.
+# IT TAKES THE NAME OF A PREDICATE, not a command line. `wait_until 120 test -n
+# "$(published progress)"` looks right and is a busy-loop that can never
+# succeed: the $( ) is expanded ONCE, by the caller, before wait_until runs at
+# all - so the same stale value is tested every time round.
+wait_until() {  # wait_until <seconds> <predicate-fn> - 0 if it came true in time
+  local budget="$1" pred="$2"
+  local deadline=$((SECONDS + budget))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if "$pred"; then return 0; fi
+    sleep 0.2
+  done
+  return 1
+}
+
 # THE FAR SIDE, and only the far side.
 published() { sed -n "s/^$1:[[:space:]]*//p" "$S/scope/status" 2>/dev/null | head -1; }
 delivered_names() { ls -1 "$S/scope/ops-logs/" 2>/dev/null; }
@@ -235,13 +261,9 @@ request 'id: rr1' 'step: ./steps/deploy.ps1'
     "${ROOT_ENV[@]+"${ROOT_ENV[@]}"}" \
     "$PS_BIN" -NoProfile -File ./station.ps1 --interval 1 ) >"$WORK/rerefuse.out" 2>&1 &
 LOOP_PID=$!
-waited=0
-while [ "$waited" -lt 200 ]; do
-  grep -q 'REFUSED' "$WORK/rerefuse.out" 2>/dev/null && break
-  waited=$((waited + 1)); sleep 0.1
-done
-if [ "$waited" -ge 200 ]; then
-  t_skip "the station never refused within 20s, so the re-refusal check did NOT run"
+refusal_seen() { grep -q 'REFUSED' "$WORK/rerefuse.out" 2>/dev/null; }
+if ! wait_until 60 refusal_seen; then
+  t_skip "the station never refused within 60s, so the re-refusal check did NOT run"
   kill -TERM "$LOOP_PID" 2>/dev/null; wait "$LOOP_PID" 2>/dev/null; LOOP_PID=""
 else
   # Long enough for eight more polls at one second. A loop that reconsidered
@@ -468,13 +490,11 @@ LOOP_PID=$!
 # WAIT FOR THE RUN TO ACTUALLY BE UNDER WAY. A cancel of a step that never
 # started proves nothing at all - the two absences agree and the assertion reads
 # as a pass. So wait for the step's own output to reach the far side's log.
-waited=0
-while [ "$waited" -lt 400 ]; do
-  if [ -n "$(ls -1 "$D/ops-logs/"slow-*.txt 2>/dev/null)" ] &&
-     grep -q 'probe 2' "$D/ops-logs/"slow-*.txt 2>/dev/null; then break; fi
-  waited=$((waited + 1)); sleep 0.1
-done
-if [ "$waited" -ge 400 ]; then
+step_is_under_way() {
+  [ -n "$(ls -1 "$D/ops-logs/"slow-*.txt 2>/dev/null)" ] &&
+    grep -q 'probe 2' "$D/ops-logs/"slow-*.txt 2>/dev/null
+}
+if ! wait_until 90 step_is_under_way; then
   t_skip "the slow step never produced two lines, so the cancel was NOT exercised"
 else
   t_ok "the step is running and has produced output, so there is something to cancel"
@@ -515,10 +535,10 @@ request 'id: l1' 'step: ./steps/slow.ps1'
     "${ROOT_ENV[@]+"${ROOT_ENV[@]}"}" \
     "$PS_BIN" -NoProfile -File ./station.ps1 --once --interval 1 ) >/dev/null 2>&1 &
 LOOP_PID=$!
-waited=0
-while [ ! -s "$D/.station.lock" ] && [ "$waited" -lt 300 ]; do waited=$((waited + 1)); sleep 0.1; done
+lock_taken() { [ -s "$D/.station.lock" ]; }
+wait_until 60 lock_taken
 
-if [ ! -s "$D/.station.lock" ]; then
+if ! lock_taken; then
   t_skip "the first station never took a lock, so the second could not be tested"
 else
   SECOND="$(
@@ -633,26 +653,45 @@ EXTRA_ENV=()
 # finishes, so "running for forty minutes" and "wedged" look identical from the
 # only side that can see anything.
 plant
+# FIVE MINUTES, and that is not padding. The step has to still be running when
+# the assertions read the far side, and a Windows runner is slow enough that a
+# 40-second step finished before the first version of this check got to look -
+# so it read a DELIVERED log and called it a partial one.
 step_file slow read-only \
   "Write-Output 'the first line'" \
-  'foreach ($i in 1..40) { Write-Output "probe $i"; Start-Sleep -Seconds 1 }'
+  'foreach ($i in 1..300) { Write-Output "probe $i"; Start-Sleep -Seconds 1 }'
 request 'id: pr1' 'step: ./steps/slow.ps1'
 ( cd "$D" && env TRANSPORT=share "SHARE_DIR=$(winpath "$S")" SHARE_SCOPE=scope \
     "${ROOT_ENV[@]+"${ROOT_ENV[@]}"}" PROGRESS_EVERY=1 \
     "$PS_BIN" -NoProfile -File ./station.ps1 --once --interval 1 ) >/dev/null 2>&1 &
 LOOP_PID=$!
-# WAIT FOR THE STEP'S OWN OUTPUT, not merely for a file to exist. The very
-# first snapshot is usually the header run.ps1 writes BEFORE the step starts, so
-# a wait that stopped there would assert about a log the step had not yet
-# written a word of - and fail about the timing rather than about progress.
-waited=0
-while [ "$waited" -lt 400 ]; do
-  if [ "$(published state)" = "running" ] &&
-     delivered_body 2>/dev/null | grep -q 'the first line'; then break; fi
-  waited=$((waited + 1)); sleep 0.1
-done
-if [ "$waited" -ge 400 ]; then
-  t_skip "no progress carrying the step's output reached the far side in 40s, so the progress path was NOT exercised"
+# WAIT FOR A PROGRESS PUBLICATION, which is the thing under test.
+#
+# Neither weaker signal will do, and the first version used both of them. A
+# status saying `running` proves nothing: the loop writes one of those BEFORE
+# the step starts. A log on the far side proves nothing either: delivery puts
+# one there too, at the end. Only `progress:` is written by the progress path
+# and by nothing else.
+# BOTH HALVES, and each rules out a different wrong answer.
+#
+# `progress:` alone is satisfied about one second in, by the FIRST snapshot -
+# which is the header run.ps1 writes before the child has started. Asserting
+# against that fails on "the partial log carries the step's output", because at
+# that moment it does not.
+#
+# The step's output alone is satisfied by DELIVERY, which also puts a log on the
+# far side - and that one is complete, so it fails "no footer yet". The first
+# version of this check used exactly that, and on Windows it read a delivered
+# log and called it partial.
+#
+# Together they can only be a progress publication carrying the step's own
+# output, which is the property. The step outlasts the budget by minutes, so
+# delivery cannot be what satisfies it.
+progress_carries_output() {
+  [ -n "$(published progress)" ] && delivered_body 2>/dev/null | grep -q 'the first line'
+}
+if ! wait_until 120 progress_carries_output; then
+  t_skip "no progress carrying the step's output reached the far side in 120s, so the progress path was NOT exercised"
 else
   assert_eq "while a step runs the far side sees state running" "running" "$(published state)"
   assert_contains "  with a line count" "lines" "$(published progress)"
@@ -661,7 +700,9 @@ else
   assert_contains "  and the partial log, so the run can actually be followed" \
     "the first line" "$(delivered_body)"
   # AND IT IS NOT COMPLETE. A "partial" log carrying the footer would mean this
-  # assertion was reading a finished run and proving nothing about progress.
+  # was reading a finished run and proving nothing about progress at all - which
+  # is exactly what it did on Windows before the step was made long enough to
+  # outlast the check.
   assert_eq "  and it is genuinely partial - no footer yet" "no" \
     "$(delivered_body | grep -q 'finished UTC' && echo yes || echo no)"
 fi
