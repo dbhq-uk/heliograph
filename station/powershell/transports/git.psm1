@@ -257,6 +257,18 @@ function Send-TpLog {
       A FAILED PUSH MUST NEVER LOSE THE LOG, and must never be reported as a
       success. The commit happens first, so the file is safe locally whatever
       the network does, and the caller is told plainly where it is.
+
+      IT PUSHES BARE, RESOLVING THROUGH UPSTREAM, and Push-GitScope - which the
+      status path uses - names origin and the branch explicitly. That is a real
+      inconsistency and it is left here on purpose.
+
+      caplib.sh's cap_push, which is the bash tp_put_log, pushes bare too. A
+      branch whose upstream is some other remote therefore delivers logs
+      somewhere the control side never reads, on BOTH implementations, and
+      reports success. Fixing it on one side would make the twins disagree about
+      where a log goes, which is the one thing they may not do. It is recorded
+      in PLAN.md to be fixed on both sides together, with a test that watches
+      the remote rather than the exit code.
     #>
     param(
         [Parameter(Mandatory = $true)][string] $LogPath,
@@ -318,6 +330,224 @@ function Send-TpLog {
     return $false
 }
 
+# =============================================================================
+#  The RECEIVE half - what the loop polls and publishes
+# =============================================================================
+# `station/request` and `station/status`, and NOT the `agent/` spellings that
+# transports/git.sh also reads.
+#
+# That compat path exists because a transport repo is a SEPARATE repo on a
+# machine nobody here can reach, so it does not get upgraded when this one does
+# and an operator who bootstrapped before the rename still has `agent/request`
+# in their checkout. It cannot arise here: those paths are chosen by the CONTROL
+# side, and the only binary that can plant a PowerShell station at all is one
+# that postdates the rename. Carrying a second pair of paths into a new
+# implementation would be dead code with a removal date, so it is said here
+# instead.
+# =============================================================================
+
+$script:RequestPath = 'station/request'
+$script:StatusPath = 'station/status'
+
+function Receive-TpRequest {
+    <#
+      .SYNOPSIS
+      The queued request document, '' when there is none, $null when the
+      remote could not be reached.
+
+      .DESCRIPTION
+      READS THE WORKING TREE, having fetched. That is not an oversight and it is
+      what transports/git.sh does: the fetch proves the remote is reachable, and
+      Sync-TpSelf - which the loop calls immediately afterwards - is what brings
+      the tree forward. A request therefore takes one poll to be seen, and the
+      alternative is reading `origin/<branch>` here and running a step against a
+      payload the station has not pulled yet.
+
+      `$null` MEANS FAILED and '' means nothing is queued. The caller must test
+      `$null -eq $body`: '' is falsy too, and an unreachable remote reported as
+      an empty queue is a station that polls a dead link for ever calling itself
+      idle.
+    #>
+    $null = Invoke-CapGit fetch --quiet origin $script:Branch
+    if ($script:GitExit -ne 0) { return $null }
+    $req = Join-Path $script:RepoRoot $script:RequestPath
+    if (-not (Test-Path -LiteralPath $req -PathType Leaf)) { return '' }
+    try {
+        return [System.IO.File]::ReadAllText($req)
+    } catch {
+        Write-CapTpError "the request at $req is there and cannot be read: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Receive-TpRequestLive {
+    <#
+      .SYNOPSIS
+      The request as it is on the REMOTE right now. Used while a step runs.
+      .DESCRIPTION
+      NEVER PULLS AND NEVER REBASES. The step is appending to its log through an
+      open descriptor; a rebase would rewrite that file underneath it and the
+      appends would carry on at a stale offset, corrupting the evidence this
+      read only meant to observe. `git show origin/<branch>:<path>` touches no
+      working tree at all.
+    #>
+    $null = Invoke-CapGit fetch --quiet origin $script:Branch
+    if ($script:GitExit -ne 0) { return $null }
+    $body = Invoke-CapGit show "origin/$($script:Branch):$($script:RequestPath)"
+    if ($script:GitExit -ne 0) { return '' }
+    return $body
+}
+
+function Sync-TpSelf {
+    <#
+      .SYNOPSIS
+      Bring a newer payload into the working tree.
+      0 = something changed, 1 = nothing did, 2 = it could not be done.
+      .DESCRIPTION
+      A 2 is not fatal. A station that cannot update itself is still a working
+      station, and the loop reports it and carries on rather than dying on a
+      machine nobody can reach.
+    #>
+    $before = Invoke-CapGit rev-parse HEAD
+    if ($script:GitExit -ne 0) { return 2 }
+    $after = Invoke-CapGit rev-parse "origin/$($script:Branch)"
+    if ($script:GitExit -ne 0) { return 2 }
+    if ($before -ceq $after) { return 1 }
+
+    $null = Invoke-CapGit pull --rebase --quiet
+    if ($script:GitExit -eq 0) { return 0 }
+
+    # A rebase left half-applied hands the operator a checkout mid-rebase with
+    # no idea why, and every later poll fails before it starts.
+    $null = Invoke-CapGit rebase --abort
+    return 2
+}
+
+function Send-TpStatus {
+    <#
+      .SYNOPSIS
+      Commit and push the status document. $true only when the far side has it.
+      .DESCRIPTION
+      AlsoFile is a partial log from a cancelled run, and it is not decoration.
+      A killed step leaves its log modified in the working tree, and progress
+      pushes have made that file TRACKED - so unless it goes in this commit,
+      every later `pull --rebase` refuses on a dirty tree and the station wedges
+      with the cancellation never reaching the far side. transports/git.sh
+      carries the same argument, found by cancelling a run that had been
+      publishing progress.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string] $Body,
+        [string] $Message = '',
+        [string] $AlsoFile = ''
+    )
+    if (-not $Message) { $Message = 'station: status ***NO_CI***' }
+    if ($AlsoFile -and -not (Test-Path -LiteralPath $AlsoFile -PathType Leaf)) { $AlsoFile = '' }
+    if (-not (Write-GitStatusFile -Body $Body)) { return $false }
+
+    $paths = @($script:StatusPath)
+    if ($AlsoFile) { $paths += $AlsoFile }
+
+    $null = Invoke-CapGit add -f -- @paths
+    if ($script:GitExit -ne 0) {
+        Write-CapTpError "could not stage $($script:StatusPath)"
+        return $false
+    }
+    $null = Invoke-CapGit diff --cached --quiet -- @paths
+    # Nothing staged: this exact status is already committed. Publishing the
+    # same document twice is a no-op, not a failure.
+    if ($script:GitExit -eq 0) { return $true }
+
+    if (-not (Invoke-GitStatusCommit -Message $Message -Paths $paths)) { return $false }
+
+    $null = Invoke-CapGit pull --rebase --quiet
+    if ($script:GitExit -ne 0) { $null = Invoke-CapGit rebase --abort }
+
+    return (Push-GitScope)
+}
+
+function Send-TpProgress {
+    <#
+      .SYNOPSIS
+      Publish a snapshot of a running step's log.
+      .DESCRIPTION
+      PUSHES BUT NEVER PULLS OR REBASES, deliberately - see Receive-TpRequestLive
+      for why a rebase underneath a running step corrupts the log it is
+      observing. A rejected push is simply retried next cycle, and the final
+      delivery reconciles properly.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string] $Body,
+        [string] $Message = '',
+        [string] $LogPath = ''
+    )
+    if (-not $Message) { $Message = 'station: progress ***NO_CI***' }
+    if (-not (Write-GitStatusFile -Body $Body)) { return $false }
+
+    $paths = @($script:StatusPath)
+    if ($LogPath -and (Test-Path -LiteralPath $LogPath -PathType Leaf)) { $paths += $LogPath }
+
+    $null = Invoke-CapGit add -f -- @paths
+    if ($script:GitExit -ne 0) { return $false }
+    $null = Invoke-CapGit diff --cached --quiet -- @paths
+    if ($script:GitExit -eq 0) { return $true }
+
+    if (-not (Invoke-GitStatusCommit -Message $Message -Paths $paths)) { return $false }
+    return (Push-GitScope)
+}
+
+function Write-GitStatusFile {
+    param([string] $Body)
+    $dst = Join-Path $script:RepoRoot $script:StatusPath
+    try {
+        $dir = Split-Path -Parent $dst
+        if (-not (Test-Path -LiteralPath $dir)) {
+            [void](New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop)
+        }
+        # WriteAllText, not Set-Content: 5.1's Set-Content writes a BOM, and the
+        # control side anchors the first key of this document.
+        [System.IO.File]::WriteAllText($dst, $Body)
+        return $true
+    } catch {
+        Write-CapTpError "could not write $dst : $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Invoke-GitStatusCommit {
+    param([string] $Message, [string[]] $Paths)
+    $who = Get-CapUser
+    $name = if ($env:GIT_AUTHOR_NAME) { $env:GIT_AUTHOR_NAME } else { $who }
+    $mail = if ($env:GIT_AUTHOR_EMAIL) { $env:GIT_AUTHOR_EMAIL } else { "$who@localhost" }
+    $null = Invoke-CapGit -c "user.name=$name" -c "user.email=$mail" commit -q -m $Message -- @Paths
+    if ($script:GitExit -ne 0) {
+        Write-CapTpError "could not commit the status document"
+        return $false
+    }
+    return $true
+}
+
+function Push-GitScope {
+    <#
+      .SYNOPSIS
+      Push to origin and THIS branch, named explicitly.
+      .DESCRIPTION
+      NOT a bare `git push`. Once the branch is which MACHINE this station
+      answers for, resolving the destination through upstream configuration is
+      too implicit: a branch tracking some other remote would take every status
+      this station publishes somewhere the control side never reads, and report
+      success. transports/git.sh publishes status the same way, and for the same
+      reason.
+
+      Send-TpLog does NOT do this, and that divergence is deliberate rather than
+      an oversight - see the note above it.
+    #>
+    $null = Invoke-CapGit push --quiet origin "HEAD:$($script:Branch)"
+    if ($script:GitExit -eq 0) { return $true }
+    Write-CapTpError "could not push the status to origin/$($script:Branch)"
+    return $false
+}
+
 function Test-TpPreflight {
     $out = @()
     $out += @{ Status = 'ok'; Label = 'branch'; Detail = $script:Branch }
@@ -357,6 +587,12 @@ Export-ModuleMember -Function @(
     'Test-Tp',
     'Send-TpLog',
     'Test-TpPreflight',
+    # The receive half.
+    'Receive-TpRequest',
+    'Receive-TpRequestLive',
+    'Send-TpStatus',
+    'Send-TpProgress',
+    'Sync-TpSelf',
     'Hide-GitCredential',
     'Get-GitAuthHeader',
     'Get-LastExit',

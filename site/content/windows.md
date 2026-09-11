@@ -6,8 +6,9 @@ Two different questions get confused here, so this page separates them.
    Windows.
 2. **Can a step be written in PowerShell?** Yes, today, on any host.
 
-A third - *can the station itself be pure PowerShell, with no bash at all* - is
-designed and not built. It is at the bottom of this page.
+3. **Can the station itself be pure PowerShell, with no bash at all?** Yes.
+   It polls, runs, delivers and publishes, and it passes the same conformance
+   suite the bash station does. It is at the bottom of this page.
 
 ## Hosting the loop on Windows
 
@@ -112,26 +113,6 @@ clone), or a CR-intolerant bash with CRLF files (a failure, with the fix).
 If you get it wrong: `git config --global core.autocrlf false` and clone again.
 The checkout is disposable and anything already pushed is safe.
 
-## A pure PowerShell station
-
-For a Windows Server estate with no Git for Windows and no permission to
-install it. *"We support Windows, provided you first install Git for Windows"*
-is a weak claim on exactly the estates this targets.
-
-**Designed, specced, and not built.** The design settles on Windows PowerShell
-5.1 as the floor - in-box on Server 2016 and later, so it needs no install -
-carrying the git, file share and relay transports.
-
-It is permitted only on one condition, which is the condition the whole
-argument turns on: a second implementation of the capture is allowed **only
-while it passes [the conformance suite](/conformance)**. An unproven port is
-forbidden, because the failure mode is a log that reads perfectly and is
-useless.
-
-The design is in
-[`docs/specs/2026-09-08-powershell-station-and-full-documentation-design.md`](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-08-powershell-station-and-full-documentation-design.md).
-This page will describe it when it exists, and not before.
-
 ## The PowerShell station, for a box with no bash
 
 Everything above assumes Git for Windows, and where you have it that is the
@@ -161,20 +142,121 @@ It also reports which **cancel** this machine gets: a Job Object where
 the child tree at the moment it runs, so a process started immediately after
 can survive - worth knowing before you rely on cancelling a long step.
 
-### What it can and cannot do
+### Planting it
 
-It **delivers**: `transports/git.psm1` and `transports/share.psm1` ship a
-finished log to the far side, and both pass the same conformance property the
-bash transports do - including the check that a delivery which quietly ships
-nothing makes that property *fail*.
+Three ways, and they produce the same tree. A test in this repository runs all
+three against the same checkout and compares the results file by file.
 
-It does **not receive**. There is no loop, so a request has to be handed to
-`run.ps1` by whoever is driving; the station cannot poll for one. The preflight
-says exactly that rather than implying a round trip. For a station that polls,
-use the bash station.
+```powershell
+# from a machine with the CLI
+heliograph bootstrap C:\ops\my-task --flavour powershell
+
+# from a checkout, with PowerShell and nothing else - which is the point
+.\station\bootstrap.ps1 C:\ops\my-task
+
+# from a checkout, with bash
+./station/bootstrap.sh /c/ops/my-task --flavour powershell
+```
+
+`--flavour both` puts both payloads in one repo, for a transport repo serving
+two machines of different kinds. It is not a recommendation: a machine gets one
+station, and an estate that has bash should run the bash one.
+
+### The loop
+
+```powershell
+.\station.ps1                    # poll, run, deliver, repeat - READ-ONLY
+.\station.ps1 --once             # do one requested run, then exit
+.\station.ps1 --interval 15      # seconds between polls (default 5)
+.\station.ps1 --allow-actions    # also run steps that declare themselves actions
+.\station.ps1 --allow-root       # permit a privileged account
+.\station.ps1 --pin              # approve the current steps, for REQUIRE_PIN=1
+```
+
+It is the twin of `station.sh`: the same request document, the same published
+status, the same four gates, the same exit codes. A control side reads one
+document and cannot tell which implementation wrote it - and a test asserts
+exactly that, by running both against the same request and comparing the keys
+they publish.
+
+**`run.ps1` carries gates 1, 2 and 4.** A step declares `# heliograph-mode:
+read-only` or `action` or does not run; an action needs `CONFIRM=yes`; nothing
+runs as Administrator or SYSTEM unless `ALLOW_ROOT=1`.
+
+**`station.ps1` carries gate 3**, which cannot live in the runner: the station
+must have been *started* with `--allow-actions`, and a runner invoked by hand
+has no station behind it to ask. The refusal is **published** within one poll,
+with the flag that would allow it - which is what makes a read-only default
+affordable instead of a wasted day.
+
+`ACTION_ENV` catches what a declaration cannot see. A step that plans is
+read-only until `env: APPLY=1` makes it apply, so that env line is gated as an
+action too.
+
+### What the request may not say
+
+The `env:` line becomes variables for the run, and four names are refused:
+`TRANSPORT`, `PUSH`, `REDACT` and `LOG_DIR`. Each of them turns a working
+station into one that looks fine and delivers nothing, or publishes an
+unredacted log that cannot be unpublished. They are settled when the station is
+started, not per request.
+
+The check is on the **parsed** name, not the text of the line: `FOO=1
+"TRANSPORT=relay"` walks straight past a check on the raw string and still
+reaches the step as a plain assignment.
+
+Nothing in the line is evaluated. Shell metacharacters are refused by name, so
+the two implementations refuse the same set of requests - `station.sh` passes
+that line to an `eval` and must, and this one agrees with it rather than being
+quietly more permissive.
+
+### Watching, and stopping
+
+While a step runs the station publishes the partial log every
+`PROGRESS_EVERY` seconds (default 60, `0` disables), with a line count and the
+last real line. Without it a long step is a black box: *running for forty
+minutes* and *wedged* look identical from the only side that can see anything.
+
+`cancel: yes` in the request kills the step running right now; `cancel: <id>`
+kills it only if that is the id running, so a stale cancel cannot reap a later
+run. A cancelled run publishes `cancelled` and **still delivers the partial
+log** - which is usually the evidence you wanted. `stop: yes` ends the station
+cleanly.
+
+### What it delivers, and how you know
+
+`transports/git.psm1` and `transports/share.psm1` carry both halves of the
+contract: fetching a request and publishing a status and progress, as well as
+shipping the finished log.
+
+`idle` means **the log arrived**. Anything else is published as `undelivered`
+with the reason - including the case where the runner exited before it ever
+reached delivery, which is the one an earlier version of the bash loop reported
+as a clean run with a log nobody would ever receive.
 
 The credential is handled the way the bash transport handles it: through
 `GIT_CONFIG_*` rather than `git -c`, so a token never reaches the process table
 where `ps` shows it to every other user on the box. `Get-TpDescribe` masks both
 halves of a URL's userinfo, because `https://<token>:x-oauth-basic@host` is a
 documented git form in which **the secret is the username**.
+
+### Two limits worth knowing before you rely on it
+
+**No relay transport yet.** git and the file share, and that is all. The relay
+needs `heliograph-seal`, which is a Go binary, and a station that must ship a
+binary is a different bootstrap question on an estate that would not let you
+install Git for Windows.
+
+**A self-update needs a restart.** `run.ps1`, `caplib.psm1` and the steps come
+forward with no restart at all, because every run is a fresh process that loads
+them again. `station.ps1` itself cannot be replaced while it is running -
+PowerShell has no `exec`, and starting a replacement is worse than useless
+under the Job Object the cancel depends on, because the moment the old process
+exits the kernel terminates the new one. So the loop exits **75** and says so,
+which a scheduled task or a systemd unit treats as *restart me*. Started by
+hand, it prints the command to type.
+
+**A `kill` leaves the lock file.** Windows PowerShell 5.1 cannot catch a
+SIGTERM, so the `finally` that releases `.station.lock` never runs. The next
+station reads the pid, finds it dead, says `clearing a stale lock` and starts.
+`station.sh` traps the signal and does remove it.

@@ -1,14 +1,23 @@
 # Windows
 
-Three separate things, and they are worth keeping apart because they fail in
+Four separate things, and they are worth keeping apart because they fail in
 different places:
 
-- **Running the loop on a Windows machine.** `station.ps1` does this. It is a
-  launcher, not a port.
+- **Running the loop on a Windows machine that HAS Git for Windows.**
+  `station/bash/station.ps1` does this. It is a launcher, not a port: it finds
+  bash and hands over to `start.sh`.
+- **Running a station on a machine with NO bash at all.**
+  `station/powershell/` is a second implementation - loop, runner, capture and
+  two transports, all PowerShell. Plant it with
+  `heliograph bootstrap <dir> --flavour powershell`. See the last section.
 - **Writing a step in PowerShell.** `ps_step` in `run.sh` does this. It works on
   any control node that has PowerShell, including Linux.
 - **Reaching a Windows machine from elsewhere.** `rt_ps` in `lib/remote.sh` does
   this, over SSH. The control node can be anything.
+
+**Prefer the first wherever it is available.** One implementation of the capture
+is better than two, and the pure PowerShell station exists for the estate that
+has no choice.
 
 Everything below was measured on Windows Server 2022 with PowerShell 5.1.20348
 and Git for Windows 2.55, and on Linux with pwsh 7.6.5. Where a number is
@@ -370,3 +379,60 @@ Two things that do work:
 permits WinRM has no route here, and nothing in this repo speaks WinRM or PSRP.
 `rt_ps` also hardcodes `powershell`, which is Windows PowerShell 5.1; a target
 with pwsh 7 installed will not use it.
+
+## The pure PowerShell station
+
+`station/powershell/`, for an estate with no bash and no permission to install
+any. Windows PowerShell 5.1 is the floor - in-box on Server 2016 and later.
+
+```powershell
+.\start.ps1 --check     # will this work here, changing nothing
+.\run.ps1 env           # one step, by hand
+.\station.ps1           # the loop: poll, run, deliver, repeat
+```
+
+It is the twin of the bash station, not a port-in-spirit: the same request
+document, the same published status, the same four gates, the same exit codes.
+A control side reads one document and cannot tell which wrote it. It is
+permitted **only while it passes the conformance suite**, and it passes all ten
+properties over both its transports, on 5.1 and on 7.
+
+`run.ps1` carries gates 1, 2 and 4. `station.ps1` carries gate 3 -
+`--allow-actions` - which cannot live in the runner, because a runner invoked by
+hand has no station behind it to ask.
+
+Every `station.sh` variable is honoured with the same name and default:
+`INTERVAL`, `ALLOW_ACTIONS`, `ALLOW_ROOT`, `REQUIRE_PIN`, `PROGRESS_EVERY`,
+`ACTION_ENV`, `TRANSPORT`.
+
+### What to check before relying on it
+
+`.\start.ps1 --check` answers the two questions that decide whether a station
+can work on that machine at all, and both are policy rather than software:
+
+- **Constrained Language Mode** refuses .NET method calls and type literals,
+  which is most of `caplib.psm1`. It presents as a syntax error in somebody
+  else's file rather than as a policy decision.
+- **A GPO-set execution policy overrides `-ExecutionPolicy Bypass`.** A station
+  that launches by hand then refuses to launch from a scheduled task. The
+  preflight reads the policy per scope, because the effective value does not say
+  who set it and therefore does not say whether you can change it.
+
+It also reports which cancel the machine gets: a Job Object where `Add-Type` is
+permitted, `taskkill /T /F` where it is not. The second walks the tree at the
+moment it runs, so a process started immediately after can survive.
+
+### Limits, stated rather than implied
+
+- **Transports are git and share only.** No relay: it needs `heliograph-seal`,
+  which is a Go binary, and a station that must ship a binary is a different
+  bootstrap question on the estates this exists for.
+- **A self-update needs a restart.** `run.ps1`, `caplib.psm1` and the steps come
+  forward with no restart - every run is a fresh process. `station.ps1` itself
+  cannot be replaced while running (PowerShell has no `exec`, and a respawn is
+  killed by the Job Object the cancel depends on), so it exits **75**, which a
+  scheduled task treats as *restart me*.
+- **A `kill` leaves `.station.lock`.** 5.1 cannot catch SIGTERM. The next
+  station finds the pid dead and clears it.
+- **Pinning uses `.station-approved-ps`**, not the bash station's file: each
+  `--pin` truncates before writing, and the two payloads approve different files.

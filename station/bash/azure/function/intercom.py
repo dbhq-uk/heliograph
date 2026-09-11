@@ -64,7 +64,31 @@ import uuid
 #
 # So it searches for the marker files instead of counting directories. Costs two
 # stat calls at import and cannot be wrong in either layout.
+#
+# HELIOGRAPH_TOOLKIT OVERRIDES BOTH, and is read from the ENVIRONMENT only -
+# never from a request. The environment belongs to whoever deployed this
+# function; a request is written by whoever can reach the endpoint, and letting
+# one of those choose which run.sh executes would hand over the machine.
+#
+# It exists for two real cases. A deployment that mounts the payload somewhere
+# other than beside this file has no way to say so otherwise. And the test
+# suite needs one: without it, driving this module from a checkout runs the
+# SHIPPED payload in place, and run.sh then writes .station-delivery into
+# station/bash - which is correct behaviour on a real station, and in a checkout
+# is a local artifact that `go:embed` puts into the release binary. That is how
+# a 239 MB binary came to carry somebody's /tmp path; station/embed_test.go is
+# the guard, and this is one of the ways the artifact got there.
 def _find_toolkit() -> pathlib.Path:
+    override = os.environ.get("HELIOGRAPH_TOOLKIT", "")
+    if override:
+        candidate = pathlib.Path(override).resolve()
+        if (candidate / "run.sh").is_file() and (candidate / "caplib.sh").is_file():
+            return candidate
+        # REFUSED RATHER THAN IGNORED. Falling back to the search would run a
+        # different toolkit from the one the operator named, silently.
+        raise RuntimeError(
+            f"HELIOGRAPH_TOOLKIT={override} has no run.sh and caplib.sh in it"
+        )
     here = pathlib.Path(__file__).resolve().parent
     for candidate in (here, *here.parents):
         if (candidate / "run.sh").is_file() and (candidate / "caplib.sh").is_file():

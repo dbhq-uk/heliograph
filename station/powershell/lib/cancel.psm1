@@ -214,11 +214,33 @@ function Stop-CapTree {
     if (Test-CancelWindows) {
         & taskkill /T /F /PID $ProcessId 2>&1 | Out-Null
     } else {
-        # The GROUP, negated, the way run.sh cancels - or the step survives its
-        # wrapper. `kill` is not a PowerShell cmdlet here; the external one is
-        # what understands a negative pid.
-        & kill -TERM -- "-$ProcessId" 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { & kill -TERM $ProcessId 2>&1 | Out-Null }
+        # THE GROUP, BUT ONLY IF THE TARGET LEADS ONE. This used to signal
+        # `-$ProcessId` unconditionally, and that is a loaded gun pointed at the
+        # caller.
+        #
+        # A negative pid signals a process GROUP. A child started by
+        # Process.Start inherits its parent's group unless something called
+        # setsid, so `kill -TERM -- -<child>` resolves to the STATION'S OWN
+        # GROUP - and the cancel kills the loop, the step, and anything else the
+        # operator had in that shell. It does not fail; it succeeds at the wrong
+        # thing, so the `if ($LASTEXITCODE -ne 0)` fallback below never fires.
+        #
+        # Nothing caught it, because the only caller until now was the
+        # conformance driver, which starts its target under `setsid` - so the
+        # target always DID lead its own group and the unsafe path was never
+        # taken. The loop starts a step without setsid on a platform where
+        # setsid may not exist at all.
+        #
+        # So ask, rather than assume: a process whose pgid equals its own pid
+        # leads its group and can be signalled as one. Anything else is
+        # signalled alone, and Get-CapTreeReach reports that a grandchild may
+        # outlive the cancel.
+        if (Test-CapLeadsGroup -ProcessId $ProcessId) {
+            & kill -TERM -- "-$ProcessId" 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { & kill -TERM $ProcessId 2>&1 | Out-Null }
+        } else {
+            & kill -TERM $ProcessId 2>&1 | Out-Null
+        }
     }
 
     # PROVED GONE, not merely signalled. A kill that was sent is not a kill that
@@ -231,11 +253,48 @@ function Stop-CapTree {
     }
 
     if (-not (Test-CancelWindows)) {
-        & kill -KILL -- "-$ProcessId" 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { & kill -KILL $ProcessId 2>&1 | Out-Null }
+        if (Test-CapLeadsGroup -ProcessId $ProcessId) {
+            & kill -KILL -- "-$ProcessId" 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { & kill -KILL $ProcessId 2>&1 | Out-Null }
+        } else {
+            & kill -KILL $ProcessId 2>&1 | Out-Null
+        }
         Start-Sleep -Milliseconds 500
     }
     return (-not (Test-CapAlive -ProcessId $ProcessId))
+}
+
+function Test-CapLeadsGroup {
+    <#
+      .SYNOPSIS
+      $true when this process leads its own process group, so signalling the
+      group cannot reach the caller. Always $false on Windows, which has none.
+
+      .DESCRIPTION
+      `ps -o pgid=` is POSIX and is on macOS, Linux and Git-Bash alike. A
+      process that has exited, or that this account may not see, yields nothing
+      and is reported as not leading a group - which is the SAFE answer: the
+      caller then signals one pid instead of a group it might be in.
+    #>
+    param([Parameter(Mandatory = $true)][int] $ProcessId)
+    if (Test-CancelWindows) { return $false }
+    $pgid = (& ps -o pgid= -p $ProcessId 2>$null | Select-Object -First 1)
+    if (-not $pgid) { return $false }
+    $pgid = "$pgid".Trim()
+    if ($pgid -notmatch '^\d+$') { return $false }
+    return ([int]$pgid -eq $ProcessId)
+}
+
+function Get-CapTreeReach {
+    <#
+      .SYNOPSIS
+      How far a cancel of this process would reach, as a string, for a caller
+      that wants to say so out loud rather than imply a guarantee it lacks.
+    #>
+    param([Parameter(Mandatory = $true)][int] $ProcessId)
+    if (Test-CancelWindows) { return 'the process tree, by taskkill /T' }
+    if (Test-CapLeadsGroup -ProcessId $ProcessId) { return 'the process group' }
+    return 'this process only - it does not lead a process group, so a grandchild may outlive the cancel'
 }
 
 function Test-CapAlive {
@@ -265,5 +324,7 @@ Export-ModuleMember -Function @(
     'Get-CapKillGroupReason',
     'Stop-CapTree',
     'Test-CapAlive',
+    'Test-CapLeadsGroup',
+    'Get-CapTreeReach',
     'Test-CancelWindows'
 )

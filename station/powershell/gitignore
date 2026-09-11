@@ -1,14 +1,13 @@
 # =============================================================================
-#  .gitignore
+#  .gitignore - the PowerShell station's transport repo
 # =============================================================================
 #  NOTE: ops-logs/*.txt is deliberately NOT ignored. The captured logs are the
-#  whole point of this repo - committing them is how a run escapes a machine
+#  whole point of this repo - publishing them is how a run escapes a machine
 #  nobody can reach. Don't "tidy" them into here.
 #
-#  NOTE: secrets/*.enc is deliberately NOT ignored either. Those are ciphertext,
-#  and git is the only channel that reaches the far side, so they have to travel
-#  in the repo. The passphrase never does - it lives outside this repo, mode
-#  0600, and is defined on each machine by hand with `./secret.sh key`.
+#  This ships as `gitignore`, without the dot, so that it governs the TRANSPORT
+#  repo rather than the repo carrying it. The bootstrap restores the dot on the
+#  way out. Do not "fix" the name.
 # =============================================================================
 
 # =============================================================================
@@ -113,10 +112,8 @@ Thumbs.db
 # =============================================================================
 #  END SHARED BLOCK
 # =============================================================================
-# service.sh's runtime state when it falls back to setsid + nohup.
-.agent-service.pid
-.station-service.log
-# The relay transport's sequence numbers. Freshness rests on these, so they are
-# never shared and never committed: a copy restored elsewhere would let the
-# relay replay everything it has ever seen.
-.station-relay-state
+
+# --- station.ps1's own state -------------------------------------------------
+# PowerShell writes a transcript beside a scheduled task when one is configured.
+# It can carry whatever a step printed before redaction reached it.
+*.transcript

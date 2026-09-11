@@ -245,4 +245,61 @@ else
   printf '     A station bootstrapped before the rename would go silently deaf.\n'
 fi
 
+# =============================================================================
+#  The two payloads' ignore files must agree, exactly, about what never ships
+# =============================================================================
+# THE RULES THAT KEEP A CREDENTIAL OUT OF A REPOSITORY MAY NOT DEPEND ON WHICH
+# PAYLOAD SOMEBODY PLANTED FIRST.
+#
+# Both payloads can be planted into the same transport repo with `--flavour
+# both`, and nothing is ever overwritten - so whichever went first supplies the
+# .gitignore that then governs the other. A rule present in only one of them is
+# therefore present or absent depending on the order two commands were typed
+# in, and the rules in question are the ones that stop `.station-env` - which
+# holds a token - being committed to a repo that gets cloned onto a control
+# node.
+#
+# So the block is duplicated on purpose and this refuses a change to one that
+# was not made to the other. Byte for byte, because "covers the same things" is
+# a judgement and this has to be a test.
+BASH_IGNORE="$(dirname "$STATION")/gitignore"
+PS_IGNORE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../station/powershell" 2>/dev/null && pwd)/gitignore"
+
+extract_shared() {  # extract_shared <file> - the marked block, or nothing
+  sed -n '/^#  BEGIN SHARED BLOCK/,/^#  END SHARED BLOCK/p' "$1" 2>/dev/null
+}
+
+if [ ! -f "$BASH_IGNORE" ] || [ ! -f "$PS_IGNORE" ]; then
+  t_skip "one of the two payload gitignore files is missing, so they were NOT compared"
+else
+  shared_a="$(extract_shared "$BASH_IGNORE")"
+  shared_b="$(extract_shared "$PS_IGNORE")"
+  if [ -z "$shared_a" ] || [ -z "$shared_b" ]; then
+    # AN EMPTY BLOCK MUST FAIL, not pass. Two absences comparing equal is the
+    # oldest way a guard like this goes quiet: delete the markers from both
+    # files and a byte comparison of nothing against nothing succeeds.
+    t_no "one of the payload gitignore files has no BEGIN/END SHARED BLOCK markers"
+    printf '     bash block: %s bytes, powershell block: %s bytes\n' "${#shared_a}" "${#shared_b}"
+  elif [ "$shared_a" = "$shared_b" ]; then
+    t_ok "both payloads' gitignore files carry an identical shared block ($(printf '%s' "$shared_a" | grep -c .) lines)"
+  else
+    t_no "the two payloads' gitignore shared blocks have drifted"
+    diff <(printf '%s\n' "$shared_a") <(printf '%s\n' "$shared_b") | head -20 | sed 's/^/     /'
+  fi
+
+  # AND IT HAS TO ACTUALLY CONTAIN THE RULES. A shared block that matched
+  # perfectly and listed nothing would pass everything above.
+  missing=""
+  for rule in ".station-env" ".station-approved" ".station-approved-ps" \
+              ".station-delivery" ".station.lock" "*.pem" "*.key" ".git-token"; do
+    printf '%s\n' "$shared_a" | grep -qxF "$rule" || missing="$missing $rule"
+  done
+  if [ -z "$missing" ]; then
+    t_ok "the shared block still ignores every file that holds or reveals a credential"
+  else
+    t_no "the shared block has lost:$missing"
+    printf '     A transport repo could commit one of those. .station-env holds a token.\n'
+  fi
+fi
+
 t_summary

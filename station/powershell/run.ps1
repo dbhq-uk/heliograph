@@ -312,23 +312,55 @@ Write-CapFooter -Path $out -ExitCode $rc
 # defect ship on the bash side - a station that captured perfectly and
 # delivered nothing, invisibly, because the log was written correctly every
 # time.
+
+# WHETHER THE LOG GOT OUT, WRITTEN DOWN FOR THE LOOP.
+#
+# station.ps1 runs this script as a separate process, so it cannot infer
+# delivery from the exit code - that belongs to the STEP and may not be borrowed
+# to report on the transport. Without this file the loop would have to guess,
+# and every way of guessing publishes `idle` for a run whose log nobody
+# received.
+#
+# The format is caplib.sh's cap_record_delivery, byte for byte, because
+# station.sh reads it too and one file with two spellings is two files.
+#
+# The ABSENCE of this file means something, and the loop relies on it: a runner
+# that exited before delivery - refused as root, an unknown step, killed - never
+# reaches this line, and the loop publishes `undelivered` rather than inheriting
+# the previous run's verdict. That is why the loop deletes it before each run.
+function Write-DeliveryRecord {
+    param([string] $State, [string] $LogPath)
+    try {
+        $body = "delivered: $State`nlog:       $LogPath`ntransport: $(if ($env:TRANSPORT) { $env:TRANSPORT } else { 'git' })`n"
+        [System.IO.File]::WriteAllText((Join-Path $RepoRoot '.station-delivery'), $body)
+    } catch {
+        # Best effort, exactly as the bash side is. A station that could not
+        # write this file still ran the step and still has the log, and dying
+        # here would throw away a completed run over a bookkeeping note.
+    }
+}
+
 if ($env:PUSH -ceq '0') {
     Write-Host "PUSH=0 - captured locally, not delivered:"
     Write-Host "  $out"
+    Write-DeliveryRecord -State 'skipped' -LogPath $out
 } else {
     Import-Module (Join-Path $RepoRoot 'lib/transport.psm1') -Force
     if (Import-Tp) {
         if (Send-TpLog -LogPath $out -Message "step: $step ($stamp) exit=$rc ***NO_CI***") {
             Write-Host "delivered over '$(Get-TpName)': $(Split-Path -Leaf $out)"
+            Write-DeliveryRecord -State 'yes' -LogPath $out
         } else {
             # NAMED, both the file and the channel. Somebody with access can
             # still fetch it, and the reason is above this line.
             [Console]::Error.WriteLine("DELIVERY FAILED over '$(Get-TpName)'. The log is complete and is here:")
             [Console]::Error.WriteLine("  $out")
+            Write-DeliveryRecord -State 'no' -LogPath $out
         }
     } else {
         [Console]::Error.WriteLine("no usable transport, so the log was NOT delivered. It is complete and is here:")
         [Console]::Error.WriteLine("  $out")
+        Write-DeliveryRecord -State 'no' -LogPath $out
     }
 }
 

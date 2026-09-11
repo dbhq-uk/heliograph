@@ -77,6 +77,84 @@ func TestEveryOperatorFacingScriptIsDocumented(t *testing.T) {
 	}
 }
 
+// The same question, asked of the PowerShell payload.
+//
+// It is a SEPARATE test rather than another directory in the loop above,
+// because the exemptions are different and collapsing them would mean one list
+// of exempt names covering two payloads - where a name exempted for a good
+// reason in one silently exempts a different file in the other.
+//
+// This payload is the whole reason the question is worth asking twice. It
+// exists for an estate that will not install anything, so the operator reading
+// the documentation is the one with the fewest other ways to find out.
+func TestEveryOperatorFacingPowerShellScriptIsDocumented(t *testing.T) {
+	site := siteText(t)
+
+	// Sourced modules are exempt for the same reason caplib.sh is: nobody runs
+	// them, and documenting one as a command would be wrong. They are covered
+	// as libraries on the runner page.
+	exempt := map[string]bool{
+		"caplib.psm1": true,
+	}
+
+	checked := 0
+	for _, dir := range []string{"../../station/powershell", "../../station"} {
+		ents, err := os.ReadDir(dir)
+		if err != nil {
+			t.Skipf("the PowerShell payload is not here: %v", err)
+		}
+		for _, e := range ents {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".ps1") || exempt[e.Name()] {
+				continue
+			}
+			checked++
+			if !strings.Contains(site, e.Name()) {
+				t.Errorf("%s/%s is a script an operator can run, and no site page names it",
+					strings.TrimPrefix(dir, "../../"), e.Name())
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no PowerShell scripts were found, so this check asserted nothing")
+	}
+}
+
+// The PowerShell station's components, named explicitly for the same reason the
+// bash ones are: the point is coverage of CAPABILITIES, and a capability is not
+// a filename.
+//
+// EVERY ENTRY HERE IS SOMETHING A READER HAS TO DECIDE ON. Whether the station
+// can poll, which transports it has, what it refuses, what it cannot do. The
+// page said "it does not receive" for as long as that was true, and the danger
+// now is the opposite one: a page that quietly stops naming a limit reads as
+// though the limit went away.
+func TestThePowerShellStationIsDocumented(t *testing.T) {
+	site := siteText(t)
+
+	for _, want := range []struct{ what, phrase string }{
+		{"the loop", "station.ps1"},
+		{"the runner", "run.ps1"},
+		{"the preflight", "start.ps1"},
+		{"the bash-free planter", "bootstrap.ps1"},
+		{"choosing a payload", "--flavour"},
+		{"its transports", "share.psm1"},
+		{"the git transport", "git.psm1"},
+		{"Constrained Language Mode, which stops the capture dead", "Constrained Language Mode"},
+		{"the execution policy a GPO can set", "execution policy"},
+		{"the Job Object the cancel rests on", "Job Object"},
+		{"the version this targets as its floor", "5.1"},
+		// THE LIMITS. A reader deciding whether to put this on a production
+		// machine needs these more than they need the feature list.
+		{"that there is no relay transport for it", "no relay transport"},
+		{"that its own self-update needs a restart", "self-update"},
+		{"the pin file that is not the bash station's", ".station-approved-ps"},
+	} {
+		if !strings.Contains(site, want.phrase) {
+			t.Errorf("the site never mentions %s (looked for %q)", want.what, want.phrase)
+		}
+	}
+}
+
 // The components that make heliograph what it is, each of which had no page at
 // all before 2026-09-08. Named explicitly rather than derived, because the
 // point is coverage of CAPABILITIES, and a capability is not a filename.
