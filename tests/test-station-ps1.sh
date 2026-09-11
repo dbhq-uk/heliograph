@@ -153,9 +153,35 @@ assert_eq "and a file with the probe's own name is intact" \
   "do not touch me" "$(cat "$WORK/ops-logs/.heliograph-write-check" 2>/dev/null)"
 assert_contains "and it says so" "nothing was changed" "$PRE_OUT"
 
-# A REAL START PROVES WRITABILITY, and must not clobber that file either.
+# --- A REAL START, WHICH NOW HANDS OVER TO THE LOOP --------------------------
+# These two checks are about the PREFLIGHT's write probe - that a real start
+# proves the directory accepts a write, where `--check` does not. They are not
+# about the loop, and until the loop existed `start.ps1` simply exited here.
+#
+# NOW IT HANDS OVER, AND THAT HUNG WINDOWS CI FOR FIFTEEN MINUTES. `pre` has no
+# timeout, `start.ps1 ""` reached the loop with no usable argument, and the loop
+# did what a loop does: it polled. On PowerShell 7 the empty string arrives as
+# an unknown option and the loop exits 2; on Windows PowerShell 5.1 `-File`
+# drops an empty argument entirely, so the loop started cleanly and polled for
+# ever. The two editions disagreeing about an empty argument is exactly the kind
+# of difference this job exists to find, and it found it in the harness rather
+# than in the station.
+#
+# A TIMEOUT WOULD NOT FIX IT. `timeout` kills start.ps1; the loop is its
+# grandchild, survives, and keeps the pipe open - so the command substitution
+# blocks anyway.
+#
+# So the far side is given something that makes the loop leave: `stop: yes` is
+# honoured from the far side precisely because nobody is sitting at the station.
+# The preflight still runs in full, the probe still happens, and the loop starts,
+# reads its instruction and stops.
+mkdir -p "$WORK/farside/preflight"
+printf 'id: preflight-stop\nstop: yes\n' > "$WORK/farside/preflight/request"
+
 pre "${BASE_ENV[@]+"${BASE_ENV[@]}"}" -- ""
 assert_contains "a real start proves the directory accepts a write" "writable" "$PRE_OUT"
+assert_contains "and it hands over rather than stopping at the table" \
+  "Handing over to the loop" "$PRE_OUT"
 assert_eq "and its probe did not reuse a name that was already taken" \
   "do not touch me" "$(cat "$WORK/ops-logs/.heliograph-write-check" 2>/dev/null)"
 left="$(find "$WORK/ops-logs" -name '.heliograph-write-check.*' 2>/dev/null | wc -l | tr -d ' ')"
