@@ -303,8 +303,19 @@ cluster and should be the first expansion call next time.
 ## 7. Corrections
 
 Later findings that change what to do about something measured above. The
-tables keep the measurement; this section keeps the decision. All four below
+tables keep the measurement; this section keeps the decision. All five below
 come from the nine-dimension audit of 2026-09-11 (#70).
+
+**The `bootstrap` and `azure` title tags must not be applied.** Both were
+written before gaps 2 and 4 were built, and neither is true of the page it
+names. `bootstrap.md` contains no mention of air gaps or bundles, and
+`azure.md` contains no mention of Run Command. Each keyword is already carried
+by the page that does earn it: `/air-gapped` for the air-gap cluster, and
+`/compared`, whose title is "heliograph vs AWS SSM Run Command and Azure Run
+Command", for "azure run command". The rows read as unshipped work and are not
+- a baseline run on 10 Sep 2026 applied both before checking the pages, and
+reverted. **A title tag has to be true of the page before it is good for the
+keyword.**
 
 **The air-gap rows now point at `/air-gapped`.** They were assigned to
 `transports` because no air-gapped page existed when this was written. One was
