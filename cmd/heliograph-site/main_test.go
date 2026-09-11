@@ -567,3 +567,245 @@ func TestEveryPagePointsAtLLMSTxt(t *testing.T) {
 		t.Fatalf("llms.txt is announced and missing: %v", err)
 	}
 }
+
+// author and publisher were the same Organization node on every page. So the
+// strongest thing this site has - dated, measured, first-hand failure reports
+// - was attributed to nobody a search engine or a model could verify. The
+// company publishes; a person writes, and the person has a profile to check
+// him against.
+func TestTheAuthorIsAPersonAndThePublisherIsTheCompany(t *testing.T) {
+	out := buildSite(t)
+	re := regexp.MustCompile(`(?s)<script type="application/ld\+json">(.*?)</script>`)
+	seen := 0
+	for name, h := range htmlPages(t, out) {
+		if name == "404.html" {
+			continue
+		}
+		for _, b := range re.FindAllStringSubmatch(h, -1) {
+			var v map[string]any
+			if err := json.Unmarshal([]byte(b[1]), &v); err != nil {
+				continue
+			}
+			author, ok := v["author"].(map[string]any)
+			if !ok {
+				continue
+			}
+			seen++
+			if author["@type"] != "Person" {
+				t.Errorf("%s: author is a %v, not a Person", name, author["@type"])
+			}
+			if author["name"] != "Daniel Grimes" {
+				t.Errorf("%s: author is %v, which names no human", name, author["name"])
+			}
+			if _, ok := author["sameAs"]; !ok {
+				t.Errorf("%s: the author has no sameAs, so nothing can verify him", name)
+			}
+			pub, ok := v["publisher"].(map[string]any)
+			if !ok {
+				t.Errorf("%s: an author with no publisher", name)
+				continue
+			}
+			if pub["@type"] != "Organization" || pub["name"] != "DBHQ" {
+				t.Errorf("%s: publisher is %v %v, want the DBHQ Organization", name, pub["@type"], pub["name"])
+			}
+		}
+	}
+	if seen == 0 {
+		t.Error("no page carries an author at all")
+	}
+}
+
+// The footer byline is back, and it is not the block that was removed with
+// #54. That one repeated the company and three of its links on all 27 pages,
+// at the point a reader has already left. This one names the human the JSON-LD
+// now calls the author, in the one place every page has: a claim a reader can
+// check is worth more than a link nobody clicks.
+func TestTheFooterNamesTheHumanWhoWroteIt(t *testing.T) {
+	out := buildSite(t)
+	for name, h := range htmlPages(t, out) {
+		i := strings.Index(h, "<footer>")
+		if i < 0 {
+			t.Errorf("%s has no footer", name)
+			continue
+		}
+		foot := h[i:]
+		if !strings.Contains(foot, "Daniel Grimes") {
+			t.Errorf("%s: the footer names no human", name)
+		}
+		if !strings.Contains(foot, `href="/dbhq"`) {
+			t.Errorf("%s: the byline does not link the page that says who that is", name)
+		}
+	}
+}
+
+// The mirrors are for agents. Google and Bing are offered the HTML only, so
+// the same page is not served to an index twice: rel="alternate" is not a
+// documented deduplication signal, the mirrors are linked three times per
+// page, and on GitHub Pages they can carry neither a canonical tag nor an
+// X-Robots-Tag. The scoping is per-crawler on purpose. Under `User-agent: *`
+// it would shut out every AI agent as well, which is the readership the
+// mirrors exist for.
+func TestRobotsKeepsTheMirrorsFromSearchCrawlersOnly(t *testing.T) {
+	out := buildSite(t)
+	b, err := os.ReadFile(filepath.Join(out, "robots.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups := map[string][]string{}
+	agent := ""
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+		if strings.EqualFold(k, "user-agent") {
+			agent = v
+			if _, ok := groups[agent]; !ok {
+				groups[agent] = nil
+			}
+			continue
+		}
+		if agent != "" {
+			groups[agent] = append(groups[agent], k+": "+v)
+		}
+	}
+	for _, crawler := range []string{"Googlebot", "Bingbot"} {
+		rules, ok := groups[crawler]
+		if !ok {
+			t.Errorf("robots.txt has no group for %s", crawler)
+			continue
+		}
+		if !containsRule(rules, "Disallow: /*.md$") {
+			t.Errorf("%s is not kept off the markdown mirrors: %v", crawler, rules)
+		}
+	}
+	for _, rule := range groups["*"] {
+		if strings.HasPrefix(rule, "Disallow:") && rule != "Disallow:" {
+			t.Errorf("`User-agent: *` carries %q, which shuts out every agent, not just search", rule)
+		}
+	}
+	if !strings.Contains(string(b), "Sitemap: "+baseURL+"/sitemap.xml") {
+		t.Error("robots.txt no longer names the sitemap")
+	}
+}
+
+func containsRule(rules []string, want string) bool {
+	for _, r := range rules {
+		if strings.EqualFold(r, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// dateModified alone says a page changed and never says when it arrived. A
+// page written in September and corrected in March reads as a March page, and
+// first-hand experience that has been there since the start looks new.
+func TestArticlesSayWhenTheyArrivedAsWellAsWhenTheyChanged(t *testing.T) {
+	out := buildSite(t)
+	re := regexp.MustCompile(`(?s)<script type="application/ld\+json">(.*?)</script>`)
+	date := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	for name, h := range htmlPages(t, out) {
+		if name == "404.html" || name == "index.html" {
+			continue
+		}
+		for _, b := range re.FindAllStringSubmatch(h, -1) {
+			var v map[string]any
+			if err := json.Unmarshal([]byte(b[1]), &v); err != nil || v["@type"] != "TechArticle" {
+				continue
+			}
+			pub, _ := v["datePublished"].(string)
+			mod, _ := v["dateModified"].(string)
+			if !date.MatchString(pub) {
+				t.Errorf("%s: datePublished is %q", name, pub)
+				continue
+			}
+			if pub > mod {
+				t.Errorf("%s: published %s, modified %s - a page cannot change before it exists", name, pub, mod)
+			}
+		}
+	}
+}
+
+func TestFirstPublishedIsTheFirstCommitThatTouchedThePage(t *testing.T) {
+	repo := gitRepo(t, "2024-03-04T05:06:07Z")
+	commitPage(t, repo, "2025-07-08T09:10:11Z")
+	pub, err := firstPublished(repo, "page.md", "2025-07-08")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pub != "2024-03-04" {
+		t.Errorf("datePublished is %q, want the first commit 2024-03-04", pub)
+	}
+	mod, err := lastModified(repo, "page.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mod != "2025-07-08" {
+		t.Errorf("dateModified is %q, want the last commit 2025-07-08", mod)
+	}
+}
+
+// A page that is not in a checkout at all, or not committed yet, has one
+// honest date and it is the one the sitemap already uses.
+func TestFirstPublishedFallsBackToTheModifiedDate(t *testing.T) {
+	pub, err := firstPublished(t.TempDir(), "page.md", "2026-01-02")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pub != "2026-01-02" {
+		t.Errorf("got %q, want the modified date 2026-01-02", pub)
+	}
+}
+
+// commitPage rewrites page.md and commits it at the given date.
+func commitPage(t *testing.T, dir, date string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "page.md"), []byte("# p\n\nbody, changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, dir, "git", "add", "page.md")
+	cmd := exec.Command("git", "commit", "--quiet", "-m", "changed")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, b)
+	}
+}
+
+// The markdown mirror is justified in four files by a number, and the number
+// was wrong: "roughly 31 times more bytes as HTML than as markdown" was never
+// measured across the site. It is about 8 times on the median page and never
+// more than 17. The floor is the longest page - /transports, at 2.97 - because
+// chrome is a fixed cost and long pages dilute it, which is the same reason
+// the saving is quoted as a range rather than a single figure. The saving is
+// real and worth the mirrors; the figure has to be one somebody can reproduce,
+// so this measures it and fails when the comments and the build stop agreeing.
+func TestTheMirrorSavingIsTheOneTheCommentsClaim(t *testing.T) {
+	out := buildSite(t)
+	const lo, hi = 2.9, 17.0
+	n := 0
+	for name, h := range htmlPages(t, out) {
+		if name == "404.html" {
+			continue
+		}
+		md, err := os.ReadFile(filepath.Join(out, strings.TrimSuffix(name, ".html")+".md"))
+		if err != nil {
+			t.Errorf("%s has no markdown mirror: %v", name, err)
+			continue
+		}
+		r := float64(len(h)) / float64(len(md))
+		if r < lo || r > hi {
+			t.Errorf("%s is %.1fx its mirror, outside the %.0fx to %.0fx the comments claim: remeasure and change both", name, r, lo, hi)
+		}
+		n++
+	}
+	if n == 0 {
+		t.Error("no pages were measured")
+	}
+}

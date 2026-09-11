@@ -14,9 +14,12 @@ agent does, and it has no reader on a documentation site. It stays where it is.
 
 ## Why markdown mirrors
 
-The same page costs roughly 31 times more bytes as HTML than as markdown, so
-chrome is a token tax on every agent that reads the site. Every page is
-available at its own URL plus `.md`.
+Measured across all 27 pages, the same page costs three to sixteen times more
+bytes as HTML than as markdown - about eight times on the median page, six
+times over the whole site - so chrome is a token tax on every agent that reads
+the site. Every page is available at its own URL plus `.md`. A test measures
+the ratio on every build, so the figure in this sentence and the site it
+describes cannot drift apart.
 
 `llms.txt` and `llms-full.txt` sit at the origin root. The honest position on
 those: one log study found 408 requests to `llms.txt` out of more than 500
