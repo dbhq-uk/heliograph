@@ -18,13 +18,9 @@ body{background:#080C12;color:#E7EDF4;font-family:'Archivo',sans-serif;position:
 .wrap{position:absolute;inset:0;padding:64px 72px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between}
 .brand{display:flex;align-items:center;gap:18px;font-weight:600;font-size:34px;letter-spacing:-.02em}
 .brand svg{width:56px;height:56px}
-h1{font-weight:600;font-size:66px;line-height:1.08;letter-spacing:-.025em;margin:0 0 22px;max-width:980px}
+h1{font-weight:600;font-size:82px;line-height:1.06;letter-spacing:-.025em;margin:0;max-width:1020px}
 h1 em{font-style:normal;color:#7BA7D4}
-.lede{font-size:27px;line-height:1.4;color:#A3B4C6;margin:0;max-width:940px}
-.log{font-family:'JetBrains Mono',monospace;font-size:20px;line-height:1.7;color:#A3B4C6;margin:0;
-  background:#0D141C;border:1px solid #18222E;border-radius:12px;padding:16px 22px;width:max-content}
-.t{color:#7A8CA0}.gap{color:#7BA7D4}
-.foot{display:flex;justify-content:space-between;align-items:flex-end}
+.foot{display:flex;justify-content:flex-start;align-items:flex-end}
 .by{font-size:22px;color:#7A8CA0}
 .by b{color:#A3B4C6;font-weight:600}
 </style>
@@ -39,14 +35,8 @@ h1 em{font-style:normal;color:#7BA7D4}
     </svg>
     heliograph
   </div>
-  <div>
-    <h1>Run it on a machine you <em>cannot log into</em>.</h1>
-    <p class="lede">Push a step. It runs on the far side. The whole run comes back as a log, every line timestamped, whether it passed or failed.</p>
-  </div>
+  <h1>Run it on a machine you <em>cannot log into</em>.</h1>
   <div class="foot">
-    <pre class="log"><span class="t">09:14:02</span> | Refreshing state...
-<span class="gap">           3m12s   nothing was produced here. This is the answer.</span>
-<span class="t">09:17:14</span> | Plan: 3 to add, 0 to change</pre>
     <p class="by">Free and open source, by <b>DBHQ</b></p>
   </div>
 </div>
