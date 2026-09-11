@@ -723,17 +723,27 @@ jobs:
           done
           exit $rc
 
-      - name: The suite's Windows-relevant files, unskipped
+      # ONLY THE FILES THE PER-EDITION LOOP DOES NOT ALREADY RUN.
+      #
+      # This list used to repeat five files that the step above runs TWICE each,
+      # once per edition, refusing a skip both times - so a third run added no
+      # signal and a third of the job's wall clock. With the loop suite in it,
+      # the job went from fourteen minutes to over fifty and hit its own
+      # timeout. Running a test more times is not the same as testing more.
+      #
+      # What is left is what genuinely has no per-edition coverage:
+      # test-powershell.sh is the BASH station running a PowerShell step, and
+      # test-remote.sh reaches a Windows host over SSH. Neither is about which
+      # PowerShell edition the station itself runs under.
+      - name: The suite's other Windows-relevant files, unskipped
         shell: bash
         run: |
           set +e
           set -uo pipefail
           rc=0
-          for f in tests/test-powershell.sh tests/test-remote.sh tests/test-run-ps1.sh \
-                   tests/test-station-ps1.sh tests/test-transports-ps1.sh \
-                   tests/test-station-loop-ps1.sh; do
+          for f in tests/test-powershell.sh tests/test-remote.sh; do
             echo "--- $f"
-            timeout 1200 ./$f 2>&1 | tee "/tmp/$(basename "$f").out"
+            timeout 900 ./$f 2>&1 | tee "/tmp/$(basename "$f").out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || rc=1
             if grep -q '^SKIP' "/tmp/$(basename "$f").out"; then
               echo "::error::$f skipped an assertion on Windows, where it should not"; rc=1
