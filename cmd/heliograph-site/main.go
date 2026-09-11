@@ -109,9 +109,13 @@ func build(src, out string) (int, error) {
 			[]byte(page(p, pages)), 0o644); err != nil {
 			return 0, err
 		}
-		// The markdown mirror, byte for byte the source.
+		// The markdown mirror, byte for byte the source - except for a
+		// ```matrix fence, which is a name in the source and a grid in the
+		// HTML. Left alone, the mirror says "here is a grid" and carries no
+		// grid, which is a page that lies to the audience that reads mirrors
+		// most.
 		if err := os.WriteFile(filepath.Join(out, p.Slug+".md"),
-			[]byte(p.Body), 0o644); err != nil {
+			[]byte(site.ExpandMatrix(p.Body)), 0o644); err != nil {
 			return 0, err
 		}
 	}
@@ -594,7 +598,15 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
   </div>
 </dialog>`, site.Mark, sidebarItems(p, all, "drawer"))
 
-		shellOpen = `<div class="docs-shell"><aside class="side">` +
+		// The matrix is seven columns wide and does not fit an 80ch
+		// measure. It gets the shell a class rather than a page of its own
+		// layout, so the sidebar, the rail and the drawer stay exactly as
+		// they are everywhere else.
+		shellMod := ""
+		if strings.Contains(p.Body, "```matrix") {
+			shellMod = " docs-shell--wide"
+		}
+		shellOpen = `<div class="docs-shell` + shellMod + `"><aside class="side">` +
 			`<a class="brand side-brand" href="/">` + site.Mark + ` heliograph</a>` +
 			`<nav class="side-nav" aria-label="Documentation">` +
 			sidebarItems(p, all, "desktop") + `</nav></aside><div class="col">`
