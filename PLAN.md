@@ -168,13 +168,59 @@ that is not progress.
 
 ## Next, in order
 
-1. **The bundle's station side.** `/air-gapped` now says plainly that the
+Every open issue is on this list, triaged 2026-09-11. The labels on GitHub
+carry the same three tiers - `P1: now`, `P2: next`, `P3: later` - plus an
+`area:` for where the work lands and a `blocked:` for what is in the way.
+`needs: proving run` means the rule that already governs the host table:
+**proven or it does not go in the table**.
+
+**P1 - now**
+
+1. **A blocked port is diagnosed as a credential problem** (#66). Ahead of the
+   two below because it is a wrong answer given to operators today, it is
+   small, and nothing blocks it. `_git_verify` blames the URL and the
+   credential for a timeout on port 22, which is neither, and the remedy -
+   `ssh.github.com:443`, `altssh.gitlab.com:443` - appears nowhere in this
+   repository. Same defect the write check was already fixed for
+2. **The bundle's station side** (#68). `/air-gapped` now says plainly that the
    bundle cannot be read by a station, and the CLI says the same. That page is
    the first thing to update when it lands
-2. **The PowerShell relay transport.** Deferred deliberately: it needs
+3. **The PowerShell relay transport** (#77). Deferred deliberately: it needs
    `heliograph-seal`, which is a Go binary, and a station that must ship a
    binary is a different bootstrap question on exactly the estates that will
-   not let you install Git for Windows
+   not let you install Git for Windows. **Decide the bootstrap story before
+   writing the transport**; "a bare Windows host cannot have a relay station
+   honestly" is a legitimate answer and belongs on `/transports` and `/windows`
+
+**P2 - next**
+
+4. **Transport: artifact repository** (#56). The largest population of any
+   candidate on the survey and the cheapest to build, and #61 waits on it.
+   Settle the atomicity question with a round trip first
+5. **Prove Google Cloud Storage** (#57). One CI job against code that already
+   signs SigV4. Either a documented supported store or a recorded reason, and
+   both beat the current silence
+6. **GitLab CI pipeline** (#58). One file against an existing pattern, on the
+   git host of choice across the regulated market this is aimed at
+7. **Document the near side without the CLI** (#62). The capability already
+   works; only the page is missing. The mirror of `/bootstrap`
+8. **Kubernetes CronJob beside the Deployment** (#59). Same image with
+   `--once`, and the container suite can prove it rather than assert it
+9. **The AWS host family** (#60). Highest-value host work and the one the
+   `/compared` argument leaves unanswered, but **#5 stands until there is an
+   account to prove against**. Recipes, not templates, until then
+
+**P3 - later**
+
+10. **Termux and Crostini as control nodes** (#63). A day of proving against
+    binaries `release.yml` already builds
+11. **Claude Code on the web as a control node** (#64). Blocked by a proxy
+    allowlist nobody here controls; a GitHub-hosted git transport is the one
+    combination worth trying first
+12. **Arista EOS and the network devices** (#61). Waits on #56 for a curl-only
+    transport, and on a device to prove it against
+13. **The SEO audit** (#70). Down to off-site items waiting on other people's
+    maintainers, plus Show HN and one demo video. A tracking issue now
 
 ## Known defects, recorded rather than fixed
 
