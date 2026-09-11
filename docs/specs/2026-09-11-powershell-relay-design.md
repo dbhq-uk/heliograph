@@ -1,10 +1,10 @@
-# The PowerShell relay: what I got wrong, what is actually in the way
+# The PowerShell relay: what I got wrong, and what the seal actually needs
 
 **Status: research and a recommendation. Nothing is built.**
 
 The PowerShell station ships git and share. The [transports
 page](../../site/content/transports.md), the [Windows
-page](../../site/content/windows.md) and `PLAN.md` all say it has no relay
+page](../../site/content/windows.md) and `PLAN.md` all said it has no relay
 because the relay needs `heliograph-seal`, a native Go binary, and the estates
 this payload exists for will not let you install one.
 
@@ -18,7 +18,7 @@ PowerShell, which would be worse than not having the transport. That rested on
 an unstated assumption - that the primitives are not available to a .NET
 Framework process - and I did not check it.
 
-### .NET itself: I was right, and it does not matter
+### .NET itself does not have them, and that turned out not to matter
 
 Measured on this machine, PowerShell 7.6.5 / .NET 10.0.11:
 
@@ -31,99 +31,69 @@ Measured on this machine, PowerShell 7.6.5 / .NET 10.0.11:
 
 `dotnet/runtime#63174`, *"[API Proposal]: Add support for Ed25519"*, is
 **`api-approved`** and milestoned **Future** - designed, agreed, not shipped and
-not scheduled. The original proposal `#14741` was closed as completed in favour
-of it. So Ed25519 is coming to .NET and is not there yet, on any version.
+not scheduled. The original proposal `#14741` was closed in favour of it. So
+Ed25519 is coming to .NET and is not there yet, on any version.
 
-### Windows itself has three of the four
+## All four are available in managed C#, and all four were verified
 
-Asked before reaching for a library, and it should have been asked first.
+Not round-tripped. Checked against **the standards' own test vectors**, from
+PowerShell, **on Linux** - which matters for a reason given below.
 
-| primitive | CNG identifier | supported from |
-|---|---|---|
-| ChaCha20-Poly1305 | `BCRYPT_CHACHA20_POLY1305_ALGORITHM`, `L"CHACHA20_POLY1305"` | Windows 10 |
-| HKDF | `BCRYPT_HKDF_ALGORITHM`, `L"HKDF"` | Windows 10 |
-| X25519 | `BCRYPT_ECDH_ALGORITHM` with `BCRYPT_ECC_CURVE_NAME` set to `BCRYPT_ECC_CURVE_25519` - name `curve25519`, 255 bits | Windows 10 / Server 2016 |
-| **Ed25519** | **not in the list** | - |
-
-Server 2016 is older than the floor this payload already targets, so on any
-machine that can run this station at all, three of the four primitives are in
-the operating system. No package, no assembly, nothing to get approved.
-
-**Ed25519 is the only gap.** It is not an algorithm identifier, and
-`BCRYPT_ECDSA_ALGORITHM` over `curve25519` is not a substitute: ECDSA on that
-curve is a different signature scheme from Ed25519 and would not verify against
-anything the Go side produces.
-
-**THIS IS DOCUMENTED API SURFACE, NOT A MEASUREMENT.** Everything above comes
-from Microsoft's own reference pages; none of it has been run, because there is
-no Windows here. Two things in particular have to be proved on a real machine
-before anybody builds on them:
-
-- whether CNG's `curve25519` ECDH yields the **raw** RFC 7748 shared secret.
-  `BCryptSecretAgreement` returns a handle and `BCryptDeriveKey` decides what
-  comes out; `BCRYPT_KDF_RAW_SECRET` is the one that must be used and must
-  match what Go's `crypto/ecdh` produces for the same keys.
-- whether the ChaCha20-Poly1305 provider takes the nonce and AAD the way RFC
-  8439 specifies, byte for byte.
-
-Getting either wrong is silent. This document recommends measuring them as the
-first task, not trusting this table - which is the whole lesson of the section
-above it.
-
-### BouncyCastle: all four, pure managed, measured
-
-`bcgit/bc-csharp` - MIT, 1,920 stars, last pushed 2026-09-07 - carries
-`Ed25519`, `X25519`, `ChaCha20Poly1305` and `HkdfBytesGenerator`. The
-`BouncyCastle.Cryptography` 2.7.0 package targets **`net461`, `netstandard2.0`
-and `net6.0`**, and the repository contains **no committed native binaries**: it
-is managed code, one assembly, 8.3 MB packaged.
-
-`net461` and `netstandard2.0` are both loadable by Windows PowerShell 5.1.
-
-Run from PowerShell against the `netstandard2.0` assembly:
+| primitive | where it comes from | licence | verified against |
+|---|---|---|---|
+| **X25519, raw** | `Chaos.NaCl` → `MontgomeryOperations.scalarmult` | MIT | **RFC 7748 §6.1** |
+| **Ed25519** | `Chaos.NaCl` → `Ed25519` | MIT | **RFC 8032 §7.1 TEST 1** |
+| **ChaCha20-Poly1305** | `NaCl.Core` | MIT | **RFC 8439 §2.8.2** |
+| **HKDF-SHA256** | about 25 lines over `HMACSHA256`, which .NET Framework has | ours | **RFC 5869 TC1** |
 
 ```
-X25519 shared secrets agree : True
-HKDF-SHA256 derived 32 bytes: True
-ChaCha20-Poly1305 round trip : True
-Ed25519 sign and verify      : True
+X25519  scalarmult matches RFC 7748  : True
+Ed25519 public key matches RFC 8032  : True
+Ed25519 signature matches RFC 8032   : True
+ChaCha20-Poly1305 ciphertext + tag   : True
+HKDF-SHA256 PRK and OKM              : True
 ```
 
-**So a PowerShell relay does not need a native binary**, whichever route is
-taken. Every primitive the seal uses is available to the floor version.
+**The weight is 200 KB**: `Chaos.NaCl.dll` is 168 KB and `NaCl.Core.dll` is 32
+KB. BouncyCastle would do all four in one package and is **8.3 MB**.
 
-### So the only library needed is an Ed25519
+`Chaos.NaCl` is Christian Winnerlein's C# port of **djb's ref10 from SUPERCOP** -
+the reference implementation - maintained as the NetSparkle fork, MIT, with
+recent commits. `Rebex.Elliptic.Ed25519` is the same code with a thin wrapper
+and a public-domain licence, if MIT is the harder conversation.
 
-CNG covers three. The question is what supplies the fourth, and the candidates
-were measured **against the standards' own test vectors** rather than
-round-tripped against themselves.
+**NO P/INVOKE AND NO CNG, WHICH IS WORTH AS MUCH AS THE SIZE.** Everything above
+is portable managed code, so it behaves identically on Linux - and the seal
+becomes testable on an ordinary CI runner instead of only on a Windows one.
+Given how much of this station's trouble has been Windows-only and silent, that
+is the most valuable property on this page.
 
-| | DLL | licence | targets | Ed25519 vs RFC 8032 |
-|---|---|---|---|---|
-| **`Rebex.Elliptic.Ed25519`** | 172 KB | **public domain** | net20, net40, netstandard2.0 | **matches** |
-| **`NetSparkleUpdater.Chaos.NaCl`** | 172 KB | **MIT**, maintained | net462, netstandard2.0 | **matches** |
-| `BouncyCastle.Cryptography` | 8.3 MB pkg | MIT | net461, netstandard2.0 | matches |
-| `NaCl.Core` | 0.23 MB pkg | MIT | net45, netstandard2.0 | **has no Ed25519** - ChaCha20-Poly1305 and Poly1305 only |
-| original `Chaos.NaCl` | source | **none declared**, no commit since 2021 | - | - |
+### Windows CNG would also do three of the four, and is now optional
 
-Both of the top two are the same code: Christian Winnerlein's C# port of djb's
-**ref10** from SUPERCOP, which is the reference implementation. Rebex's licence
-file says so in as many words. That is good provenance for the one primitive on
-the signature path, and either is about **48 times smaller than BouncyCastle**.
+For completeness, because it was the previous recommendation. Microsoft
+documents `BCRYPT_CHACHA20_POLY1305_ALGORITHM` and `BCRYPT_HKDF_ALGORITHM` from
+Windows 10, and X25519 through `BCRYPT_ECDH_ALGORITHM` with
+`BCRYPT_ECC_CURVE_25519` from Windows 10 / Server 2016. Ed25519 is **not** a CNG
+algorithm, and `BCRYPT_ECDSA_ALGORITHM` over `curve25519` is a different
+signature scheme that would verify against nothing the Go side produces.
 
-Measured, not assumed - RFC 8032 section 7.1 TEST 1, the empty message:
+That route needs P/Invoke, works only on Windows, and leaves one primitive to
+find anyway. **It is not the recommendation, and it is not a blocker either** -
+which is the useful part, because whether
+`BCryptDeriveKey(..., BCRYPT_KDF_RAW_SECRET, ...)` yields the raw RFC 7748
+secret is a question that cannot be answered without a Windows machine, and the
+decision no longer waits on it.
 
-```
-Chaos.NaCl  public key matches RFC 8032 : True
-Chaos.NaCl  signature matches RFC 8032  : True
-```
+Measured here, so the limit is stated rather than assumed: `CngKey::Create`
+throws *"Windows Cryptography Next Generation (CNG) is not supported on this
+platform"*, and .NET 10's portable `ECDiffieHellman` refuses `curve25519` on
+Linux outright.
 
-### A trap in the same library, and the reason to measure against a standard
+## Two traps, and why the vectors are the whole point
 
-`Chaos.NaCl` also exposes `MontgomeryCurve25519`, which looks like an X25519 to
-reach for if CNG disappoints. **Its `KeyExchange` is not X25519.**
+### `Chaos.NaCl.MontgomeryCurve25519.KeyExchange` is not X25519
 
-Against RFC 7748 section 6.1:
+It is the obvious method to reach for and it is wrong. Against RFC 7748 §6.1:
 
 ```
 public key matches RFC 7748        : True
@@ -133,23 +103,29 @@ KeyExchange == RAW X25519 secret   : False
 ```
 
 It returns NaCl's `crypto_box_beforenm` - the raw secret run through HSalsa20 -
-which is correct for NaCl and wrong for this. The public key is right, so
-enrolment would succeed and every message would then fail to open, or, if both
-sides used the same library, would work while diverging from the protocol.
+which is correct for NaCl and wrong for this. **The public key is right**, so
+enrolment would succeed and every message would then fail to open; or, if both
+sides used the same library, it would work while silently diverging from the
+protocol.
 
-**BouncyCastle's `X25519Agreement` does give the raw secret**, and matches RFC
-7748 exactly. So the fallback, if CNG's `curve25519` turns out not to yield a
-raw secret, is BouncyCastle rather than Chaos.NaCl.
+`MontgomeryOperations.scalarmult` is the raw one. It is public, and it clamps
+the scalar internally - verified by passing both a clamped and an unclamped
+scalar and getting the same, correct answer.
 
-This is why the vectors matter. An earlier version of this document said all
-four primitives "work", on the strength of a round trip - two sides of the same
-library agreeing with each other. That is not the property. The property is
-agreeing with **Go**, and only a standard's own vectors show it.
+### An earlier version of this document claimed all four "work"
+
+On the strength of a **round trip**: two sides of one library agreeing with each
+other. That is not the property. The property is agreeing with **Go**, and only
+a standard's own vectors show it. The first trap above passes a round trip
+perfectly.
+
+And when the HKDF vector failed, the bug was in **my transcription** - a 21-byte
+IKM where RFC 5869 says 22 - not in the code. A round trip would have reported
+success either way.
 
 ## What is actually in the way
 
-Not "the crypto does not exist". Three things, in descending order of how much
-they should worry anybody.
+Not the crypto. Two things.
 
 ### 1. Byte-compatibility with the Go implementation
 
@@ -157,8 +133,8 @@ The seal is not four primitives in a bag. `internal/seal/seal.go` also
 specifies:
 
 - **Sign-then-encrypt**, so the signature travels inside the encryption
-- **The recipient's fingerprint is a signed field**, which is the standard
-  mitigation for sign-then-encrypt's re-encryption weakness
+- **The recipient's fingerprint is a signed field**, the standard mitigation for
+  sign-then-encrypt's re-encryption weakness
 - **Length-prefixed canonical metadata** - a big-endian `uint64` length before
   each field, never a delimiter, because a delimiter that can appear inside a
   value lets two different messages serialise identically
@@ -166,73 +142,79 @@ specifies:
 - **A signed version field**, with no negotiation and no plaintext fallback
 
 None of that is hard. All of it is exacting, and a mistake in any of it is
-silent - which is the argument that produced the Go binary in the first place.
-The framing is plain byte manipulation and reproduces fine in PowerShell; what
-it needs is **cross-implementation test vectors**, which do not exist yet.
+silent - which is the argument that produced the Go binary. What it needs is
+**cross-implementation test vectors**, which do not exist yet.
 
-### 2. Ed25519, and only Ed25519
-
-CNG has the other three. Whatever is chosen for the signature is the one piece
-of third-party or hand-written crypto on the path, and it is the piece where
-being wrong is worst: a forged request is code execution inside the estate.
-
-RFC 8032 ships official test vectors, so this is provable rather than trusted -
-which is what makes vendoring one implementation acceptable where vendoring four
-would not be.
-
-### 3. The payload stops being plain text, if a library is shipped
+### 2. Whether the payload ships an assembly or its source
 
 The proposition is *"plain text you can read before you run it"*, and CI
-enforces it: no Go, no binary and no package under `station/`.
-`station/embed_test.go` caps the embedded payload at 4 MB and refuses anything
-that is not part of the station - a guard written for a different reason that
-would reject an 8.3 MB third-party assembly on both counts, correctly.
+enforces it: `station/embed_test.go` caps the embedded payload at 4 MB and
+refuses anything that is not part of the station. Two 200 KB DLLs would pass the
+size check and fail the second, correctly - a binary in the payload is exactly
+what that guard is for.
 
-The CNG route avoids this entirely, which is most of why it is the
-recommendation. A vendored Ed25519 is source, and readable, so it keeps the
-property; an 8.3 MB assembly does not.
+**Vendoring the source keeps the property**, and both libraries permit it. The
+cost is measured: **5,203 lines** for Chaos.NaCl's Ed25519 and Montgomery core,
+10,672 for the whole library, plus NaCl.Core's ChaCha20-Poly1305. That is a real
+weight, and it is readable C# implementing a published standard with published
+vectors, which is a different thing from an opaque blob.
 
 ## Recommendation
 
-**Use Windows CNG for X25519, HKDF and ChaCha20-Poly1305, and solve Ed25519 on
-its own.** That is one gap rather than four, and it leaves the payload with no
-third-party assembly to ship, approve or keep up to date.
+**Use the managed libraries, vendored as source. Do not write the curve
+arithmetic, and do not reach for CNG.**
 
-Build it in this order, and do not start at the transport.
+Writing X25519 or Ed25519 by hand means constant-time field arithmetic with a
+silent, catastrophic failure mode and no upside over djb's own reference
+implementation - which is what `Chaos.NaCl` already is.
 
-1. **Prove the three CNG primitives on a real Windows machine**, against Go's
-   output for the same inputs. Specifically: `BCRYPT_KDF_RAW_SECRET` from a
-   `curve25519` secret agreement must equal what `crypto/ecdh` gives. If it does
-   not, this recommendation collapses and BouncyCastle is the answer - so this
-   is the first task and not an afterthought.
-2. **Golden test vectors from `internal/seal`**, emitted from fixed keys. The
-   PowerShell implementation is written against those, and the Go side verifies
-   what PowerShell produced. Two implementations of a crypto format that have
-   never been compared are two formats.
-3. **Decide Ed25519**, which is the only real choice left:
+Build it in this order, and **the transport is last**:
 
-   | | |
-   |---|---|
-   | **`Rebex.Elliptic.Ed25519`** - 172 KB, public domain, targets back to net20 | the recommendation. One primitive, ref10 lineage, verified against RFC 8032 here |
-   | **`NetSparkleUpdater.Chaos.NaCl`** - 172 KB, MIT, maintained | the same code with a declared licence and recent commits; pick this if "public domain" is harder to get past legal than MIT |
-   | **Vendor the source** rather than the assembly | keeps the payload readable text, which is the property the whole product rests on. Both are permissively licensed, so this is allowed; it is more code to carry and the same vectors prove it |
-   | **Require BouncyCastle after all** | 8.3 MB, and then the other three may as well come from it too. This is also the fallback if CNG's curve25519 does not yield a raw secret, because BouncyCastle's X25519 **does** match RFC 7748 and Chaos.NaCl's does not |
-   | **Change the signature algorithm in a seal v2** | `Version` is already a signed field with no negotiation, so a v2 is possible - but it is a protocol change on both sides and the deployed estate's identities are Ed25519. Not worth it to avoid one primitive |
+1. **Golden test vectors from `internal/seal`**, emitted from fixed keys and
+   committed. Two implementations of a crypto format that have never been
+   compared are two formats.
+2. **Vendor `Chaos.NaCl`'s Ed25519 + Montgomery core and `NaCl.Core`'s
+   ChaCha20-Poly1305**, with their licences, and the four RFC vectors above as
+   tests that run on every build. If a vendored file is ever touched, the
+   vectors say so.
+3. **`lib/seal.psm1`** - the construction alone, no networking, exactly as
+   `heliograph-seal` does sealing and leaves curl in the shell. Written against
+   the vectors from step 1, and verified in both directions: Go opens what
+   PowerShell sealed, and PowerShell opens what Go sealed.
+4. **`transports/relay.psm1`**, which is then an ordinary transport.
+5. **Conformance over the relay**, with the existing stub, on both editions.
 
-4. **`lib/seal.psm1`**, the construction alone - no networking, exactly as
-   `heliograph-seal` does sealing and leaves curl in the shell.
-5. **`transports/relay.psm1`**, which is then an ordinary transport.
-6. **Conformance over the relay**, with the existing stub, on both editions.
+Steps 1 to 3 are testable on Linux, which is the point of choosing managed code
+over CNG.
 
-**One thing this does not escape.** P/Invoke into `bcrypt.dll` needs
-`Add-Type`, and Constrained Language Mode refuses it. That is not an extra cost:
-CLM already stops the whole station, because the capture is mostly .NET method
-calls and `start.ps1` checks for it first. An estate in CLM has no station at
-all, relay or otherwise.
+**One thing this does not escape.** `Add-Type` is needed to compile or load the
+vendored code, and Constrained Language Mode refuses it. That is not an extra
+cost: CLM already stops the whole station, because the capture is mostly .NET
+method calls and `start.ps1` checks for it first. An estate in CLM has no
+station at all, relay or otherwise.
+
+## Reproducing the measurements
+
+Every figure above came from running the libraries from PowerShell against the
+published vectors. To repeat it: fetch `NetSparkleUpdater.Chaos.NaCl` and
+`NaCl.Core` from NuGet, extract the `netstandard2.0` assemblies, and check
+
+- `MontgomeryOperations.scalarmult` against RFC 7748 §6.1
+- `Ed25519.PublicKeyFromSeed` and `Ed25519.Sign` against RFC 8032 §7.1 TEST 1
+- `ChaCha20Poly1305.Encrypt` against RFC 8439 §2.8.2
+- an HKDF over `HMACSHA256` against RFC 5869 Test Case 1
+
+Those four become the vendored code's tests in step 2, so the measurement stops
+being a note in a document and starts being something CI keeps true.
 
 ## What I would tell a reviewer
 
 The correction matters more than the plan. I recommended deferring this on a
 reason that does not hold, and the reason did not hold because I asserted the
 capability of a platform instead of measuring it - having just spent a day
-finding defects that all had the same shape. The measurement took four minutes.
+finding defects that all had that shape. The measurement took four minutes.
+
+Then I named one library and stopped, which was the same mistake one level down.
+Then I reported four primitives as working on the strength of a round trip,
+which is the same mistake a third time, in the place it would have been most
+expensive.
