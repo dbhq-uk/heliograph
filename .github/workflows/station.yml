@@ -614,6 +614,114 @@ jobs:
           }
           Write-Output "planted, polled, ran and delivered, with no bash involved"
 
+      # THE VERBS test-service-ps1.sh CANNOT REACH. Register-ScheduledTask is
+      # Windows-only, so that file tests the half that fails silently - the
+      # configuration carriage - and skips the install verbs by name. This is
+      # where they run.
+      #
+      # A SCHEDULED TASK IS NOT THE ASSERTION. That it exists proves nothing
+      # about whether the loop it starts can deliver, which is the whole reason
+      # this installer is more than a Register-ScheduledTask call. So this
+      # installs, waits for the task to actually run the station, and reads the
+      # FAR SIDE.
+      - name: service.ps1 installs a PowerShell station that can actually deliver
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP 'psservice'
+          $payload = Join-Path $work 'payload'
+          $share = Join-Path $work 'share'
+          New-Item -ItemType Directory -Force -Path (Join-Path $share 'svc') | Out-Null
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+              -File .\station\bootstrap.ps1 $payload | Out-Null
+
+          Set-Content -Path (Join-Path $payload 'steps\svc-probe.ps1') -Encoding ascii -Value @(
+            '# heliograph-mode: read-only'
+            "Write-Output 'delivered by a scheduled task'"
+          )
+          Set-Content -Path (Join-Path $share 'svc\request') -Encoding ascii -Value @(
+            'id: svc-ci-1'
+            'step: ./steps/svc-probe.ps1'
+          )
+
+          $env:HELIOGRAPH_SERVICE_NAME = 'heliograph-ps-ci'
+          $env:TRANSPORT = 'share'
+          $env:SHARE_DIR = $share
+          $env:SHARE_SCOPE = 'svc'
+          # The runner is an Administrator, so gate 4 refuses every step without
+          # this. It is CARRIED INTO THE TASK by the installer, which is part of
+          # what is being tested.
+          $env:ALLOW_ROOT = '1'
+          # --once so the task finishes rather than polling for the rest of the job.
+          Push-Location $payload
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+              -File .\service.ps1 install -- --once 2>&1 | Out-String | Write-Output
+
+          $cfg = Join-Path $payload '.station-env-ps'
+          if (-not (Test-Path $cfg)) { Write-Output '::error::no .station-env-ps was written'; Pop-Location; exit 1 }
+          if ((Get-Content $cfg -Raw) -notmatch 'SHARE_SCOPE=svc') {
+            Write-Output '::error::the config file did not carry SHARE_SCOPE'; Pop-Location; exit 1
+          }
+
+          $t = Get-ScheduledTask -TaskName 'heliograph-ps-ci' -ErrorAction SilentlyContinue
+          if (-not $t) { Write-Output '::error::no scheduled task was registered'; Pop-Location; exit 1 }
+          $lim = (Get-ScheduledTask -TaskName 'heliograph-ps-ci').Settings.ExecutionTimeLimit
+          if ($lim -and $lim -ne 'PT0S') {
+            Write-Output "::error::the task has a time limit of $lim, so the loop would stop on its own"
+            Pop-Location; exit 1
+          }
+          # RESTART ON FAILURE IS NOT OPTIONAL HERE. A PowerShell station asks to
+          # be restarted after a self-update by EXITING 75; without a restart
+          # policy that stops the station instead of replacing it.
+          $rc = (Get-ScheduledTask -TaskName 'heliograph-ps-ci').Settings.RestartCount
+          if (-not $rc -or $rc -lt 1) {
+            Write-Output '::error::the task has no restart policy, so an exit-75 self-update would stop it'
+            Pop-Location; exit 1
+          }
+
+          # THE ASSERTION. A task that runs and a station that delivers are
+          # different claims, and only the far side settles the second.
+          #
+          # WAITING FOR THE STATE, NOT FOR THE FILE. Waiting on Test-Path broke
+          # on the first turn every time: the loop publishes `running` before it
+          # starts the step, so the file exists within a second and the wait
+          # ended while the run was still going. The assertion below then read
+          # `running` and reported that the task had not delivered - about a
+          # station that delivered four seconds later.
+          #
+          # The wait and the assertion now ask the same question. A wait whose
+          # condition is weaker than the assertion it guards is not a wait.
+          $statusFile = Join-Path $share 'svc\status'
+          $deadline = (Get-Date).AddSeconds(180)
+          while ((Get-Date) -lt $deadline) {
+            $s = if (Test-Path $statusFile) { Get-Content $statusFile -Raw -EA SilentlyContinue } else { '' }
+            if ($s -match 'state:\s*idle') { break }
+            Start-Sleep -Seconds 3
+          }
+          $status = if (Test-Path $statusFile) { Get-Content $statusFile -Raw } else { '' }
+          Write-Output "--- published status`n$status"
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 status 2>&1 | Out-String | Write-Output
+          # `\s*` rather than the four spaces the document happens to align to.
+          # The assertion is about the state, and a column that moves is not a
+          # reason for CI to fail.
+          if ($status -notmatch 'state:\s*idle') {
+            Write-Output '::error::the scheduled task did not run a station that delivered'
+            Write-Output (Get-Content (Join-Path $payload '.station-service.log') -Raw -EA SilentlyContinue)
+            Pop-Location; exit 1
+          }
+          $logs = @(Get-ChildItem (Join-Path $share 'svc\ops-logs') -Filter *.txt -EA SilentlyContinue)
+          if ($logs.Count -ne 1) { Write-Output "::error::expected one delivered log, found $($logs.Count)"; Pop-Location; exit 1 }
+
+          # AND UNINSTALL TAKES THE CREDENTIAL FILE WITH IT. Leaving one behind
+          # after an uninstall is not tidying up.
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 uninstall 2>&1 | Out-String | Write-Output
+          Pop-Location
+          if (Get-ScheduledTask -TaskName 'heliograph-ps-ci' -ErrorAction SilentlyContinue) {
+            Write-Output '::error::uninstall left the task registered'; exit 1
+          }
+          if (Test-Path $cfg) { Write-Output '::error::uninstall left .station-env-ps behind, and it may hold a token'; exit 1 }
+          Write-Output 'installed, delivered through the task, and removed itself cleanly'
+
       # THE FLOOR, EXERCISED. Windows PowerShell 5.1 is what caplib.psm1
       # targets, and until this ran nothing had ever tested it: the driver
       # preferred pwsh, so on a runner with both editions the 5.1 path was
@@ -703,6 +811,8 @@ jobs:
             # that publishes `cancelled` while the step carries on changing the
             # estate is the worst outcome available to this file, and only a
             # real Windows tree shows it.
+            CONF_PS_SHELL="$ps" timeout 900 ./tests/test-service-ps1.sh 2>&1 | tee "/tmp/svc-$ps.out"
+            [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the service installer failed under $ps"; rc=1; }
             CONF_PS_SHELL="$ps" timeout 1200 ./tests/test-station-loop-ps1.sh 2>&1 | tee "/tmp/loop-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the loop or gate 3 failed under $ps"; rc=1; }
             bad="$(grep '^SKIP' "/tmp/loop-$ps.out" || true)"

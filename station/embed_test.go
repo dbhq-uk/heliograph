@@ -51,6 +51,7 @@ func TestEmbeddedPayloadCarriesOnlyTheStation(t *testing.T) {
 		".station-approved-ps",
 		".station-delivery",
 		".station-env",
+		".station-env-ps",
 		".station-relay-state",
 		".agent-service.pid",
 		".station-service.log",
@@ -135,7 +136,8 @@ func TestEmbeddedPayloadCarriesWhatAStationNeeds(t *testing.T) {
 		{"powershell", station.PowerShell, []string{
 			"powershell/run.ps1", "powershell/station.ps1", "powershell/start.ps1",
 			"powershell/caplib.psm1", "powershell/lib/transport.psm1",
-			"powershell/lib/cancel.psm1", "powershell/transports/git.psm1",
+			"powershell/lib/cancel.psm1", "powershell/lib/stationenv.psm1",
+			"powershell/service.ps1", "powershell/transports/git.psm1",
 			"powershell/transports/share.psm1",
 			"powershell/gitignore", "powershell/gitattributes",
 			"powershell/ops-logs/.gitkeep", "powershell/steps/_template.ps1",

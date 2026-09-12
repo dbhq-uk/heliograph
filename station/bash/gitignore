@@ -110,6 +110,11 @@ Thumbs.db
 # rule that keeps a credential out of a repository must not depend on which
 # payload somebody planted first.
 .station-env
+# The same, for the PowerShell payload's service.ps1. A SEPARATE FILE because
+# the bash one is a bash script that gets sourced and this one is KEY=value
+# that gets read - one name for two formats would mean whichever station read
+# it last was wrong. It holds a token too.
+.station-env-ps
 # =============================================================================
 #  END SHARED BLOCK
 # =============================================================================

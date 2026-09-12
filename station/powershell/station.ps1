@@ -81,6 +81,14 @@ Import-Module (Join-Path $RepoRoot 'lib/cancel.psm1') -Force -Global
 
 $SelfPath = $MyInvocation.MyCommand.Path
 
+# --- the configuration a detached start has no other way to get ---------------
+# See lib/stationenv.psm1. Read here as well as in start.ps1, because the loop
+# is startable on its own - `.\station.ps1` by hand, and the scheduled task's
+# own restart after a self-update exit both reach this file without passing
+# through the preflight.
+Import-Module (Join-Path $RepoRoot 'lib/stationenv.psm1') -Force -Global
+$null = Import-CapStationEnv -Root $RepoRoot
+
 function Get-FileDigest {
     param([string[]] $Paths)
     $sha = [System.Security.Cryptography.SHA256]::Create()
