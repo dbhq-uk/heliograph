@@ -70,7 +70,7 @@ is lost with it.
 
 ### A SAS may not exist at all, so this host uses its identity
 
-The pigeonhole was built around a SAS because the host it was written for - a
+The beacon was built around a SAS because the host it was written for - a
 VNet-injected container group - was believed to have no IMDS, so no token could
 be fetched at all.
 
@@ -104,7 +104,7 @@ The Functions Python image is Debian bookworm with bash 5.2, GNU sed 4.9 - so
 GNU coreutils. That is what `caplib.sh` needs, so the station shells out to the
 bash toolkit rather than reimplementing capture in Python.
 
-What it does not have is `git`. So this host uses the **pigeonhole**, and blob
+What it does not have is `git`. So this host uses the **beacon**, and blob
 storage behind a private endpoint needs no egress at all. That is why it works
 in a subnet with no route off it, where every other host failed.
 
@@ -112,16 +112,16 @@ in a subnet with no route off it, where every other host failed.
 
 A Function App is the one host so far whose endpoint the control node can
 usually reach, because it has a public HTTPS front door *and* sits inside the
-VNet. When that is true the pigeonhole is indirection with no purpose, and
-[intercom](intercom.md) submits the step over HTTPS instead: no storage
+VNet. When that is true the beacon is indirection with no purpose, and
+[flare](flare.md) submits the step over HTTPS instead: no storage
 credentials for the operator, no timer interval, a round trip in seconds.
 
 Both ship in the same `function_app.py` and share `run.sh`. Leaving
-`HELIOGRAPH_ACCOUNT` unset leaves intercom off; setting `HELIOGRAPH_SCHEDULE` to
-a date that never comes leaves the pigeonhole off. Running both is fine, and is
+`HELIOGRAPH_ACCOUNT` unset leaves flare off; setting `HELIOGRAPH_SCHEDULE` to
+a date that never comes leaves the beacon off. Running both is fine, and is
 what the reference deployment does.
 
-The trade intercom makes is real and is stated in its own reference: it runs the
+The trade flare makes is real and is stated in its own reference: it runs the
 script the caller sends, so the mode header becomes self-declared and the
 function key plus the IP allowlist are the only controls left. **Do not deploy it
 without both.**
@@ -129,7 +129,7 @@ without both.**
 ### A step can outlive the invocation
 
 `functionTimeout` in `host.json` is a hard wall. A step that overruns is killed
-mid-capture - survivable rather than silent, because the pigeonhole uploads a
+mid-capture - survivable rather than silent, because the beacon uploads a
 partial log every `PIGEONHOLE_PROGRESS` seconds, so a killed run still leaves
 the lines it managed and a status saying how far it got. Raise the timeout for
 slow steps rather than discovering the limit from a truncated log.

@@ -1,18 +1,18 @@
-# intercom - HTTP submit and poll
+# flare - HTTP submit and poll
 
 The transport for a station you *can* reach: submit a step over HTTPS, poll for its log. Storage stays behind the station, and the operator never touches it.
 
 ## When to use it
 
-Only when the station's endpoint is reachable from the control node. That is unusual, because heliograph exists for the case where it is not - but an Azure Function App has a public HTTPS endpoint while sitting inside the VNet, and when that is true the [pigeonhole](pigeonhole.md) is indirection with no purpose: credentials for the operator to hold, a timer interval to wait, and four blob operations to move text between two machines that can already talk.
+Only when the station's endpoint is reachable from the control node. That is unusual, because heliograph exists for the case where it is not - but an Azure Function App has a public HTTPS endpoint while sitting inside the VNet, and when that is true the [beacon](beacon.md) is indirection with no purpose: credentials for the operator to hold, a timer interval to wait, and four blob operations to move text between two machines that can already talk.
 
 | | reaches the station | operator needs | round trip |
 |---|---|---|---|
 | git | station reaches a remote | a git remote both can see | a push and a pull |
-| pigeonhole | neither reaches the other | storage credentials | one timer interval |
-| **intercom** | **control node reaches the station** | **a URL and a function key** | **seconds** |
+| beacon | neither reaches the other | storage credentials | one timer interval |
+| **flare** | **control node reaches the station** | **a URL and a function key** | **seconds** |
 
-The pigeonhole is not deprecated by this and is still the right answer far more often. The Function host ships both; see [azure.md](azure.md).
+The beacon is not deprecated by this and is still the right answer far more often. The Function host ships both; see [azure.md](azure.md).
 
 ## What it costs
 
@@ -146,7 +146,7 @@ On the Function App:
 
 | setting | for |
 |---|---|
-| `HELIOGRAPH_ACCOUNT` | the storage account holding tasks and logs. **Unset leaves intercom off** |
+| `HELIOGRAPH_ACCOUNT` | the storage account holding tasks and logs. **Unset leaves flare off** |
 | `HELIOGRAPH_QUEUE` | the queue name. The binding is `%HELIOGRAPH_QUEUE%`, so **the app will not index without it** - the timer trigger goes down with it |
 | `HELIOGRAPH_PREFIX` | container and queue prefix, for a drop sharing an account |
 | `HELIOGRAPH_ALLOW_ACTIONS` | `1` permits a step that changes state. Default `0` |
@@ -240,7 +240,7 @@ resource "azurerm_private_endpoint" "queue" {
 ## Limits
 
 - **A step is bounded by `wait`, and `wait` is bounded by 200 seconds.** Inline execution cannot outlast the request. A longer step needs `HELIOGRAPH_QUEUE_MODE=1` and a working queue listener.
-- **No cancel.** The pigeonhole has one; intercom will not until something wants it.
+- **No cancel.** The beacon has one; the flare will not until something wants it.
 - **No streaming while a step runs.** `offset` pages a settled log; the log blob is written once at the end. Watching a slow probe live is a separate change.
 - **One instance.** `maximum_instance_count = 1` is a correctness bound: a heliograph log's value is that it says what *one* machine saw.
 

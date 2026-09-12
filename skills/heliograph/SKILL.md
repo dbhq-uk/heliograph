@@ -175,11 +175,11 @@ yet:
 - **The control node cannot reach git at all.** `./drop.sh send <id> <step>`
   and `./drop.sh watch <id>` carry the same contract over Azure Blob Storage;
   neither side ever reaches the other. Measure before reaching for it - see
-  [references/pigeonhole.md](references/pigeonhole.md).
+  [references/beacon.md](references/beacon.md).
 - **You can reach the station directly.** An Azure Function App inside the
   VNet with a public HTTPS endpoint makes storage pointless indirection:
   `./intercom.sh run steps/<name>.sh K=V`. Read
-  [references/intercom.md](references/intercom.md) before exposing it - the
+  [references/flare.md](references/flare.md) before exposing it - the
   function key and IP allowlist become the real gates.
 
 ## 5. Read the log
@@ -270,8 +270,8 @@ Far side, here, because it documents the payload:
 | [references/runner.md](references/runner.md) | `start.sh`, `run.sh`, `station.sh`, `caprun.sh`, every `cap_*` and knob |
 | [references/method.md](references/method.md) | how to debug across a gap. The expensive lessons |
 | [references/transport.md](references/transport.md) | how the control node authenticates to the git host |
-| [references/pigeonhole.md](references/pigeonhole.md) | the blob transport, for a control node that cannot reach git at all |
-| [references/intercom.md](references/intercom.md) | the HTTP transport, for the rarer case where you can reach the station |
+| [references/beacon.md](references/beacon.md) | the blob transport, for a control node that cannot reach git at all |
+| [references/flare.md](references/flare.md) | the HTTP transport, for the rarer case where you can reach the station |
 | [references/azure.md](references/azure.md) | running the station in Azure, and what deploying it taught us |
 | [references/secrets.md](references/secrets.md) | `secret.sh`, for a value that has to reach the far side |
 | [references/remote-repo.md](references/remote-repo.md) | changing a repo that is also on the far side |

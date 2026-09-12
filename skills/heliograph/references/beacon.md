@@ -1,4 +1,4 @@
-# The pigeonhole: a transport for a control node that cannot reach git
+# The beacon: a transport for a control node that cannot reach git
 
 Heliograph normally uses git both ways: you push a step, the runner pushes the log back. That needs the control node to reach the git host. Sometimes it cannot - not awkwardly, but at all - and then git is not a transport, it is a dependency that cannot be met.
 
@@ -10,7 +10,7 @@ Use it when **the control node has no route to the git host and no route to the 
 
 That shape is common in a locked-down cloud subnet: a firewall appliance holds the default route and has no policy for the subnet the runner sits in, so nothing outbound works - while traffic to a *private endpoint* stays inside the virtual network, never reaches that appliance, and works normally.
 
-Do not reach for it because a token was awkward to get, or because a proxy is annoying. Git is better when git works: it carries its own history, and the log arriving as a commit is the audit trail. Use the pigeonhole only when the measurement says the runner cannot get out.
+Do not reach for it because a token was awkward to get, or because a proxy is annoying. Git is better when git works: it carries its own history, and the log arriving as a commit is the audit trail. Use the beacon only when the measurement says the runner cannot get out.
 
 **Measure that before believing it.** The trap is that an image pull can succeed on a host with no network at all - a container platform pulls images on its own side, never from inside the subnet - so "the container started" tells you nothing. Run a probe that opens a TCP connection from inside, with a control target you expect to fail.
 
@@ -100,7 +100,7 @@ It also refuses to run as root unless `ALLOW_ROOT=1`. The account is the whole b
 
 ## What it does not change
 
-`pigeonhole.sh` calls `run.sh` with `LOG_DIR` and `PUSH=0`, so the capture itself is untouched: the same timestamps, the same ANSI stripping, the same redaction, the same header and footer. A log from the pigeonhole and a log from a git runner are the same document. Only the poll source and the publish sink differ.
+`pigeonhole.sh` calls `run.sh` with `LOG_DIR` and `PUSH=0`, so the capture itself is untouched: the same timestamps, the same ANSI stripping, the same redaction, the same header and footer. A log from the beacon and a log from a git runner are the same document. Only the poll source and the publish sink differ.
 
 It is a separate file from `station.sh` on purpose. Wherever this is needed, a git runner is usually still working elsewhere in the same estate, and two transports in one loop would mean reasoning about every future change twice - with a runner answering a request it should never have seen as the failure mode.
 
