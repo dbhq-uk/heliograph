@@ -10,8 +10,11 @@ Four gates, all failing closed, all in one place.
 
 ## It does not give you access you do not have
 
-heliograph does not tunnel, proxy, or hold a connection open to a host you
-control. There is nothing here to punch through a firewall with.
+Two of the three shapes never hold a connection open, and this section is
+about them: heliograph does not tunnel, proxy, or hold a connection open to a
+host you control. There is nothing here to punch through a firewall with. The
+third, the beam, does hold one open, deliberately and under controls of its
+own - covered below.
 
 A raw TCP transport was considered and **dropped** for exactly that reason: a
 persistent reverse connection from the far side to a listener you control is a
@@ -28,10 +31,12 @@ they can read first.
 
 ## The beam, and the blast radius of a held-open line
 
-A beam is a live channel. While it is up, a step beam still runs each line
-through `run.sh`, so the read-only gate and the captured log survive - but a
-**raw** beam carries opaque bytes, and `run.sh` cannot see inside them. That is
-interactive access to the account the station runs as, gated once, at the door.
+The beam is designed and not yet built; what follows is what it will do when
+it lands. A beam is a live channel. While it is up, a step beam still runs
+each line through `run.sh`, so the read-only gate and the captured log
+survive - but a **raw** beam carries opaque bytes, and `run.sh` cannot see
+inside them. That is interactive access to the account the station runs as,
+gated once, at the door.
 
 The controls are therefore at establishment, and there are three:
 

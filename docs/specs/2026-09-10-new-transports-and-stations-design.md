@@ -50,7 +50,7 @@ re-proposed.
 | email | never | declined by the master design: large operational burden, small population |
 | chat - Slack, Teams | never | captured logs in a chat system is a compliance problem, not a feature |
 | DNS | never | a covert channel gets the product banned from the estates it targets |
-| raw TCP, reverse tunnel | **superseded** | An unauthenticated always-on reverse connection stays refused, and for the original reason. The **beam** is the answer that was built instead: off unless explicitly enabled on both ends, sealed, signed, and torn down when idle. See the beam design (S4) and the direct beam (S6) |
+| raw TCP, reverse tunnel | **superseded** | An unauthenticated always-on reverse connection stays refused, and for the original reason. The **beam** is the answer that was designed instead: off unless explicitly enabled on both ends, sealed, signed, and torn down when idle. See the beam design (S4) and the direct beam (S6) |
 
 ### Stations
 
