@@ -780,12 +780,14 @@ func commitPage(t *testing.T, dir, date string) {
 
 // The markdown mirror is justified in three files by a number, and the number
 // was wrong: "roughly 31 times more bytes as HTML than as markdown" was never
-// measured across the site. Measured over 29 pages it is 2.9 to 16.8, about 7
+// measured across the site. Measured over 29 pages it is 2.8 to 20.5, about 7
 // on the median page and 5.8 across the whole site.
 //
 // The floor is the longest page - /transports - because chrome is a fixed cost
 // and a long page dilutes it, which is the same reason the saving is quoted as
-// a range rather than a single figure.
+// a range rather than a single figure. The ceiling is the shortest page, for
+// the same reason inverted: /dbhq at 20.5 is a clear outlier, and the next
+// page down is /pipelines at 14.8.
 //
 // THE BOUNDS ARE DELIBERATELY WIDER THAN THE MEASUREMENT. They were 2.9, which
 // is where /transports sat, so the next paragraph added to that page took it to
@@ -797,7 +799,7 @@ func commitPage(t *testing.T, dir, date string) {
 // much there is.
 func TestTheMirrorSavingIsTheOneTheCommentsClaim(t *testing.T) {
 	out := buildSite(t)
-	const lo, hi = 2.5, 18.0
+	const lo, hi = 2.5, 23.0
 	n := 0
 	for name, h := range htmlPages(t, out) {
 		if name == "404.html" {

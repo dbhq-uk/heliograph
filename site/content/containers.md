@@ -21,9 +21,10 @@ The entrypoint points a relay station at it.
 **Which checksum it used is printed, because the two are worth different
 things.** `RELAY_SEAL_SHA256` set by you - from `SHA256SUMS` in the release,
 where `heliograph-seal-linux-amd64` and its arm64 twin are published beside the
-CLI - compares a binary you did not build against a number you did not choose. The image's own record - offered only when you set none - proves the
-binary has not changed *since the image was built*, and nothing about whether
-the right one was built, since anyone who could replace one could replace both.
+CLI - compares a binary you did not build against a number you did not choose.
+The image's own record - offered only when you set none - proves the binary
+has not changed *since the image was built*, and nothing about whether the
+right one was built, since anyone who could replace one could replace both.
 Both beat the third state, which is the one that existed until now: no binary,
 and a relay station that refused to start.
 

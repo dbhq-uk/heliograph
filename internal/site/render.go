@@ -8,7 +8,7 @@
 // It emits three renderings of one source, which is the 2026 consensus for
 // developer documentation: HTML for people, a `.md` mirror at the same path for
 // agents, and `llms.txt` at the root. Measured across all 29 pages, the same
-// page costs three to seventeen times more bytes as HTML than as markdown, about
+// page costs three to twenty-one times more bytes as HTML than as markdown, about
 // seven times on the median page, so serving chrome to an agent is a token tax
 // on every read.
 package site

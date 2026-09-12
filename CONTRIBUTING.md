@@ -15,8 +15,8 @@ cd heliograph
 ./install.sh          # symlinks into ~/.claude/skills (edits are live)
 ```
 
-The whole skill directory is symlinked, so edits - to `SKILL.md`, `references/`,
-and `references/` alike - are live immediately. For Codex, re-run
+The whole skill directory is symlinked, so edits - to `SKILL.md` and
+`references/` alike - are live immediately. For Codex, re-run
 `./install-codex.sh` after editing `SKILL.md`, since that one file is rewritten
 at install time. Full walkthrough in [`docs/dev-setup.md`](docs/dev-setup.md).
 

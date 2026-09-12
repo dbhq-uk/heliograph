@@ -144,9 +144,10 @@ permissive than the thing it stands in for is worse than no double.
 
 And running it three times only proves three passes, so each transport is also
 checked for **teeth** - in **both implementations**, because a second
-implementation of delivery is a second thing that can silently stop delivering: `tp_put_log` is replaced with `return 0` - a delivery
-that claims success and does nothing, the exact shape of the original defect -
-and property 9 must fail. If it does not, it is reading the local file again.
+implementation of delivery is a second thing that can silently stop
+delivering: `tp_put_log` is replaced with `return 0` - a delivery that claims
+success and does nothing, the exact shape of the original defect - and
+property 9 must fail. If it does not, it is reading the local file again.
 
 **blob is not conformance-tested.** Its far side is an Azure storage account
 and there is no honest way to stand one up offline. That exclusion is asserted

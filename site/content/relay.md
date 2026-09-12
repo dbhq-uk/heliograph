@@ -67,8 +67,8 @@ re-issued - which means re-enrolling every station on it.
 
 **The relay is outside the trust boundary in both directions.**
 
-A relay that could read your logs would be a privacy problem - unacceptable for
-regulated customers, who are the customers.
+A relay that could read your logs would be a privacy problem, and an estate
+that will not give you SSH is not going to accept one.
 
 A relay that could **forge a request** would have code execution inside every
 estate at once, through a channel the estate installed deliberately. That is

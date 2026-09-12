@@ -46,11 +46,11 @@ dropped](/security). [What works with what](/matrix) has the whole grid.
 | **Azure Blob** | a VNet-local private endpoint is the only reachable thing | `drop.sh`, in the station payload, not the CLI | works |
 
 **Git, the file share and the relay are the three the CLI drives end to end
-today**, each proved by its own round trip in CI against a real station. Azure Blob also works end
-to end, through `drop.sh` in the station payload rather than through the
-`heliograph` binary - it is the transport the Azure Function host uses, and it
-is deployed. The rest are at the stage the table says and no further; what each
-still needs is in
+today**, each proved by its own round trip in CI against a real station. Azure
+Blob also works end to end, through `drop.sh` in the station payload rather
+than through the `heliograph` binary - it is the transport the Azure Function
+host uses, and it is deployed. The rest are at the stage the table says and no
+further; what each still needs is in
 [the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
 This page describes each one as designed, so that the design can be reviewed -
 not as though you could reach for it this afternoon.

@@ -1,8 +1,8 @@
 # Security
 
 What heliograph refuses to do, what it gates, and what it cannot promise. This
-page is written to be read by somebody deciding whether to permit it in a
-regulated estate.
+page is written to be read by somebody deciding whether to permit it on their
+estate.
 
 ```diagram gates
 Four gates, all failing closed, all in one place.
