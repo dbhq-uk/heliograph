@@ -240,21 +240,37 @@ where `ps` shows it to every other user on the box. `Get-TpDescribe` masks both
 halves of a URL's userinfo, because `https://<token>:x-oauth-basic@host` is a
 documented git form in which **the secret is the username**.
 
-### Two limits worth knowing before you rely on it
-
 **Surviving a logout** is `.\service.ps1 install`, which this payload ships - a
 scheduled task, with the transport's variables carried into a restricted file
 because a task inherits none of them. See [service](/service).
 
-**No relay transport yet.** git and the file share, and that is all.
+### The relay works here, and needs nothing installed
 
-This page said for a while that the relay *needs* `heliograph-seal`, a native
-Go binary, and that shipping one is a harder ask than the estate already
-refused. That was wrong: all four primitives the seal uses are available in
-about 200 KB of portable managed C#, each verified against its own standard's
-vectors. It is not built, which is a different thing from not possible -
-[the design](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-11-powershell-relay-design.md)
-says what it would take.
+git, the file share and **the relay**. That last one is the reason this payload
+is worth having on a locked-down box at all: the bash station's relay shells out
+to `heliograph-seal`, a native Go binary, and an estate that refuses bash is not
+going to permit that either.
+
+So the seal is built in **managed C#**, shipped as source under `lib/seal/` and
+compiled by `Add-Type` when the transport loads. X25519, Ed25519 and Poly1305
+come from a vendored Chaos.NaCl - djb's ref10 from SUPERCOP, MIT - and ChaCha20,
+the RFC 8439 framing and HKDF-SHA256 are written beside them. Nothing to
+install, nothing to checksum, and still plain text you can read first.
+
+It is held to the Go implementation rather than trusted to match it.
+`internal/seal` emits golden vectors from fixed keys; this side must reproduce
+them byte for byte at every stage and open what Go sealed, and CI runs the whole
+conformance suite over the relay on both editions.
+
+Two things follow from `Add-Type`, and both are worth knowing before you plan
+around it:
+
+- **Constrained Language Mode rules the relay out**, along with everything
+  else. `Add-Type` is refused under CLM - but so is most of the capture, and
+  `start.ps1` refuses to start at all under it. An estate in CLM has no
+  station, relay or otherwise
+- **The first load compiles about 330 KB of C#**, once per process. That is a
+  few seconds at station start and nothing thereafter
 
 **A self-update needs a restart.** `run.ps1`, `caplib.psm1` and the steps come
 forward with no restart at all, because every run is a fresh process that loads

@@ -102,7 +102,13 @@ done
 PS_DRIVER="$HERE/conformance/drivers/powershell.sh"
 # OVER EVERY TRANSPORT IT SHIPS, for the same reason the bash driver is: the
 # properties are about the method and the method must not depend on the channel.
-PS_COVERED="git share"
+# THE RELAY IS HERE NOW, and it is the one that matters most. relay.sh shells
+# out to `heliograph-seal`, a Go binary; this station has none and does the
+# construction in lib/seal.psm1 over vendored Chaos.NaCl. A pass over this
+# transport is the only thing that proves the two implementations of the seal
+# agree - the control side of the harness opens the delivery with Go, so a byte
+# of divergence returns nothing and p9 fails.
+PS_COVERED="git share relay"
 ps_rc=0
 ps_out=""
 for t in $PS_COVERED; do

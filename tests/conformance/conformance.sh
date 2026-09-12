@@ -384,8 +384,30 @@ if drv_supports cancel; then
   # Waiting for two stamped lines rather than one, because the assertions below
   # ask for at least two - so the wait and the assertion agree about what
   # "started" means instead of racing each other.
+  # `grep -c || echo 0` DID NOT DO THAT, AND THIS WAIT HAS NEVER RUN.
+  #
+  # On a file that exists with no matches - which is exactly the state being
+  # waited out - `grep -c` prints `0` AND exits 1. So the `|| echo 0` fired as
+  # well and the substitution was the two lines "0\n0", `[` refused it with
+  # "integer expression expected", and a non-zero status from the condition
+  # ends a `while`. The loop exited on its first turn, every time, on every
+  # transport and both drivers.
+  #
+  # The property still passed, because the `sleep 1` below is usually enough on
+  # its own - which is what made it invisible. It is the same shape as the
+  # defect this wait was written to fix: a guard that reports success without
+  # measuring anything.
+  #
+  # Counted in a function so the empty case (no file yet) and the zero case
+  # (file, no lines) both become the number 0.
+  _p8_lines() {
+    local n
+    n="$(grep -c ' | ' "$WORK/p8.log" 2>/dev/null)"
+    case "$n" in '' | *[!0-9]*) n=0 ;; esac
+    printf '%s' "$n"
+  }
   p8_waited=0
-  while [ "$(grep -c ' | ' "$WORK/p8.log" 2>/dev/null || echo 0)" -lt 2 ]; do
+  while [ "$(_p8_lines)" -lt 2 ]; do
     p8_waited=$((p8_waited + 1))
     if [ "$p8_waited" -gt 300 ]; then
       t_no "p8: the capture produced no output in 30s, so there was nothing to cancel"

@@ -86,6 +86,19 @@ func TestEmbeddedPayloadCarriesOnlyTheStation(t *testing.T) {
 				bad = append(bad, fmt.Sprintf("%s (terraform init wrote it; rm -rf station/*/azure/*/.terraform)", path))
 			case strings.Contains(path, "/node_modules/"):
 				bad = append(bad, path+" (rm -rf it)")
+			// A COMPILED ASSEMBLY, which is what the seal is most likely to
+			// acquire. `station/powershell/lib/seal` is C# SOURCE on purpose -
+			// the whole proposition is plain text an operator can read before
+			// running it - and the obvious shortcut when Add-Type feels slow is
+			// to drop a built .dll beside it. Two 200 KB DLLs would pass the
+			// size cap below and be exactly what this test is for.
+			case strings.HasSuffix(base, ".dll"), strings.HasSuffix(base, ".exe"),
+				strings.HasSuffix(base, ".so"), strings.HasSuffix(base, ".dylib"),
+				strings.HasSuffix(base, ".pdb"), strings.HasSuffix(base, ".nupkg"):
+				bad = append(bad, path+" (a compiled artifact. The payload is plain text somebody can read before they run it; ship the source)")
+			case strings.Contains(path, "/obj/"), strings.Contains(path, "/bin/Debug/"),
+				strings.Contains(path, "/bin/Release/"):
+				bad = append(bad, path+" (a .NET build directory; rm -rf it)")
 			case strings.Contains(path, "/ops-logs/") && strings.HasSuffix(path, ".txt"):
 				// A CAPTURED LOG IS THE WORST OF THESE. It holds whatever a step
 				// printed on the machine that built the binary.
@@ -138,10 +151,26 @@ func TestEmbeddedPayloadCarriesWhatAStationNeeds(t *testing.T) {
 			"powershell/caplib.psm1", "powershell/lib/transport.psm1",
 			"powershell/lib/cancel.psm1", "powershell/lib/stationenv.psm1",
 			"powershell/service.ps1", "powershell/transports/git.psm1",
-			"powershell/transports/share.psm1",
+			"powershell/transports/share.psm1", "powershell/transports/relay.psm1",
 			"powershell/gitignore", "powershell/gitattributes",
 			"powershell/ops-logs/.gitkeep", "powershell/steps/_template.ps1",
 			"powershell/station/request",
+			// The seal, and it is named file by file rather than as a
+			// directory. The relay transport does nothing without it, and a
+			// pattern change that dropped one vendored .cs leaves a payload
+			// that plants cleanly, starts cleanly, and fails at Add-Type on a
+			// machine nobody can log into.
+			"powershell/lib/seal.psm1",
+			"powershell/lib/seal/ChaCha20Poly1305.cs",
+			"powershell/lib/seal/Hkdf.cs",
+			"powershell/lib/seal/vendor/Chaos.NaCl/Ed25519.cs",
+			"powershell/lib/seal/vendor/Chaos.NaCl/Internal/Poly1305Donna.cs",
+			"powershell/lib/seal/vendor/Chaos.NaCl/Internal/Ed25519Ref10/scalarmult.cs",
+			// The licence travels with the code it licenses. Shipping vendored
+			// MIT source without it is the one thing here that is somebody
+			// else's problem as well as ours.
+			"powershell/lib/seal/vendor/Chaos.NaCl/LICENSE.md",
+			"powershell/lib/seal/vendor/Chaos.NaCl/ORIGIN.md",
 		}},
 	} {
 		for _, f := range c.files {

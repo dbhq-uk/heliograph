@@ -139,13 +139,26 @@ func TestThePowerShellStationIsDocumented(t *testing.T) {
 		{"choosing a payload", "--flavour"},
 		{"its transports", "share.psm1"},
 		{"the git transport", "git.psm1"},
+		{"the relay transport", "relay.psm1"},
+		// THE PROPERTY THAT SELLS IT, and the one most likely to be lost in a
+		// rewrite: the relay works on this payload with NOTHING INSTALLED. The
+		// bash station needs `heliograph-seal` beside it, and a reader who
+		// assumes the same of this one concludes the payload is useless on the
+		// estate it was built for.
+		{"that its seal ships as source rather than as a binary", "lib/seal/"},
+		{"the library the curve arithmetic comes from", "Chaos.NaCl"},
 		{"Constrained Language Mode, which stops the capture dead", "Constrained Language Mode"},
 		{"the execution policy a GPO can set", "execution policy"},
 		{"the Job Object the cancel rests on", "Job Object"},
 		{"the version this targets as its floor", "5.1"},
 		// THE LIMITS. A reader deciding whether to put this on a production
 		// machine needs these more than they need the feature list.
-		{"that there is no relay transport for it", "no relay transport"},
+		//
+		// "no relay transport" used to be one of them and is now false, so it
+		// is gone rather than reworded. What replaced it is the limit that
+		// actually applies: the seal is compiled by Add-Type, and Constrained
+		// Language Mode refuses that. A reader planning a locked-down estate
+		// has to be told which lock stops this.
 		{"that its own self-update needs a restart", "self-update"},
 		{"the pin file that is not the bash station's", ".station-approved-ps"},
 	} {
@@ -549,6 +562,19 @@ func TestNothingStillClaimsTheStationCannotPoll(t *testing.T) {
 		// retraction unwritable.
 		{"is a different bootstrap question", "the seal needs no native binary, so that is not the reason"},
 		{"which is a Go binary, and a station", "the seal needs no native binary, so that is not the reason"},
+		// AND NOW THE CLAIM ITSELF, because the transport is built. The reason
+		// was corrected first and the capability followed, which left five
+		// pages saying "not built" that were each true when written.
+		//
+		// Matched on the assertions' own shapes for the reason above: the pages
+		// that WITHDRAW the claim have to be able to say "no relay" in a
+		// sentence about no longer having no relay.
+		{"no relay transport for", "transports/relay.psm1 exists and passes conformance"},
+		{"It has no relay yet", "transports/relay.psm1 exists and passes conformance"},
+		{"has no relay either", "transports/relay.psm1 exists and passes conformance"},
+		{"Transports are git and share only", "it ships git, share and relay"},
+		{"ships **git and share** and nothing else", "it ships git, share and relay"},
+		{"relay transport is not written yet", "it is written"},
 	}
 
 	checked := 0

@@ -222,15 +222,45 @@ func Seal(from *Identity, to PublicIdentity, m Meta, plaintext []byte) ([]byte, 
 			m.Recipient, to.Fingerprint())
 	}
 
-	inner := append(m.canonical(), plaintext...)
-	sig := ed25519.Sign(from.sign, inner)
-
 	// Ephemeral key per message. Without it, every message between one pair of
 	// identities shares a key, and one compromise reads all of them.
 	eph, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, err
 	}
+
+	// A random nonce, even though the key is already unique per message: it is
+	// derived from an ephemeral key that is fresh and never reused, so a fixed
+	// nonce would in fact be safe.
+	//
+	// It is here because "the nonce is all zeroes" stops a review dead, and
+	// correctly - the reviewer then has to reason about ephemeral generation to
+	// clear it. Twelve bytes is a cheap price for a line nobody has to argue
+	// about. Paseo's relay does the same thing for the same reason.
+	nonce := make([]byte, chacha20poly1305.NonceSize)
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	return sealWith(from, to, m, plaintext, eph, nonce)
+}
+
+// sealWith is Seal with the two random values supplied.
+//
+// IT EXISTS SO THE FORMAT CAN HAVE TEST VECTORS. A second implementation of
+// this construction - the PowerShell station's, which cannot run a Go binary -
+// has to be checked against a message whose bytes are fixed, and every byte of
+// Seal's output moves when the ephemeral key does. Round-tripping one
+// implementation against itself proves nothing: it is satisfied by two
+// implementations that agree with each other and with nothing else.
+//
+// Nothing outside this package may call it, and Seal is the only caller in
+// production. A caller who could choose the nonce could reuse one, and nonce
+// reuse under a fixed key is the failure that reads the plaintext out.
+func sealWith(from *Identity, to PublicIdentity, m Meta, plaintext []byte,
+	eph *ecdh.PrivateKey, nonce []byte) ([]byte, error) {
+	inner := append(m.canonical(), plaintext...)
+	sig := ed25519.Sign(from.sign, inner)
+
 	toEnc, err := ecdh.X25519().NewPublicKey(to.Enc)
 	if err != nil {
 		return nil, fmt.Errorf("seal: unusable recipient key: %w", err)
@@ -251,18 +281,8 @@ func Seal(from *Identity, to PublicIdentity, m Meta, plaintext []byte) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
-
-	// A random nonce, even though the key is already unique per message: it is
-	// derived from an ephemeral key that is fresh and never reused, so a fixed
-	// nonce would in fact be safe.
-	//
-	// It is here because "the nonce is all zeroes" stops a review dead, and
-	// correctly - the reviewer then has to reason about ephemeral generation to
-	// clear it. Twelve bytes is a cheap price for a line nobody has to argue
-	// about. Paseo's relay does the same thing for the same reason.
-	nonce := make([]byte, aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, err
+	if len(nonce) != aead.NonceSize() {
+		return nil, fmt.Errorf("seal: a nonce is %d bytes, got %d", aead.NonceSize(), len(nonce))
 	}
 
 	// The metadata is authenticated as additional data as well as signed. The

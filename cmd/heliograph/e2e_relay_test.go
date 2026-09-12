@@ -296,6 +296,7 @@ func TestCLIDrivesARelayStation(t *testing.T) {
 		"RELAY_PEER="+stationPeer,
 		"RELAY_SEAL="+sealBin,
 	)
+	cmd.Env = append(cmd.Env, noBackgroundGit...)
 	o, runErr := cmd.CombinedOutput()
 	if ctx.Err() != nil {
 		t.Fatalf("the station never completed a run within 90s. Its own output:\n%s", o)
