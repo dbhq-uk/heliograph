@@ -23,6 +23,8 @@ _D_TOOLKIT="$(cd "$_D_HERE/../../../station/bash" && pwd)"
 _D_ROOT="$(cd "$_D_HERE/../../.." && pwd)"
 _D_BOOTSTRAP="$_D_ROOT/station/bootstrap.sh"
 _D_STUB="$_D_HERE/../relay-stub.py"
+_D_S3STUB="$_D_HERE/../s3-stub.py"
+_D_S3READ="$_D_HERE/../s3-read.py"
 
 CONF_TRANSPORT="${CONF_TRANSPORT:-git}"
 
@@ -32,6 +34,15 @@ _D_RELAY_ESTATE=conformance
 _D_RELAY_CTL=control-token
 _D_RELAY_STN=station-token
 _D_RELAY_BASES=""
+
+# The object store's constants, in one place because the stub, the station's env
+# and the read-back all have to agree on them.
+_D_S3_KEY=AKIDCONFORMANCE
+_D_S3_SECRET=conformance-secret-key
+_D_S3_REGION=eu-west-2
+_D_S3_BUCKET=conformance
+_D_S3_PREFIX=heliograph/
+_D_S3_BASES=""
 
 drv_name() { printf 'bash toolkit (caplib.sh, run.sh) over %s' "$CONF_TRANSPORT"; }
 
@@ -61,6 +72,12 @@ drv_supports() {
 _drv_deliverable() {
   case "$CONF_TRANSPORT" in
     git|share|bundle) return 0 ;;
+    objstore)
+      # THE STUB VERIFIES THE SIGNATURE, so this channel cannot be faked into
+      # passing - but it needs python3 to run, and openssl for the station to
+      # sign with. Said out loud rather than quietly passed.
+      command -v python3 >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1
+      ;;
     relay)
       # heliograph-seal is Go, and the seal is not optional on this transport:
       # a station configured for the relay either speaks sealed or does not
@@ -315,6 +332,9 @@ _drv_farside() {
     relay)
       _drv_relay_farside "$dir"
       ;;
+    objstore)
+      _drv_objstore_farside "$dir"
+      ;;
     *) return 1 ;;
   esac
 }
@@ -332,6 +352,10 @@ _drv_env() {
     relay)
       # shellcheck disable=SC1090,SC1091
       . "$dir.relay/env" || return 1
+      ;;
+    objstore)
+      # shellcheck disable=SC1090,SC1091
+      . "$dir.objstore/env" || return 1
       ;;
     *) return 1 ;;
   esac
@@ -368,6 +392,7 @@ _drv_read() {
       cat "$newest"
       ;;
     relay) _drv_relay_read "$dir" ;;
+    objstore) _drv_objstore_read "$dir" ;;
     *) return 1 ;;
   esac
 }
@@ -479,6 +504,72 @@ _drv_relay_read() {
   printf '%s\n' "$out" | tail -n +2
 }
 
+
+# --- objstore: a stub store that VERIFIES the signature -----------------------
+# The station signs SigV4 in bash. A stub that accepted any Authorization header
+# would let a completely wrong signer pass every property here and then fail
+# against a real store with a 403 that names nothing - so s3-stub.py recomputes
+# the signature in python and refuses a mismatch. Three independent
+# implementations then have to agree: Go's, which emits the golden vectors; the
+# station's; and the stub's.
+_drv_objstore_farside() {
+  local dir="$1" base="$1.objstore" port pid waited=0
+  mkdir -p "$base" || return 1
+
+  python3 "$_D_S3STUB" "$_D_S3_KEY" "$_D_S3_SECRET" "$_D_S3_REGION" "$_D_S3_BUCKET" 0 \
+    > "$base/port" 2>"$base/stub.err" &
+  pid=$!
+  echo "$pid" > "$base/pid"
+  _D_S3_BASES="$_D_S3_BASES $base"
+
+  # A PORT THAT PARSES IS NOT A PORT THAT LISTENS, and a partially written value
+  # parses as a different one. So it is read, then dialled, and the process is
+  # checked for still being alive on every turn.
+  #
+  # The probe is UNAUTHENTICATED and expects a 403: that proves the stub is both
+  # listening and checking. A 200 would mean it was accepting anything, which is
+  # the one thing this stub must never do.
+  while :; do
+    port="$(cat "$base/port" 2>/dev/null)"
+    case "$port" in
+      '' | *[!0-9]*) ;;
+      *)
+        code="$(curl -sS -o /dev/null -m 2 -w '%{http_code}' \
+                  "http://127.0.0.1:$port/$_D_S3_BUCKET/probe" 2>/dev/null)"
+        [ "$code" = "403" ] && break
+        ;;
+    esac
+    kill -0 "$pid" 2>/dev/null || { echo "s3 stub died:" >&2; cat "$base/stub.err" >&2; return 1; }
+    waited=$((waited + 1))
+    [ "$waited" -gt 100 ] && return 1
+    sleep 0.1
+  done
+
+  cat > "$base/env" <<EOF
+export TRANSPORT=objstore
+export OBJSTORE_ENDPOINT=http://127.0.0.1:$port
+export OBJSTORE_BUCKET=$_D_S3_BUCKET
+export OBJSTORE_LANE=conformance
+export OBJSTORE_REGION=$_D_S3_REGION
+export OBJSTORE_KEY_ID=$_D_S3_KEY
+export OBJSTORE_SECRET=$_D_S3_SECRET
+export OBJSTORE_PREFIX=heliograph
+export OBJSTORE_ALLOW_HTTP=1
+EOF
+  printf 'http://127.0.0.1:%s\n' "$port" > "$base/url"
+  return 0
+}
+
+# Read the delivered log back FROM THE STORE, the way the control side does.
+# See s3-read.py: it lists, skips `.partial.txt`, and GETs the newest.
+_drv_objstore_read() {
+  local base="$1.objstore" url
+  url="$(cat "$base/url" 2>/dev/null)" || return 1
+  [ -n "$url" ] || return 1
+  python3 "$_D_S3READ" "$url" "$_D_S3_KEY" "$_D_S3_SECRET" \
+    "$_D_S3_REGION" "$_D_S3_BUCKET" "$_D_S3_PREFIX" 2>/dev/null
+}
+
 # The base URL of a station's stub, for anything that has to dial it directly.
 _drv_relay_url() { sed -n 's/^export RELAY_URL=//p' "$1/env"; }
 
@@ -508,5 +599,21 @@ drv_teardown() {
     wait "$pid" 2>/dev/null
   done
   _D_RELAY_BASES=""
+  # THE S3 STUBS TOO. Every property that bootstraps starts one, and tearing
+  # down only the relay's would leak a python process and its port for the rest
+  # of the shell.
+  for base in $_D_S3_BASES; do
+    pid="$(cat "$base/pid" 2>/dev/null)" || continue
+    [ -n "$pid" ] || continue
+    kill "$pid" 2>/dev/null
+    waited=0
+    while kill -0 "$pid" 2>/dev/null; do
+      waited=$((waited + 1))
+      [ "$waited" -gt 50 ] && { kill -9 "$pid" 2>/dev/null; break; }
+      sleep 0.1
+    done
+    wait "$pid" 2>/dev/null
+  done
+  _D_S3_BASES=""
   return 0
 }

@@ -34,7 +34,13 @@ DRIVER="$HERE/conformance/drivers/bash.sh"
 # stamps, the exit code, the footer, the gates, the redaction, and above all
 # that the finished log reaches the far side - is exactly the same question,
 # and the answer has to be the same or the method does not survive the walk.
-COVERED="git share bundle relay"
+# THE OBJECT STORE'S STUB VERIFIES THE SIGNATURE rather than accepting any
+# Authorization header. That is what makes it worth having: a stub that shrugged
+# would let a completely wrong SigV4 signer pass every property here and fail on
+# a real store with a 403 that names nothing. Three implementations have to
+# agree - Go's, which emits the golden vectors; the station's bash; the stub's
+# python.
+COVERED="git share bundle relay objstore"
 
 # blob is excluded on purpose: its far side is an Azure storage account, and
 # there is no honest way to stand one up offline. Excluded WITH A REASON that is
