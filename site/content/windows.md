@@ -195,11 +195,26 @@ action too.
 
 ### What the request may not say
 
-The `env:` line becomes variables for the run, and four names are refused:
-`TRANSPORT`, `PUSH`, `REDACT` and `LOG_DIR`. Each of them turns a working
-station into one that looks fine and delivers nothing, or publishes an
+The `env:` line becomes variables for the run, and the names that decide where
+a log goes are refused: `TRANSPORT`, `PUSH`, `REDACT`, `LOG_DIR`, the gate
+variables, and **every transport's own configuration** - `RELAY_*`, `SHARE_*`,
+`OBJSTORE_*` and the rest. Each of them turns a working station into one that
+looks fine and delivers nothing, or delivers to somebody else, or publishes an
 unredacted log that cannot be unpublished. They are settled when the station is
 started, not per request.
+
+Reserved by **prefix rather than by name**, the same rule `station.sh` applies,
+and `tests/test-station-gate.sh` compares the two patterns so the twins cannot
+drift apart on it.
+
+**This one check is case-INSENSITIVE, and it is the only one here that is.**
+Every other gate compares case-sensitively, because `read-only` and `READ-ONLY`
+are different declarations. Environment variable names on Windows are not:
+`transport=relay` and `TRANSPORT=relay` are the same entry in the child's
+environment, and the second overwrites the first. A case-sensitive guard would
+refuse the uppercase spelling, allow the lowercase one, and Windows would
+honour it. The bash twin needs no equivalent - there `transport=relay` sets a
+genuinely different variable that nothing reads.
 
 The check is on the **parsed** name, not the text of the line: `FOO=1
 "TRANSPORT=relay"` walks straight past a check on the raw string and still

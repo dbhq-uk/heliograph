@@ -584,13 +584,45 @@ function Split-EnvLine {
 #              and cannot be unpublished
 #   LOG_DIR    moves the log somewhere this loop will not find to report it
 #
+# AND EVERY TRANSPORT'S OWN CONFIGURATION, which those four names do not cover.
+#
+# Get-TpNeed reads variables STRAIGHT OUT OF THE ENVIRONMENT - that is how every
+# transport is configured - so reserving four names left the whole of a
+# transport's configuration settable by whoever can write a request:
+#
+#   RELAY_URL    the captured log is delivered to a relay of the author's choice
+#   RELAY_PEER   what a request is verified against AND who the log is sealed
+#                to. relay.psm1 uses it for both
+#   SHARE_DIR    the same redirection on a share station
+#   OBJSTORE_*   and on an object store
+#
+# A `read-only` step does it and NO GATE FIRES - not --allow-actions, not
+# CONFIRM, not the root refusal. It needs somebody who can publish a request,
+# and the premise of this whole tool is that the request author is not the
+# estate owner.
+#
+# SO IT IS RESERVED BY PREFIX, NOT BY NAME, matching station.sh line for line. A
+# new transport that introduces a new prefix must add it in BOTH, and
+# tests/test-station-gate.sh fails if either is missed: it reads both patterns
+# and checks every Test-TpNeed and cap_need name against them.
+#
+# THE TWO STATIONS MUST AGREE, and this is the reason that is stated rather than
+# assumed. A control side cannot tell which implementation answered a request,
+# so a security gate that differs between them means the same request is refused
+# on one machine and honoured on another. These twins have diverged on a gate
+# before - three case-sensitivity differences in run.ps1, two of them in a
+# security check - which is why the suite now compares them rather than reading
+# both and hoping.
+#
 # CHECKED AFTER THE SPLIT, ON THE PARSED NAMES, and that is the whole point. The
 # bash side once matched ` TRANSPORT=` against the raw line and quoting walked
 # straight through it: `FOO=1 "TRANSPORT=relay"` and `T"RANSPORT"=relay` both
 # fail that test and both come out of the parser as a plain TRANSPORT
 # assignment. A guard applied before the parser is a guard against the spelling
 # rather than against the meaning.
-$ReservedEnv = 'TRANSPORT', 'PUSH', 'REDACT', 'LOG_DIR'
+#
+# RESERVED_ENV_PATTERN - read by tests/test-station-gate.sh. Keep on one line.
+$ReservedEnvPattern = '^(TRANSPORT|PUSH|REDACT|LOG_DIR|ALLOW_ROOT|ALLOW_ACTIONS|CAP_.*|RELAY_.*|SHARE_.*|PIGEONHOLE_.*|OBJSTORE_.*|BLOB_.*|BUNDLE_.*)$'
 
 # --- status, published so the far side can see what is happening --------------
 function Publish-Status {
@@ -978,8 +1010,32 @@ while ($true) {
                 $reject = "'$name' is not a usable variable name"
                 break
             }
-            if ($ReservedEnv -ccontains $name) {
-                $reject = "the env line sets $name, which controls delivery or redaction and is settled when the station is started, not per request"
+            # -imatch, CASE-INSENSITIVE, AND THIS IS THE ONE GATE HERE THAT IS.
+            #
+            # Every other check in this station is case-SENSITIVE, deliberately,
+            # because `read-only` and `READ-ONLY` are different declarations and
+            # bash's `case` distinguishes them. This one is the opposite, and
+            # the reason is the platform rather than the protocol.
+            #
+            # WINDOWS ENVIRONMENT VARIABLE NAMES ARE CASE-INSENSITIVE. The child
+            # environment is a StringDictionary on .NET Framework, so
+            # `transport=relay` and `TRANSPORT=relay` are the SAME entry and the
+            # second silently overwrites the first. A case-sensitive guard would
+            # refuse `TRANSPORT=relay`, allow `transport=relay`, and Windows
+            # would honour it - which is the whole defect, spelled in lowercase.
+            #
+            # Measured, not assumed: on .NET on Linux the same dictionary keeps
+            # two distinct keys, so this is over-strict there and necessary
+            # here. Being over-strict costs an operator nothing - nothing reads
+            # a lowercase `share_dir` - and it makes the two platforms behave
+            # alike, which is worth more than the letter of the rule.
+            #
+            # The bash twin needs no equivalent: `env transport=relay ./run.sh`
+            # sets a genuinely different variable, and run.sh reads $TRANSPORT.
+            # Same RULE - a request may not influence these - implemented to
+            # suit what each platform will actually honour.
+            if ($name -imatch $ReservedEnvPattern) {
+                $reject = "the env line sets $name, which configures capture, delivery, redaction or identity and is settled at station start, not per request"
                 break
             }
         }

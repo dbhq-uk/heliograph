@@ -158,6 +158,14 @@ still not a reason to hand it a shell.
   of `station.sh` and fails if any variable a transport asks for is not covered
   by it, so the guard cannot quietly fall behind the code.
 
+  **Both stations reserve the same set**, and the same test compares the two
+  patterns rather than reading each and hoping. A control side cannot tell which
+  implementation answered a request, so a gate that differed between them would
+  mean the same request refused on one machine and honoured on another. The
+  PowerShell station matches case-insensitively where the bash one does not, for
+  a platform reason rather than a protocol one: Windows environment variable
+  names are case-insensitive, so `transport=relay` there IS `TRANSPORT`.
+
   The check runs on the **parsed** assignments rather than on the raw line, so
   quoting cannot walk around it
 - The transport name is validated before it becomes a filename that gets

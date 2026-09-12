@@ -331,6 +331,22 @@ raw-TCP transport was dropped for being. S1 rewrites the "what it will not do"
 prose into an honest characterisation rather than pretending the line did not
 move. Decided by the owner with the C2 trade-off on the table.
 
+### What the twin comparison found
+
+**Windows environment variable names are case-insensitive, and the guard was
+not.** The child environment is a `StringDictionary` on .NET Framework, so
+`transport=relay` and `TRANSPORT=relay` are the SAME entry and the second
+overwrites the first. A case-sensitive guard refuses the uppercase spelling,
+allows the lowercase one, and Windows honours it - the whole defect, spelled in
+lowercase, on the only platform that payload targets.
+
+Measured rather than assumed: the same dictionary on .NET on Linux keeps two
+distinct keys, so the hole is Windows-only and a Linux runner would never see
+it. That check is now the ONE case-insensitive comparison in the PowerShell
+station, and it says why at the point it is made. The bash twin needs no
+equivalent - there `transport=relay` sets a genuinely different variable that
+nothing reads.
+
 ## Next, in order
 
 Every item is an issue, so a priority can be linked to rather than remembered.

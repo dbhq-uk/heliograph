@@ -312,4 +312,56 @@ else
   assert_eq "every cap_need variable across all transports is reserved" "" "$_uncovered"
 fi
 
+# --- AND THE POWERSHELL TWIN RESERVES THE SAME THINGS -------------------------
+# A control side cannot tell which implementation answered a request, so a
+# security gate that differs between the two means the same request is refused
+# on one machine and honoured on another.
+#
+# THIS IS NOT HYPOTHETICAL FOR THIS PARTICULAR GATE. The bash side was fixed to
+# reserve by prefix while station.ps1 still carried the original four names -
+# and by then the PowerShell payload had a relay transport, so RELAY_PEER on
+# that station was exactly the redirection the bash fix had just closed.
+#
+# The twins have diverged on a gate before: three case-sensitivity differences
+# in run.ps1, two of them in a security check. That is why this compares them
+# rather than reading both and hoping.
+PS_STATION="$HERE/../station/powershell/station.ps1"
+if [ ! -f "$PS_STATION" ]; then
+  t_no "the PowerShell station is missing, so the twin comparison asserted nothing"
+else
+  # Read from the file the way the bash pattern is read: out of the source, so
+  # this cannot pass by agreeing with a copy of the rule kept in the test.
+  _pspat="$(sed -n "s/^\$ReservedEnvPattern = '^(\(.*\))\$'$/\1/p" "$PS_STATION" | head -1)"
+  if [ -z "$_pspat" ]; then
+    t_no "could not read the reserved-env pattern out of station.ps1"
+  else
+    # The bash pattern uses glob (`CAP_*`); the PowerShell one uses regex
+    # (`CAP_.*`). Normalised to compare the RULE rather than the dialect.
+    _bnorm="$(printf '%s' "$_pat"   | tr '|' '\n' | sed 's/\*$/.*/' | sort | tr '\n' ' ')"
+    _pnorm="$(printf '%s' "$_pspat" | tr '|' '\n' | sort | tr '\n' ' ')"
+    assert_eq "both stations reserve exactly the same variables, or one honours what the other refuses" \
+      "$_bnorm" "$_pnorm"
+  fi
+
+  # AND EVERY POWERSHELL TRANSPORT'S OWN VARIABLES ARE COVERED, the same scan
+  # the bash side gets. Test-TpNeed is the PowerShell cap_need.
+  _psuncovered=""
+  for _name in $(grep -ho "Test-TpNeed -Name '[A-Z_][A-Z0-9_]*'" \
+                   "$HERE/../station/powershell/transports/"*.psm1 2>/dev/null \
+                 | sed "s/.*-Name '//; s/'.*//" | sort -u); do
+    _hit=0
+    _ifs="$IFS"; IFS='|'
+    for _alt in $_pspat; do
+      # The PowerShell pattern is a regex, so `CAP_.*` is matched with grep -E
+      # rather than with a glob.
+      printf '%s' "$_name" | grep -qE "^$_alt\$" && { _hit=1; }
+      [ "$_hit" = "1" ] && break
+    done
+    IFS="$_ifs"
+    [ "$_hit" = "1" ] || _psuncovered="$_psuncovered $_name"
+  done
+  assert_eq "every Test-TpNeed variable across the PowerShell transports is reserved" \
+    "" "$_psuncovered"
+fi
+
 t_summary
