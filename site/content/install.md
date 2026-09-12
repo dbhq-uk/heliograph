@@ -11,7 +11,8 @@ curl -sSL https://github.com/dbhq-uk/heliograph/releases/latest/download/heliogr
 
 Replace `linux-amd64` with `linux-arm64`, `darwin-amd64`, `darwin-arm64`,
 `windows-amd64` or `windows-arm64`. Checksums are published with every release
-as `SHA256SUMS`.
+as `SHA256SUMS`, and you can rebuild the binary yourself and check that it
+hashes to the published number - [provenance](/provenance) is the command.
 
 From source, if you would rather:
 

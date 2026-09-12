@@ -4,6 +4,12 @@ What heliograph refuses to do, what it gates, and what it cannot promise. This
 page is written to be read by somebody deciding whether to permit it in
 an estate nobody outside can log into.
 
+Everything here rests on the code being readable before it is run, which stops
+being enough the moment something is compiled. [Provenance](/provenance) is the
+other half: how to rebuild a released binary and check it against the published
+hash, which transport needs a binary on the far side, and what is not yet
+provable.
+
 ```diagram gates
 Four gates, all failing closed, all in one place.
 ```

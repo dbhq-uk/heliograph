@@ -30,6 +30,12 @@ pick.
 In one line: a beacon holds a *message*, a flare is a *single exchange*, a beam
 holds the *connection itself*.
 
+A beam will also want something compiled on the station, which no beacon does
+except the relay on a bash station. If that matters where you are deploying,
+[provenance](/provenance) has the whole of it: which transports need a binary,
+how to rebuild the exact bytes yourself, and why the ones that need none are
+still a complete product.
+
 A transport is the channel a request goes out on and a log comes back through.
 The loop is identical whichever you pick: same request format, same gates, same
 log. That is deliberate, and it is what lets you change transport without

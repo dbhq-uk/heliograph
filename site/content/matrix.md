@@ -26,6 +26,23 @@ somewhere, and collected later by the other side. The beam is designed and not
 yet built, so nothing below carries it; the shapes are named together because
 the vocabulary is one thing.
 
+**The beam will need a compiled binary on the station, and almost nothing else
+does.** Noise and a `wss` connection are not things `curl` and coreutils do, so
+the beam's station side is designed as a Go component. That is worth knowing
+before you plan around it, because the far side being plain readable bash is
+often the reason heliograph is permitted at all.
+
+What needs a binary today is one transport, on one station: the
+[relay](/relay), on a **bash** station, which shells out to `heliograph-seal`
+for the encryption. git, a file share, a bundle and an object store need none,
+the PowerShell station needs none even for the relay, and a beacon or a flare
+over any of those is a complete product - the same requests, the same gates,
+the same logs. An estate that permits no compiled code loses two shapes, not
+the tool.
+
+The price of every far-side binary is a build you can reproduce and a checksum
+you can check for yourself, which is on [provenance](/provenance).
+
 ### Why the shape matters more than the speed
 
 The obvious difference is latency, and it is the less important one.

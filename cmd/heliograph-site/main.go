@@ -32,7 +32,7 @@ var order = []string{
 	"claude-code", "codex", "mcp",
 	"station", "bootstrap", "steps", "runner", "conformance",
 	"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped",
-	"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "method",
+	"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "provenance", "method",
 	"roadmap",
 	"dbhq",
 }
@@ -339,7 +339,7 @@ var groups = []struct {
 	{"Drive it from an agent", []string{"claude-code", "codex", "mcp"}},
 	{"The far side", []string{"station", "bootstrap", "steps", "runner", "conformance"}},
 	{"Where it runs", []string{"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped"}},
-	{"Reference", []string{"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "method", "roadmap"}},
+	{"Reference", []string{"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "provenance", "method", "roadmap"}},
 	{"More from DBHQ", []string{"dbhq"}},
 }
 
@@ -382,6 +382,7 @@ var labels = map[string]string{
 	"cli":         "CLI reference",
 	"secrets":     "Secrets",
 	"security":    "Security",
+	"provenance":  "Provenance",
 	"method":      "Debugging method",
 	"roadmap":     "Roadmap",
 	"dbhq":        "DBHQ projects",
@@ -1028,6 +1029,7 @@ var titles = map[string]string{
 	"secrets":     "Secrets - redaction, and getting a value to the far side",
 	"security":    "Security - the gates, the blast radius, and what this refuses to do",
 	"flare":       "Flare - submit a step over HTTPS when you can reach the station",
+	"provenance":  "Provenance - reproduce the binary and check it against the hash",
 }
 
 // descriptions are the search-result sentence for each page. See description().
@@ -1058,6 +1060,7 @@ var descriptions = map[string]string{
 	"cli":         "Every heliograph command: init, bootstrap, plant, send, logs --gaps, station add, mcp and doctor, with the reasoning behind the ones that are not obvious.",
 	"secrets":     "Captured logs are committed to history, so heliograph redacts what it can. How redaction works, where it stops, and how to get a secret to the far side safely.",
 	"security":    "What heliograph refuses to do, what it gates, and what it cannot promise: read-only by default, no root, no credentials, and the account as the blast radius.",
+	"provenance":  "Build the released heliograph binary yourself from the tag and check it against the published SHA256SUMS. What is reproducible today, and what is not yet.",
 	"method":      "How to debug across a gap you cannot cross: one question per step, never truncate, keep a control, and change one thing between runs.",
 	"roadmap":     "Every transport, host and control node anyone has proposed for heliograph, each with a verdict - do, later, maybe or never - and the reason behind it.",
 	"dbhq":        "The other free and open-source things DBHQ makes: bbs and modem in a browser, and skills for Claude Code and Codex, installed with one command.",
