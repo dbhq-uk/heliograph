@@ -171,17 +171,19 @@ that is not progress.
 A program that adds the third shape - the **beam**, a held-open live channel -
 renames the shapes onto one medium (**beacon** / **flare** / **beam**, from
 pigeonhole / intercom / the new open line), and drops the "regulated estate"
-framing throughout. Six designs, each its own spec and PR, coordinated by
+framing throughout. Six designs, each its own spec and PR, tracked by the
+umbrella issue #85 and coordinated by
 [`docs/plans/2026-09-11-signalling-toolkit-roadmap.md`](docs/plans/2026-09-11-signalling-toolkit-roadmap.md).
 
-| id | spec | state |
-|---|---|---|
-| S1 | [three shapes and the signalling names](docs/specs/2026-09-11-three-shapes-and-signalling-names-design.md) | draft, ready to build |
-| S2 | [discrete transports completed](docs/specs/2026-09-11-discrete-transports-completed-design.md) (relay CLI selection, flare transport) | draft, ready to build |
-| S3 | [`heliograph shell`](docs/specs/2026-09-11-heliograph-shell-design.md) (REPL over flare, SSH front door) | draft, ready to build |
-| S4 | [the beam: the live `Channel` and the relayed beam](docs/specs/2026-09-11-beam-live-channel-design.md) | draft, ready to build |
-| S5 | [SSH and interactive over the beam](docs/specs/2026-09-11-ssh-and-interactive-over-the-beam-design.md) (PTY, `ssh` passthrough, gated TCP forward) | draft, ready to build |
-| S6 | [the direct beam](docs/specs/2026-09-11-direct-beam-p2p-design.md) (P2P: ICE, STUN, WebRTC data channel; relayed-beam fallback, no TURN) | draft, ready to build |
+| id | issue | spec | state |
+|---|---|---|---|
+| S1 | #86 | [three shapes and the signalling names](docs/specs/2026-09-11-three-shapes-and-signalling-names-design.md) | draft, ready to build |
+| S2 | #87 | [discrete transports completed](docs/specs/2026-09-11-discrete-transports-completed-design.md) (relay CLI selection, flare transport) | draft, ready to build |
+| S3 | #89 | [`heliograph shell`](docs/specs/2026-09-11-heliograph-shell-design.md) (REPL over flare, SSH front door) | draft, ready to build |
+| S4 | #90 | [the beam: the live `Channel` and the relayed beam](docs/specs/2026-09-11-beam-live-channel-design.md) | draft, ready to build |
+| S5 | #91 | [SSH and interactive over the beam](docs/specs/2026-09-11-ssh-and-interactive-over-the-beam-design.md) (PTY, `ssh` passthrough, gated TCP forward) | draft, ready to build |
+| S6 | #92 | [the direct beam](docs/specs/2026-09-11-direct-beam-p2p-design.md) (P2P: ICE, STUN, WebRTC data channel; relayed-beam fallback, no TURN) | draft, ready to build |
+| - | #93 | reproducible builds for the beam binary, and seams a cloud layer can extend | blocked on a decision |
 
 **This reverses a stated anti-goal**: the beam is the reverse connection the
 raw-TCP transport was dropped for being. S1 rewrites the "what it will not do"

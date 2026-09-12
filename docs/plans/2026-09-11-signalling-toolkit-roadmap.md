@@ -83,6 +83,22 @@ S2 ────► S3 ───────┼────────┘
                    └─► S6
 ```
 
+## Tracking
+
+Umbrella issue **#85**, with one issue per design so a priority can be linked
+to rather than remembered, the way the rest of the register works.
+
+| S1 | S2 | S3 | S4 | S5 | S6 | cross-cutting |
+|---|---|---|---|---|---|---|
+| #86 | #87 | #89 | #90 | #91 | #92 | #93 |
+
+**#93** carries the two requirements that belong to no single design:
+reproducible builds and published checksums for the beam's Go component, which
+is the transparency answer to putting a binary where bash used to be readable;
+and the seams - a broker policy hook, a structured audit event stream, an
+identity-provider interface - that let a hosted layer extend this rather than
+fork it. Both are cheap now and expensive to retrofit.
+
 ## The open questions the later specs must answer
 
 Named here so they are not rediscovered, and so S4-S6 are recognised as design
