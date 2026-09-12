@@ -51,12 +51,21 @@ The table above is the **bash** station. The [PowerShell
 twin](/windows#the-powershell-station-for-a-box-with-no-bash), for an estate
 with no bash at all, ships **git and share** and nothing else.
 
-It has no relay, and that is not an oversight waiting to be filled in. The
-relay is the one transport needing `heliograph-seal`, a native binary, because
-its construction is X25519, HKDF-SHA256, ChaCha20-Poly1305 and Ed25519. The
-PowerShell station exists for machines where you were refused permission to
-install Git for Windows, and a native executable is a harder request than the
-one already turned down.
+**It has no relay yet**, and the reason this page gave for a long time was
+wrong, so it is worth correcting rather than quietly rewording. The claim was
+that the relay needs `heliograph-seal` - a native Go binary - and that such a
+binary is a harder ask than the one those estates already refused.
+
+The second half is true. The first was never checked. All four primitives the
+seal uses (X25519, HKDF-SHA256, ChaCha20-Poly1305, Ed25519) are available in
+roughly **200 KB of portable managed C#**, and each was verified against its
+own standard's test vectors. No native binary is needed.
+
+What is left is ordinary work rather than an obstacle: cross-implementation
+test vectors, so the two seals provably agree, and a decision about whether the
+payload carries that code as source or as an assembly.
+[The design](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-11-powershell-relay-design.md)
+sets both out.
 
 Both implementations read and write the **same layout** on whichever channel
 they share, so a control side cannot tell them apart - and a test asserts that

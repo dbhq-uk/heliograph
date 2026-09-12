@@ -424,9 +424,11 @@ moment it runs, so a process started immediately after can survive.
 
 ### Limits, stated rather than implied
 
-- **Transports are git and share only.** No relay: it needs `heliograph-seal`,
-  which is a Go binary, and a station that must ship a binary is a different
-  bootstrap question on the estates this exists for.
+- **Transports are git and share only.** No relay - and NOT because it needs a
+  native binary, which is what this said until it was measured. All four
+  primitives are available in ~200 KB of managed C#, verified against the RFC
+  vectors. It is simply not built. See
+  `docs/specs/2026-09-11-powershell-relay-design.md`.
 - **A self-update needs a restart.** `run.ps1`, `caplib.psm1` and the steps come
   forward with no restart - every run is a fresh process. `station.ps1` itself
   cannot be replaced while running (PowerShell has no `exec`, and a respawn is
