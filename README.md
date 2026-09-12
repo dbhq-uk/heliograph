@@ -32,7 +32,7 @@ you        heliograph logs --last --gaps ◀────────────
 - You have **no SSH access to production**, and you are not going to be given any.
 - The environment is **air-gapped**, or behind a bastion, a jump host or a VPN you are not on.
 - It is a **client-owned or customer-managed estate**. Only their staff can log in.
-- Access is blocked by **policy, not capability**: regulated, restricted, change-controlled.
+- Access is blocked by **policy, not capability**: restricted, change-controlled, somebody else's sign-off.
 - You are on the fourth round of **"can you run this and paste the output"**, and what came back was a screenshot of half a terminal.
 - You are an **AI coding agent** driving an investigation, and you need the evidence rather than somebody's summary of it.
 
@@ -175,8 +175,8 @@ Give you access you do not have. It does not tunnel, proxy or hold a
 connection open to a host you control, and there is nothing here to punch
 through a firewall with. A raw TCP transport was considered and **dropped**
 for exactly that reason: a persistent reverse connection is a C2 channel by
-any blue team's definition, and that sentence is a large part of why this
-class of tool is permitted in regulated estates.
+any blue team's definition, and nothing here is worth having if a blue team
+has to call it one.
 
 Every command runs on the far side because someone with legitimate access
 chose to run it.

@@ -63,7 +63,7 @@ Yes, and it is the only way this runs them: no SSH is involved anywhere in the
 loop. In the estates this is for, there is no SSH to give. The machine is
 behind a bastion you are not on, or in a client's estate where only their staff
 may log in, or the access is blocked by policy rather than capability:
-regulated, restricted, change-controlled.
+restricted, change-controlled, somebody else's sign-off.
 
 heliograph does not get around any of that, and it is worth being plain that it
 does not try. It does not tunnel, proxy or hold a connection open, and there is

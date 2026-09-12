@@ -126,7 +126,7 @@ A station reading a `version:` it does not know refuses the request and publishe
 | bundle | new | signed tarball, export and import, for a true air gap |
 | intercom (HTTP inbound) | keep | narrow case: you can reach the station |
 
-**TCP is dropped.** A persistent reverse connection from the far side to a listener you control is a C2 channel by any blue team's definition, and the README's claim that heliograph does not tunnel, proxy or hold a connection open is a large part of why the tool is permitted in regulated estates. The relay delivers the low-latency loop over ordinary HTTPS without spending that claim.
+**TCP is dropped.** A persistent reverse connection from the far side to a listener you control is a C2 channel by any blue team's definition, and the README's claim that heliograph does not tunnel, proxy or hold a connection open is the claim the whole design rests on. The relay delivers the low-latency loop over ordinary HTTPS without spending that claim.
 
 **Message brokers are parked, not rejected.** AMQP 1.0 and MQTT have real value where an estate already runs one, but no pure-bash client exists, so the station would gain its first dependency. Revisit once the interface has proven itself.
 
@@ -149,7 +149,7 @@ Two, because the station token sits on a machine you do not trust and cannot rea
 
 ### End-to-end encryption is not optional
 
-A hosted relay would otherwise see everything every command in the estate prints. That is an unacceptable trust ask for regulated customers, who are the customers.
+A hosted relay would otherwise see everything every command in the estate prints. That is an unacceptable trust ask for an estate that would not give you SSH in the first place.
 
 Content is encrypted with a key held only on control and station. The relay stores and forwards ciphertext and can demonstrate it never held the key. This extends `secret.sh`'s existing model from a single value to the whole channel.
 
@@ -269,7 +269,7 @@ The 2026 industry consensus is a single canonical documentation source rendered 
 
 Astro Starlight at `heliograph.dbhq.uk`, on the shape of paseo.sh: marketing home plus `/docs`.
 
-- `.md` mirror of every page at the same URL plus `.md`. The same page costs roughly 31 times more bytes as HTML than as markdown, so chrome is a token tax on every agent that reads the site. (Remeasured on 2026-09-11 over all 27 built pages: three to sixteen times, about eight on the median page. The saving is real, the figure in this line was never measured, and a test in `cmd/heliograph-site/main_test.go` now holds the claim to the build)
+- `.md` mirror of every page at the same URL plus `.md`. The same page costs roughly 31 times more bytes as HTML than as markdown, so chrome is a token tax on every agent that reads the site. (Remeasured on 2026-09-11 over all 27 built pages: three to twenty-one times, about eight on the median page. The saving is real, the figure in this line was never measured, and a test in `cmd/heliograph-site/main_test.go` now holds the claim to the build)
 - `llms.txt` and `llms-full.txt` at the origin root, organised by section rather than as one flat list
 - guidance blockquote at the **top** of each markdown page, because coding agents truncate long pages to preserve context and anything at the bottom is not read
 - a docs MCP server, cheap because the CLI is already Go
@@ -440,4 +440,4 @@ Counts are PRs merged in wall-clock order across all tracks, not track labels.
 
 1. **Relay encryption** (C1). Key exchange, rotation, what the relay may see in metadata, and what happens when a station's key is lost. The largest unknown here
 2. **The compat shim's lifetime.** Removed at the first major version, but that version is not scheduled
-3. **Whether the station ever becomes a Go binary.** Deliberately left open. The Go CLI makes it cheap if it becomes right, and "it is just bash, you can read it before you run it" is a real part of why regulated estates permit this. Not a decision for now
+3. **Whether the station ever becomes a Go binary.** Deliberately left open. The Go CLI makes it cheap if it becomes right, and "it is just bash, you can read it before you run it" is a real part of why an operator will run it at all. Not a decision for now

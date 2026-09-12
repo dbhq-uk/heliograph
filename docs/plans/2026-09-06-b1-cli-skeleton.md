@@ -10,7 +10,7 @@
 
 - **Go 1.27.1**, standard library only. Every added dependency needs an argument in the PR that introduces it
 - The CLI drives a **stock, unmodified station**. Nothing in B1 may require a change to `heliograph-skill`
-- Request documents are `key: value` text, readable by an operator without tooling. That is a feature, not an accident
+- Request documents are `key: value` text, readable by an operator without tooling. That is deliberate: the operator has to be able to read what they are about to run
 - House style: British English, plain hyphens, **no em dashes**, no trailing full stops on headings
 - `gofmt -l` must be empty, `go vet ./...` clean, `go test ./...` green before every commit
 - Never print a credential. Report mechanism and length, never value
