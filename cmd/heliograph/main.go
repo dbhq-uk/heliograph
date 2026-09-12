@@ -751,6 +751,11 @@ func cmdStatus(args []string) error {
 	// hosts; two stations that have drifted report different payloads, and
 	// nothing else on this page would say so.
 	printIf("payload: ", s.Payload)
+	// Printed for EVERY status, including the ones with no value to print.
+	// This is the only line here that is a property of the station rather than
+	// of the run, and a field that vanishes when it is unknown is a field
+	// somebody fills in from memory.
+	fmt.Println(actionModeLine(s))
 	printIf("started: ", s.Started)
 	printIf("progress:", s.Progress)
 	printIf("last:    ", s.Last)
@@ -773,6 +778,40 @@ func printIf(label, v string) {
 	if v != "" {
 		fmt.Printf("%s %s\n", label, v)
 	}
+}
+
+// actionModeLine says whether this station will run a step that changes state.
+//
+// FOUR SENTENCES AND NO DEFAULT ARM. The two published values are one thing
+// each; the two silences are not the same silence and must not read as one.
+//
+// The absent case is the one that matters. Every station planted before the
+// field publishes nothing, and rendering that as read-only would tell somebody
+// an estate is safe on the strength of a station that has said nothing at all.
+// The sentence therefore says what is true - the station did not answer - and
+// then says out loud that this is not read-only, because that is the reading a
+// hurried person supplies for themselves.
+func actionModeLine(s wire.Status) string {
+	switch {
+	case s.ActionsAllowed():
+		return "actions:  allowed - this station runs a step declaring 'action', with CONFIRM=yes on the request"
+	case s.ActionsRefused():
+		return "actions:  refused - this station is read-only. The operator restarts it with --allow-actions"
+	case s.Actions != "":
+		return fmt.Sprintf("actions:  %s - this build does not know that mode. Treat it as neither allowed nor read-only", quoteMode(s.Actions))
+	default:
+		return "actions:  not reported - this station is older than the field. That is not the same as read-only"
+	}
+}
+
+// quoteMode shows a mode this build does not recognise without letting it
+// impersonate one that is recognised. An unquoted value from the far side sits
+// in the sentence looking exactly like a word this side chose.
+func quoteMode(v string) string {
+	if len(v) > 40 {
+		v = v[:40] + "..."
+	}
+	return "'" + strings.ReplaceAll(v, "'", "") + "'"
 }
 
 func cmdLogs(args []string) error {

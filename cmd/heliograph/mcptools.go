@@ -138,6 +138,13 @@ func tools() []mcp.Tool {
 			"refused or stopped. An empty state means the station has published nothing yet, " +
 			"which usually means it has not been started. `refused` is not a failure: it means " +
 			"the station would not run the step, and the reason names the flag that would permit it.",
+		// The `actions` line this returns is deliberately NOT described here.
+		// Glama scores the tool DEFINITIONS and publishes that score against a
+		// release version, so any wording change here needs a human to make a
+		// Glama release before the listing stops being true - see
+		// TestGlamaSnapshotMatchesTheTools. The returned line explains itself
+		// in full, which is where a model reads it anyway, so the description
+		// buys nothing worth a manual release.
 		Schema: obj(map[string]any{"estate": estateArg}),
 		Call: func(a map[string]any) (string, error) {
 			o, err := open(mcp.Str(a, "estate"))
@@ -153,6 +160,13 @@ func tools() []mcp.Tool {
 			}
 			var b strings.Builder
 			fmt.Fprintf(&b, "state: %s\n", s.State)
+			// ALWAYS, including when the station published nothing for it. A
+			// field omitted when it is unknown is the one a model fills in from
+			// the log history sitting in front of it, and that inference is
+			// wrong in both directions.
+			// The CLI pads its labels into a column; this side is key/value for
+			// a model, so the padding comes back out and the sentence stays.
+			fmt.Fprintf(&b, "%s\n", strings.Replace(actionModeLine(s), "actions:  ", "actions: ", 1))
 			for _, kv := range [][2]string{{"id", s.ID}, {"step", s.Step}, {"host", s.Host},
 				{"started", s.Started}, {"progress", s.Progress}, {"last", s.Last},
 				{"finished", s.Finished}, {"exit", s.Exit}, {"log", s.Log}, {"reason", s.Reason}} {

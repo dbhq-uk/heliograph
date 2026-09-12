@@ -128,6 +128,29 @@ Details of each: [the runner](/runner), [writing a step](/steps),
 | `cancelled` | signalled mid-run. The partial log is kept |
 | `stopped` | the loop ended, by `stop: yes` or by Ctrl-C |
 
+## The action mode it publishes
+
+Every status also carries `actions:`, which is `allowed` or `refused`. It is
+not about the run. It says what this station will permit for the whole life of
+the process, and it is settled by `--allow-actions` at startup:
+
+| `actions: allowed` | started with `--allow-actions`. A step declaring `action` runs, still needing `CONFIRM=yes` on the request |
+| `actions: refused` | the default. A step declaring `action` is refused, and the refusal names the flag |
+
+It is published because the alternative is to infer it, and inference is wrong
+in both directions. A station restarted without the flag still has action logs
+sitting in the transport repo, and a station started with the flag may never
+have been asked for one. Anything showing a column of stations - `heliograph
+status`, a fleet view, a dashboard of your own - reads this field and never
+guesses from history.
+
+**A station that publishes no `actions:` line is not read-only.** It is a
+station planted before the field existed, and there is no way to ask it from
+your side. `heliograph status` says `not reported` for that case, which is a
+third answer and not a polite way of saying refused. Treating silence as
+read-only would tell somebody an estate is safe on the strength of a station
+that never said so.
+
 Every status also carries `host:` and `payload:`. The payload is a digest of
 `station.sh`, `run.sh` and `caplib.sh` - what a step's behaviour actually rests
 on. `HEAD` cannot answer "which payload is running", because every status
