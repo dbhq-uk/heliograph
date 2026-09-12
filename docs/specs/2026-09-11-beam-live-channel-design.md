@@ -102,6 +102,21 @@ trade as the relay's seal helper, one step further. This means:
   also the most demanding, and where it cannot be met the other two shapes are
   the answer.
 
+### Reproducible, or it is not readable
+
+Publishing the source is **not sufficient** here, and saying so is the point.
+"You can read it before you run it" has been the proposition, and nobody reads
+a binary. So the component ships with a **reproducible build**: deterministic
+output (`-trimpath`, `CGO_ENABLED=0`, a pinned toolchain), verification steps a
+third party can actually run, and checksums published with each release the way
+the CLI's already are. An operator who reviewed the source can then prove the
+binary in front of them came from it.
+
+This is the price of moving off pure bash, and it is **gated**: the beam does
+not ship without it. The first version of this that gets security-reviewed is
+the one that sets the impression, and it needs an answer to "how do I know this
+is the source I read".
+
 ## The station keeps control: the establishment gate and two classes
 
 A beam holds the line open, so `run.sh` cannot read a mode header before each
@@ -140,6 +155,32 @@ Stated so the claim is checkable, the way the relay's is:
   drops. A broker able to inject would be code execution inside the estate, the
   same bar the relay is held to.
 
+## Two seams, designed in now
+
+Both are interfaces in the open-source build, not features withheld from it.
+They exist so that a hosted layer - or anyone else - extends this rather than
+forks it, and both are cheap now and expensive to retrofit.
+
+- **A policy hook at the broker.** Establishment decisions are taken through a
+  defined interface rather than hardcoded, so a deployment can refuse a class
+  of beam for an estate. S6 already needs this to enforce estate-wide
+  relayed-only, so the seam is required whatever else is built on it. The
+  open-source broker ships a policy that reads local configuration; nothing is
+  gated behind a service.
+- **An identity-provider interface.** The station and control identities are
+  resolved through an interface rather than being fixed to a single operator
+  key on disk. The default implementation is exactly today's behaviour - one
+  key, one operator, no service - so a self-hoster sees no change. It exists
+  because the relay spec already deferred multi-user control, and retrofitting
+  identity after single-operator keys are baked through the handshake is the
+  expensive kind of change.
+
+**The line these seams respect:** every shape and every passenger - beacon,
+flare, relayed and direct beam, the PTY, `ssh` passthrough, the forward - stays
+in the open-source build, along with the crypto, the key handling, the gates,
+and the *generation* of audit. The seams exist for multi-user, multi-estate and
+governance concerns, never to move a gap-crossing capability behind one.
+
 ## Non-goals
 
 - No passengers - no shell, no PTY, no `ssh`. S5.
@@ -158,3 +199,9 @@ Stated so the claim is checkable, the way the relay's is:
 - The broker, given the session, cannot produce plaintext, and an injected
   frame drops the beam rather than being delivered - both proved in a test.
 - An idle beam is torn down and its session keys forgotten.
+- **The station component builds reproducibly**: a third party following the
+  published steps produces a binary matching the released checksum. The beam
+  does not ship until this passes.
+- Establishment runs through the policy hook, and identities resolve through
+  the identity-provider interface, with the default implementations behaving
+  exactly as a single-operator station does today.

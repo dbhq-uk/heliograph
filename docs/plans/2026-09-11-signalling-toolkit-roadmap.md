@@ -92,12 +92,19 @@ to rather than remembered, the way the rest of the register works.
 |---|---|---|---|---|---|---|
 | #86 | #87 | #89 | #90 | #91 | #92 | #93 |
 
-**#93** carries the two requirements that belong to no single design:
-reproducible builds and published checksums for the beam's Go component, which
-is the transparency answer to putting a binary where bash used to be readable;
-and the seams - a broker policy hook, a structured audit event stream, an
-identity-provider interface - that let a hosted layer extend this rather than
-fork it. Both are cheap now and expensive to retrofit.
+**#93 raised two requirements that belong to no single design, and both are now
+decided and folded into the specs that own them:**
+
+- **Reproducible builds** and published checksums for the beam's Go component -
+  the transparency answer to putting a binary where bash used to be readable.
+  **Gated**: it is in S4's done-when, so the beam does not ship without it.
+- **Three seams**, all adopted: a **broker policy hook** and an
+  **identity-provider interface** in S4, and a **structured audit event
+  stream** in S5. They are interfaces in the open-source build, with default
+  implementations that behave exactly as a single-operator station does today -
+  not features withheld from it. Every shape and passenger, the crypto, the
+  gates and the generation of audit stay open; the seams serve multi-user,
+  multi-estate and governance concerns only.
 
 ## The open questions the later specs must answer
 

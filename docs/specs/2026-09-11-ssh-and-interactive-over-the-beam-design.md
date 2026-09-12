@@ -94,6 +94,15 @@ and how much crossed - which is the most a live opaque channel can honestly
 offer, and more than a raw tunnel offers at all. The record ships back the way
 a captured log does, so it lands beside the estate's other evidence.
 
+**It is emitted as a structured event, not only as a line of text.** A log line
+has to be parsed back into fields by whoever consumes it, and every consumer
+parses it slightly differently. A defined event - one schema, versioned - can
+be shipped to a SIEM, counted, or aggregated across estates without anybody
+writing a regular expression first. This is better engineering for a
+self-hoster with Splunk as much as for anything hosted, which is why it is in
+the open-source build rather than reserved. The station still writes the human
+-readable record too; the event is in addition, not instead.
+
 ## The proxy subcommand behaves
 
 `heliograph proxy` is designed to be driven by ssh, so it obeys the contract a
@@ -119,6 +128,7 @@ corrupt the ssh stream, and the tests assert there is none.
 - `heliograph proxy <estate> sql01:22` reaches an allowlisted destination and
   is **refused** for one that is not, with the refusal coming from the station.
 - Every raw beam leaves a connection record - class, destination, peer, times,
-  bytes - beside the estate's logs.
+  bytes - beside the estate's logs, **both as readable text and as a versioned
+  structured event**, and a consumer can ingest the event without parsing prose.
 - `heliograph proxy` puts nothing but the tunnelled bytes on stdout, asserted
   by a test, and exits non-zero when the beam drops.

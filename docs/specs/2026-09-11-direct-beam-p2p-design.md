@@ -64,6 +64,11 @@ in two places, and the higher one wins:
   override it. This is the control that makes the direct beam adoptable: the
   people who would forbid it can forbid it centrally.
 
+That refusal goes through **S4's policy hook** rather than a check written for
+this case. The hook exists because this needs it; making the decision at a
+defined interface is what lets a deployment express its own rule without a
+fork, and it keeps one place where "may this beam establish" is answered.
+
 ## Honestly, in the docs (S1)
 
 The direct beam exposes each peer's address to the other and traverses NAT to

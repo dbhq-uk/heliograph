@@ -183,7 +183,7 @@ umbrella issue #85 and coordinated by
 | S4 | #90 | [the beam: the live `Channel` and the relayed beam](docs/specs/2026-09-11-beam-live-channel-design.md) | draft, ready to build |
 | S5 | #91 | [SSH and interactive over the beam](docs/specs/2026-09-11-ssh-and-interactive-over-the-beam-design.md) (PTY, `ssh` passthrough, gated TCP forward) | draft, ready to build |
 | S6 | #92 | [the direct beam](docs/specs/2026-09-11-direct-beam-p2p-design.md) (P2P: ICE, STUN, WebRTC data channel; relayed-beam fallback, no TURN) | draft, ready to build |
-| - | #93 | reproducible builds for the beam binary, and seams a cloud layer can extend | blocked on a decision |
+| - | #93 | reproducible builds for the beam binary, and seams a cloud layer can extend | decided; folded into S4 and S5 |
 
 **This reverses a stated anti-goal**: the beam is the reverse connection the
 raw-TCP transport was dropped for being. S1 rewrites the "what it will not do"

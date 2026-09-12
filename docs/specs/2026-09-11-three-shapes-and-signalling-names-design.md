@@ -49,8 +49,8 @@ single exchange, a beam holds the connection itself.
 
 ## Removing "regulated"
 
-Nine user-facing references, across seven files (five more sit in the two
-historical specs, handled separately below):
+Fourteen references in all, and **every one of them goes**. Nine are
+user-facing, across seven files:
 
 | file | line | now says | becomes |
 |---|---|---|---|
@@ -69,13 +69,25 @@ someone else holds the keys) rather than the *label* (regulated). The tool was
 never really about regulation; it was about the gap, and the gap is what the
 words should name.
 
-**The two historical specs are a dated record, not live copy.** `2026-09-06`
-and `2026-09-10` mention "regulated" as rationale for decisions made then.
-Rewriting a dated design document falsifies the record. Recommendation: leave
-their text and add a one-line note at the top pointing here, rather than edit
-history. If you would rather they were scrubbed too, that is a one-word change
-to this decision - say so and they are edited. Default is supersede, not
-rewrite.
+**The two historical specs are scrubbed as well.** They mention "regulated" as
+rationale for decisions made then, and the word goes from those too, so a
+repository-wide grep is clean and the CI guard needs no carve-out. Decided
+deliberately: a documented exception is a thing that has to be explained every
+time somebody greps, and the sentences read the same once the label is gone -
+what they argue is a property of the estate, not of its regulator.
+
+| file | line | now says | becomes |
+|---|---|---|---|
+| `2026-09-06-heliograph-next-design.md` | 129 | "permitted in regulated estates" | "permitted in the estates it targets" |
+| `2026-09-06-heliograph-next-design.md` | 152 | "an unacceptable trust ask for regulated customers, who are the customers" | "an unacceptable trust ask for customers who cannot let a third party read what their machines print, who are the customers" |
+| `2026-09-06-heliograph-next-design.md` | 443 | "why regulated estates permit this" | "why these estates permit this" |
+| `2026-09-10-new-transports-and-stations-design.md` | 133 | "Every regulated estate that refuses" | "Every estate that refuses" |
+| `2026-09-10-new-transports-and-stations-design.md` | 380 | "the regulated market" | "the enterprise market" |
+
+Only the label is removed. The arguments those passages make are left standing,
+including the two this programme overturns - `2026-09-06:129` dropping the
+reverse connection, and `:443` leaving open whether the station ever becomes a
+Go binary. S4 answers both, and a reader comparing them can see that it did.
 
 ## The refusal becomes a characterisation
 
@@ -158,8 +170,9 @@ separately, so a review can reason about breakage on its own:
 
 ## Done when
 
-- No user-facing file contains "regulat"; a grep in CI stays green (the guard
-  belongs beside the existing site guards).
+- **No file in the repository contains "regulat"** - a repository-wide grep in
+  CI stays green, with no exclusions (the guard belongs beside the existing
+  site guards).
 - The matrix renders three shapes from the one generated source, and
   `matrix.md`, `transports.md` and the shape descriptions agree with it.
 - The README and `security.md` describe the beam honestly, marked as written
