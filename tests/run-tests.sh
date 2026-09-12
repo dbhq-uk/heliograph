@@ -83,7 +83,7 @@ payload_artifacts() {
   for d in "$HERE/../station/bash" "$HERE/../station/powershell"; do
     [ -d "$d" ] || continue
     for f in .station.lock .station-state .station-approved .station-approved-ps \
-             .station-delivery .station-env .station-relay-state \
+             .station-delivery .station-env .station-env-ps .station-relay-state \
              .agent-service.pid .station-service.log; do
       [ -e "$d/$f" ] && out="$out ${d#"$HERE/../"}/$f"
     done

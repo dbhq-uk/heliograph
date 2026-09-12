@@ -434,6 +434,11 @@ moment it runs, so a process started immediately after can survive.
   cannot be replaced while running (PowerShell has no `exec`, and a respawn is
   killed by the Job Object the cancel depends on), so it exits **75**, which a
   scheduled task treats as *restart me*.
+- **Surviving a logout** is `.\service.ps1 install` in that payload - a
+  scheduled task registering `start.ps1`, with the transport's variables
+  carried into `.station-env-ps` because a task inherits none of them. It is a
+  DIFFERENT file from the bash payload's service.ps1, which registers the
+  launcher and refuses without a start.sh.
 - **A `kill` leaves `.station.lock`.** 5.1 cannot catch SIGTERM. The next
   station finds the pid dead and clears it.
 - **Pinning uses `.station-approved-ps`**, not the bash station's file: each

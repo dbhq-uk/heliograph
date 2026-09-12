@@ -40,8 +40,7 @@ four gates and the same exit codes. A control side reads one document and
 cannot tell which of them wrote it, and a test asserts exactly that.
 
 What it does **not** have is recorded on [Windows](/windows): no relay
-transport, a self-update that needs a restart, and no service installer of its
-own.
+transport, and a self-update that needs a restart.
 
 ## What it depends on
 
@@ -85,9 +84,12 @@ says what it would take.
 | where captured logs land | `ops-logs/` | `ops-logs/` |
 | what to run, and what happened | `station/request`, `station/status` | the same |
 
-The bash payload also carries `caprun.sh` - the same capture around an arbitrary
-command, for ad-hoc use - `secret.sh`, and the service installers. The
-PowerShell payload has no equivalent of any of those yet.
+Both payloads carry a `service.ps1` for Windows, and they are different files:
+the bash one registers the launcher, the PowerShell one registers `start.ps1`
+and carries the transport's variables into a restricted file, because a
+scheduled task inherits none of them. The bash payload also has `caprun.sh` -
+the same capture around an arbitrary command - and `secret.sh`; the PowerShell
+payload has neither yet.
 
 Details of each: [the runner](/runner), [writing a step](/steps),
 [Windows](/windows).

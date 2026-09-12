@@ -242,6 +242,10 @@ documented git form in which **the secret is the username**.
 
 ### Two limits worth knowing before you rely on it
 
+**Surviving a logout** is `.\service.ps1 install`, which this payload ships - a
+scheduled task, with the transport's variables carried into a restricted file
+because a task inherits none of them. See [service](/service).
+
 **No relay transport yet.** git and the file share, and that is all.
 
 This page said for a while that the relay *needs* `heliograph-seal`, a native

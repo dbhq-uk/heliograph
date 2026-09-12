@@ -203,18 +203,17 @@ outranks a capability that does not exist.**
 
 | | | |
 |---|---|---|
-| 1 | **A service installer for the PowerShell payload** | `service.ps1` ships in the *bash* payload, registers the task against the launcher, and refuses to install without `start.sh` beside it - so `--flavour powershell` plants no way to survive a logout at all. [The service page](site/content/service.md) documents the scheduled task to register by hand, built from the settings `service.ps1` itself uses, and that is a workaround rather than an answer. It must carry the transport's variables into the task, and set a restart policy, because a PowerShell station asks for a restart by **exiting 75** |
-| 2 | **The PowerShell relay transport** (#77) | **The reason this was deferred does not hold.** It was "the seal needs a native binary". All four primitives are available in **managed C#, 200 KB**, and were verified here against the standards' own vectors: X25519 and Ed25519 from `Chaos.NaCl` (djb's ref10, MIT), ChaCha20-Poly1305 from `NaCl.Core`, HKDF in 25 lines over `HMACSHA256`. No P/Invoke and no CNG, so it runs on Linux too and the seal is testable on an ordinary runner. [The design](docs/specs/2026-09-11-powershell-relay-design.md) recommends vendoring the source, and **test vectors before any porting**. Do not write the curve arithmetic |
-| 3 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
-| 4 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
-| 5 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
-| 6 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
-| 7 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
-| 8 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
-| 9 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
+| 1 | **The PowerShell relay transport** (#77) | **The reason this was deferred does not hold.** It was "the seal needs a native binary". All four primitives are available in **managed C#, 200 KB**, and were verified here against the standards' own vectors: X25519 and Ed25519 from `Chaos.NaCl` (djb's ref10, MIT), ChaCha20-Poly1305 from `NaCl.Core`, HKDF in 25 lines over `HMACSHA256`. No P/Invoke and no CNG, so it runs on Linux too and the seal is testable on an ordinary runner. [The design](docs/specs/2026-09-11-powershell-relay-design.md) recommends vendoring the source, and **test vectors before any porting**. Do not write the curve arithmetic |
+| 2 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
+| 3 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
+| 4 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
+| 5 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
+| 6 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
+| 7 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
+| 8 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
 | 10 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
 
-Items 2 to 9 come from a survey of every transport, host and control node
+Items 1 to 8 come from a survey of every transport, host and control node
 anyone has proposed, with the ones ruled out and why:
 [`docs/specs/2026-09-10-new-transports-and-stations-design.md`](docs/specs/2026-09-10-new-transports-and-stations-design.md)
 holds the verdicts and

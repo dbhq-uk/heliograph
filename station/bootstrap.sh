@@ -124,6 +124,7 @@ for r in $ROOTS; do
     \( -name '.station.lock' -o -name '.station-state' \
        -o -name '.station-approved' -o -name '.station-approved-ps' \
        -o -name '.station-delivery' -o -name '.station-env' \
+       -o -name '.station-env-ps' \
        -o -name '.station-relay-state' -o -name '.agent-service.pid' \
        -o -name '.station-service.log' \) -prune -o \
     -type f -print | sed 's|^\./||' | sort)

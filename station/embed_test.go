@@ -51,6 +51,7 @@ func TestEmbeddedPayloadCarriesOnlyTheStation(t *testing.T) {
 		".station-approved-ps",
 		".station-delivery",
 		".station-env",
+		".station-env-ps",
 		".station-relay-state",
 		".agent-service.pid",
 		".station-service.log",
