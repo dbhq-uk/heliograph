@@ -237,6 +237,80 @@ Two things it cannot see, said plainly: a local filesystem remote whose
 directory is not writable, and a pre-receive hook or branch ruleset. A dry run
 sends no pack, so those hooks never execute.
 
+It also classifies a failure of the **network** before it blames the
+credential. A timeout, a refusal, a name that will not resolve and an
+untrusted certificate are statements about the estate, and each has a
+different remedy. The two that catch people out are below.
+
+### When port 22 is blocked
+
+An estate that blocks outbound SSH is ordinary, and it is exactly the estate
+this tool is for. The remote is right and the key is right:
+
+```
+FAIL  git read   ls-remote failed: ssh: connect to host github.com port 22:
+                 Connection timed out
+```
+
+Both major hosts answer SSH on 443 as well, for this case. Nothing in
+heliograph touches ports - this is `~/.ssh/config` (`%USERPROFILE%\.ssh\config`
+on Windows) or the remote URL.
+
+| host | SSH endpoint on 443 |
+| --- | --- |
+| GitHub | `ssh.github.com` |
+| GitLab | `altssh.gitlab.com` |
+
+```
+Host github.com
+  Hostname ssh.github.com
+  Port 443
+```
+
+Prove it by hand before you rely on it:
+
+```bash
+ssh -T -p 443 git@ssh.github.com
+```
+
+A self-hosted host is a different question, and the preflight will not invent
+an answer for it: ask whoever runs it. If 443 is blocked too, use an https
+remote, or a transport that is not git. The relay and the object store both go
+out over 443, and the file share and the bundle go nowhere near the network.
+
+### An https remote through a proxy
+
+The other ordinary way out of one of these estates, and it fails in two shapes
+that both read like a bad token.
+
+**The proxy needs its own credential.** `Received HTTP code 407 from proxy`
+means nothing reached the git host at all, so the git token was never offered.
+Set the proxy variables, and exempt anything internal:
+
+```bash
+export https_proxy=http://user:pass@proxy.corp:8080
+export http_proxy="$https_proxy"
+export no_proxy=localhost,127.0.0.1,.corp.example
+```
+
+The station reports whether a proxy variable is set, with the password
+removed, because "check the proxy variables" is no use to somebody who cannot
+see them from where they are standing.
+
+**The proxy inspects TLS.** It presents its own CA, git does not trust it, and
+you get `SSL certificate problem: unable to get local issuer certificate`
+before a credential is ever sent. Point git at the estate's bundle:
+
+```bash
+export GIT_SSL_CAINFO=/etc/ssl/certs/corp-ca.pem
+# or, once, for this account
+git config --global http.sslCAInfo /etc/ssl/certs/corp-ca.pem
+```
+
+Do not turn verification off. `http.sslVerify=false` makes the symptom go away
+by accepting whatever is in the middle of the connection, on a tool that
+carries a credential and ships logs.
+
 ### Scoping it
 
 Read and write on that one repository, and nothing else. A deploy key or a

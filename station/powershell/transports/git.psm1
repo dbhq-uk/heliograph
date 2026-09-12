@@ -215,6 +215,135 @@ function Invoke-CapGit {
     }
 }
 
+function Get-GitProxyState {
+    <#
+      .SYNOPSIS
+      What a proxy variable says about this machine, credentials removed.
+      .DESCRIPTION
+      "Check the proxy variables" is not a remedy for somebody who cannot see
+      them from where they are standing, and the right answer differs depending
+      on which way it goes. The twin is _git_proxy_state in transports/git.sh.
+    #>
+    $seen = @()
+    foreach ($n in 'https_proxy', 'HTTPS_PROXY', 'http_proxy', 'HTTP_PROXY') {
+        $v = [System.Environment]::GetEnvironmentVariable($n)
+        if (-not $v) { continue }
+        $seen += "$n=$($v -replace '://[^/@]*@', '://***@')"
+    }
+    # DE-DUPLICATED, which the bash twin has no need to do: Windows environment
+    # variable names are case-insensitive, so https_proxy and HTTPS_PROXY are one
+    # entry read twice and the line would say the same thing to itself.
+    $seen = @($seen | Select-Object -Unique)
+    if ($seen.Count -gt 0) {
+        return "A proxy IS set here ($($seen -join ', ')), so it is on the path and its own rules apply"
+    }
+    return 'No proxy variable is set here (http_proxy, https_proxy), so nothing is being routed through one'
+}
+
+function Get-GitCause {
+    <#
+      .SYNOPSIS
+      The first line of a git failure that names a cause, or ''.
+      .DESCRIPTION
+      Invoke-CapGit captures git's stderr, so nothing below prints it and the
+      operator would otherwise be told a remedy without the sentence it is a
+      remedy for. Narrower than git_detail on the bash side, which has a table
+      to fill: one line is enough here, and it is the line git puts first.
+
+      The generic trailer is dropped whenever something more specific was
+      printed - "fatal: Could not read from remote repository" is emitted AFTER
+      the cause, so ordering alone would hand back the wrong one. CRs go
+      because ssh writes its diagnostics with one.
+    #>
+    param([string] $Text)
+    # NEVER EMPTY: the caller interpolates this mid-sentence, and "ls-remote
+    # failed: . The remote did not answer" tells the reader nothing at all. The
+    # trailing full stop goes for the same reason - the caller supplies one.
+    $none = 'git printed no diagnostic'
+    if (-not $Text) { return $none }
+    $re = '^(fatal|error|warning|remote|ssh):|Permission denied|Could not resolve|Connection refused|Connection timed out|Failed to connect'
+    $lines = @($Text -split "`n" | ForEach-Object { $_.TrimEnd("`r", ' ') } |
+               Where-Object { $_ -imatch $re })
+    $specific = @($lines | Where-Object { $_ -notmatch 'Could not read from remote repository' })
+    $pick = ''
+    if ($specific.Count -gt 0) { $pick = $specific[0] } elseif ($lines.Count -gt 0) { $pick = $lines[0] }
+    if (-not $pick) { return $none }
+    return ($pick -replace '\.$', '')
+}
+
+function Get-GitNetworkCause {
+    <#
+      .SYNOPSIS
+      The remedy for a failure of the NETWORK, or '' when it is not one.
+      .DESCRIPTION
+      A CONNECTION FAILURE IS NOT A CREDENTIAL FAILURE. This check used to end
+      every failure on "the remote did not answer, or refused this credential",
+      which on a station whose estate blocks outbound 22 is half right and
+      names neither the cause nor a remedy.
+
+      The twin is _git_network_cause in transports/git.sh, and the two are held
+      to the same fixtures by tests/test-transports-ps1.sh. Keep the wording in
+      step: an operator moving between a Windows and a Unix station in the same
+      estate is reading about the same firewall.
+    #>
+    param([string] $Text)
+
+    if (-not $Text) { return '' }
+    # The host and port come out of the ERROR, not out of the remote URL: ssh
+    # says "connect to host <h> port <n>" and curl "Failed to connect to <h>
+    # port <n>", and after a rewrite or a redirect that is not always the host
+    # in the URL.
+    $dialHost = ''; $port = ''
+    if ($Text -match 'connect to (?:host )?([A-Za-z0-9._-]+)[ :]+port (\d+)') {
+        $dialHost = $Matches[1]; $port = $Matches[2]
+    }
+    # Matched exactly rather than by substring: a self-hosted gitlab.corp.example
+    # is not altssh.gitlab.com, and naming an endpoint that host does not run is
+    # the same defect as naming the wrong cause.
+    $alt = ''; $ep = ''
+    if ($dialHost -eq 'github.com' -or $dialHost.EndsWith('.github.com')) {
+        $alt = 'GitHub publishes SSH on 443 at ssh.github.com'; $ep = 'ssh.github.com'
+    } elseif ($dialHost -eq 'gitlab.com' -or $dialHost.EndsWith('.gitlab.com')) {
+        $alt = 'GitLab publishes SSH on 443 at altssh.gitlab.com'; $ep = 'altssh.gitlab.com'
+    }
+
+    # Ordered by how specific each pattern is, because a proxy failure also says
+    # "connect" and a TLS failure through a proxy also mentions the proxy.
+    if ($Text -imatch 'could not resolve|name or service not known|nodename nor servname|temporary failure in name resolution') {
+        $named = '<the host in the remote URL>'
+        if ($Text -imatch 'could not resolve host(?:name)?:? ([A-Za-z0-9._-]+)') { $named = $Matches[1] }
+        return "That is DNS and not the credential: the name never resolved, so nothing was ever sent. Check the spelling in the remote URL, then resolution on this machine with ""Resolve-DnsName $named"". On a split-horizon estate this station may need the internal resolver"
+    }
+    if ($Text -imatch 'received http code 40[37] from proxy|proxy connect aborted|connect tunnel failed|proxy authentication') {
+        return "The PROXY refused the tunnel, so nothing reached the git host and the git credential was never offered. That is the proxy's own authentication. $(Get-GitProxyState)"
+    }
+    if ($Text -imatch 'ssl certificate problem|unable to get local issuer|self.signed certificate|certificate verif|sslv3|tlsv1|certificate has expired') {
+        return "TLS was refused before any credential was sent, so this is not the token. A proxy that inspects TLS presents its own CA and looks exactly like this. Point git at the estate's CA bundle - GIT_SSL_CAINFO=C:\path\to\ca.pem, or ""git config --global http.sslCAInfo C:\path\to\ca.pem"" - and do not turn verification off. $(Get-GitProxyState)"
+    }
+    if ($Text -imatch 'connection timed out|operation timed out|timed out after') {
+        if ($port -eq '22' -and $ep) {
+            return "That is the network and not the credential: nothing answered on port 22, which is what an estate that blocks outbound SSH looks like. ${alt}: put ""Host $dialHost / Hostname $ep / Port 443"" in your ssh config, then prove it with ""ssh -T -p 443 git@$ep"". If 443 is blocked too, use an https remote or a transport that is not git"
+        }
+        if ($port -eq '22') {
+            $who = if ($dialHost) { $dialHost } else { 'this host' }
+            return "That is the network and not the credential: nothing answered on port 22, which is what an estate that blocks outbound SSH looks like. Ask whether $who answers SSH on 443 as well - GitHub does, at ssh.github.com, and GitLab at altssh.gitlab.com - and point your ssh config at it with Hostname and Port 443. If 443 is blocked too, use an https remote or a transport that is not git"
+        }
+        $where = if ($port) { "port $port" } else { 'the remote' }
+        if ($dialHost) { $where += " at $dialHost" }
+        return "That is the network and not the credential: nothing answered on $where, so no credential was ever sent. Check egress from this machine to that port. $(Get-GitProxyState)"
+    }
+    if ($Text -imatch 'connection refused') {
+        $where = if ($dialHost) { $dialHost } else { 'the remote' }
+        if ($port) { $where += " port $port" }
+        return "That is the network and not the credential: the connection to $where was refused outright, so no credential was ever sent. Something is listening and saying no, or an egress firewall is answering for it. $(Get-GitProxyState)"
+    }
+    if ($Text -imatch 'network is unreachable|no route to host') {
+        $where = if ($dialHost) { $dialHost } else { 'the remote' }
+        return "That is routing and not the credential: this machine has no path to $where at all. Check the route and the egress rules before looking at the token"
+    }
+    return ''
+}
+
 function Test-Tp {
     <#
       .SYNOPSIS
@@ -225,9 +354,18 @@ function Test-Tp {
       station that can read and not write captures a perfect log it can never
       deliver. `push --dry-run` asks the question without changing anything.
     #>
-    $null = Invoke-CapGit ls-remote --heads origin
+    $out = Invoke-CapGit ls-remote --heads origin
     if ($script:GitExit -ne 0) {
-        Write-CapTpError "the remote did not answer, or refused this credential. './start.ps1 --check' reports which credential is in force"
+        # Classify the network before blaming the credential. See
+        # Get-GitNetworkCause: a timeout, a refusal and a name that will not
+        # resolve are statements about the estate, and each has its own remedy.
+        $why = Get-GitNetworkCause $out
+        $said = Get-GitCause $out
+        if ($why) {
+            Write-CapTpError "ls-remote failed: ${said}. $why"
+        } else {
+            Write-CapTpError "ls-remote failed: ${said}. The remote did not answer, or refused this credential. './start.ps1 --check' reports which credential is in force"
+        }
         return $false
     }
     # A REF THAT DOES NOT EXIST, and the choice is load-bearing rather than
@@ -241,9 +379,18 @@ function Test-Tp {
     # the service write access is granted on. transports/git.sh uses this exact
     # ref name, and it is fixed rather than generated so it is greppable in a
     # git host's audit log.
-    $null = Invoke-CapGit push --dry-run origin "HEAD:$script:WriteCheckRef"
+    $out = Invoke-CapGit push --dry-run origin "HEAD:$script:WriteCheckRef"
     if ($script:GitExit -ne 0) {
-        Write-CapTpError "the remote is readable but refused a push. A read credential and a write credential are different grants on most hosts, and a station that cannot push captures logs it can never deliver"
+        # The sentence below rules the network out on the strength of the read
+        # check having passed. When the push itself never reached the host that
+        # is false, and saying it anyway is the defect the classifier exists to
+        # remove, one check further down.
+        $why = Get-GitNetworkCause $out
+        if ($why) {
+            Write-CapTpError "push --dry-run was refused: $(Get-GitCause $out). $why. The read check did reach the host, so this is the network failing intermittently rather than a standing block"
+        } else {
+            Write-CapTpError "the remote is readable but refused a push. A read credential and a write credential are different grants on most hosts, and a station that cannot push captures logs it can never deliver"
+        }
         return $false
     }
     return $true
@@ -594,6 +741,13 @@ Export-ModuleMember -Function @(
     'Send-TpProgress',
     'Sync-TpSelf',
     'Hide-GitCredential',
+    # EXPORTED SO THEY CAN BE ASKED DIRECTLY. Every branch of the classifier is
+    # a different estate, and reproducing seven of them through a real git would
+    # cost more than it proves. tests/test-transports-ps1.sh drives one of them
+    # end to end through Test-Tp as well, because a classifier nothing calls
+    # passes its own unit checks perfectly.
+    'Get-GitNetworkCause',
+    'Get-GitCause',
     'Get-GitAuthHeader',
     'Get-LastExit',
     'Test-GitEnvConfig',

@@ -269,7 +269,7 @@ The 2026 industry consensus is a single canonical documentation source rendered 
 
 Astro Starlight at `heliograph.dbhq.uk`, on the shape of paseo.sh: marketing home plus `/docs`.
 
-- `.md` mirror of every page at the same URL plus `.md`. The same page costs roughly 31 times more bytes as HTML than as markdown, so chrome is a token tax on every agent that reads the site. (Remeasured on 2026-09-12 over all 29 built pages: three to twenty-one times, about seven on the median page. The saving is real, the figure in this line was never measured, and a test in `cmd/heliograph-site/main_test.go` now holds the claim to the build)
+- `.md` mirror of every page at the same URL plus `.md`. The same page costs roughly 31 times more bytes as HTML than as markdown, so chrome is a token tax on every agent that reads the site. (Remeasured on 2026-09-12 over all 29 built pages: two and a half to twenty times, about seven on the median page. The saving is real, the figure in this line was never measured, and a test in `cmd/heliograph-site/main_test.go` now holds the claim to the build)
 - `llms.txt` and `llms-full.txt` at the origin root, organised by section rather than as one flat list
 - guidance blockquote at the **top** of each markdown page, because coding agents truncate long pages to preserve context and anything at the bottom is not read
 - a docs MCP server, cheap because the CLI is already Go

@@ -183,6 +183,24 @@ that is not progress.
 | - | **the PowerShell relay** (#77) - `transports/relay.psm1` and `lib/seal.psm1`, so the payload built for estates that permit no binary can use the one transport that needed one. The bash relay shells out to `heliograph-seal`; this one does the whole construction in managed C# that ships as **source** inside the payload and is compiled by `Add-Type` at startup. X25519, Ed25519 and Poly1305 from a vendored Chaos.NaCl (djb's ref10, MIT, 60 files); ChaCha20, the RFC 8439 framing and HKDF-SHA256 written here. Conformance passes over the relay on both editions: **36 passed, 0 failed, 0 skipped** |
 | - | **the bundle's station side** (#68) - `transports/bundle.sh`, so the one transport that makes *air-gapped* literally true now has a far side. A station started with `TRANSPORT=bundle BUNDLE_DIR=<mount>` reads the request the CLI wrote, runs it, and writes the status and the log back onto the medium for somebody to carry home. It declares `request status progress` and **not** `live` or `self`: a stick does not change while you watch it, and nothing publishes a payload to one. Conformance runs over it, and `/air-gapped`, `/transports`, `/station` and `/matrix` are corrected - all four said a station could not read a bundle |
 
+| - | **a blocked port is diagnosed as a blocked port** (#66) - the read check ended every failure on *"Check the remote URL and the credential reported above"*, so an estate that drops outbound 22 sent the operator at the two things that were fine, and `443` appeared nowhere in the repository. Both stations now classify the NETWORK before they blame the credential: a timeout, a refusal, a name that will not resolve, an untrusted CA and a proxy 407 are five different estates with five different remedies, and the message names the host's SSH endpoint on 443 where it has one. `/transports` gains the two sections that need no code at all: SSH on 443 for GitHub and GitLab, and an https remote through an inspecting proxy - `http_proxy`, `no_proxy` and `GIT_SSL_CAINFO`, and why `http.sslVerify=false` is not the answer |
+
+### What the blocked port found
+
+**A fixture can be hostile and still prove nothing.** The check that the host
+match is exact rather than a substring used `gitlab.corp.example`, which no
+`*gitlab.com` glob matches either - so the assertion passed with the bug in
+place. The fixture has to be the string the loosened pattern gets WRONG, which
+is `ourgitlab.com`, and there is one per pattern now: with only the GitLab
+look-alike present, loosening the GitHub half failed nothing.
+
+**And two mutation runs in parallel poisoned each other's backup.** Both
+restored the same file from the same path, so one run's mutation was captured
+as the other's "clean" copy and a `|permission denied` survived into the
+working tree. Caught by reading the diff rather than by any test - every test
+passed with it in. Mutation runs are serial from now on, and the harness
+verifies the anchor changed before it believes a result.
+
 ### What the bundle found
 
 **The log goes flat in the bundle directory, not under `ops-logs/`.** Every

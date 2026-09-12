@@ -324,6 +324,107 @@ git_detail() {
   printf '%s' "$joined"
 }
 
+# --- the network underneath the credential -----------------------------------
+# A CONNECTION FAILURE IS NOT A CREDENTIAL FAILURE, and the read check used to
+# end every one of them on "Check the remote URL and the credential reported
+# above". Both are usually right, and the operator - the one person who cannot
+# debug this - is sent at the two things that are not the problem:
+#
+#   FAIL  git read   ls-remote failed: ssh: connect to host github.com port 22:
+#                    Connection timed out. Check the remote URL and the
+#                    credential reported above
+#
+# An estate that blocks outbound 22 is ordinary, and it is exactly the estate
+# this tool is for. So classify first, and blame the credential only when the
+# failure is not a statement about the network. The write check already does
+# this for a fast-forward refusal; this is the same move on the read side.
+#
+# THE HOST AND PORT COME OUT OF THE ERROR, not out of the remote URL. ssh says
+# "connect to host <h> port <n>" and curl says "Failed to connect to <h> port
+# <n>", and that host is the one that actually timed out - which after an
+# insteadOf rewrite, a redirect or a proxy is not always the one in the URL.
+# It also means these can be tested against canned output.
+_git_dial() {  # <output> - "host port", or empty
+  printf '%s\n' "$1" \
+    | sed -nE 's/.*connect to (host )?([A-Za-z0-9._-]+)[ :]+port ([0-9]+).*/\2 \3/p' \
+    | head -1
+}
+
+# What a proxy variable says about this machine, credentials removed. "Check the
+# proxy variables" is not a remedy when the reader cannot see them from where
+# they are standing, and whether one is set changes which answer is right.
+_git_proxy_state() {
+  local seen="" n v
+  for n in https_proxy HTTPS_PROXY http_proxy HTTP_PROXY; do
+    v="${!n:-}"
+    [ -n "$v" ] || continue
+    seen="${seen:+$seen, }$n=$(printf '%s' "$v" | sed -E 's#://[^/@]*@#://***@#')"
+  done
+  if [ -n "$seen" ]; then
+    printf 'A proxy IS set here (%s), so it is on the path and its own rules apply' "$seen"
+  else
+    printf 'No proxy variable is set here (http_proxy, https_proxy), so nothing is being routed through one'
+  fi
+}
+
+# _git_network_cause <combined-output> - the remedy, or empty when this failure
+# is not the network's. Empty is the signal to fall through to the credential
+# text, so a pattern that does not fire costs nothing.
+_git_network_cause() {
+  local out="$1" dial host port alt ep
+  dial="$(_git_dial "$out")"
+  host="${dial% *}"; port="${dial#* }"
+  [ "$dial" = "$host" ] && { host=""; port=""; }
+
+  # Both major hosts publish an SSH endpoint on 443 for precisely this case, and
+  # neither is discoverable from the failure. Nothing here changes: it is
+  # ~/.ssh/config or the remote URL, and no part of heliograph touches ports.
+  # Matched exactly rather than by substring: a self-hosted gitlab.corp.example
+  # is NOT altssh.gitlab.com, and naming an endpoint that host does not run is
+  # the same defect as naming the wrong cause.
+  case "$host" in
+    github.com|*.github.com) alt="GitHub publishes SSH on 443 at ssh.github.com"; ep=ssh.github.com ;;
+    gitlab.com|*.gitlab.com) alt="GitLab publishes SSH on 443 at altssh.gitlab.com"; ep=altssh.gitlab.com ;;
+    *)                       alt=""; ep="" ;;
+  esac
+
+  # Ordered by how specific each pattern is, because a proxy failure also says
+  # "connect" and a TLS failure through a proxy also mentions the proxy.
+  if printf '%s\n' "$out" | grep -qiE 'could not resolve|name or service not known|nodename nor servname|temporary failure in name resolution'; then
+    # A name that did not resolve never got as far as a connection, so it is not
+    # in "connect to host ... port ..." and has to be read out of its own line.
+    # ssh writes "Could not resolve hostname <h>" and curl "Could not resolve
+    # host: <h>".
+    host="$(printf '%s\n' "$out" \
+              | sed -nE 's/.*[Cc]ould not resolve host(name)?:? ([A-Za-z0-9._-]+).*/\2/p' | head -1)"
+    printf 'That is DNS and not the credential: the name never resolved, so nothing was ever sent. Check the spelling in the remote URL, then resolution on this machine with "getent hosts %s". On a split-horizon estate this station may need the internal resolver' \
+      "${host:-<the host in the remote URL>}"
+  elif printf '%s\n' "$out" | grep -qiE 'received http code 40[37] from proxy|proxy connect aborted|connect tunnel failed|proxy authentication'; then
+    printf 'The PROXY refused the tunnel, so nothing reached the git host and the git credential was never offered. That is the proxy'"'"'s own authentication. %s' \
+      "$(_git_proxy_state)"
+  elif printf '%s\n' "$out" | grep -qiE 'ssl certificate problem|unable to get local issuer|self.signed certificate|certificate verif|sslv3|tlsv1|certificate has expired'; then
+    printf 'TLS was refused before any credential was sent, so this is not the token. A proxy that inspects TLS presents its own CA and looks exactly like this. Point git at the estate'"'"'s CA bundle - GIT_SSL_CAINFO=/path/to/ca.pem, or "git config --global http.sslCAInfo /path/to/ca.pem" - and do not turn verification off. %s' \
+      "$(_git_proxy_state)"
+  elif printf '%s\n' "$out" | grep -qiE 'connection timed out|operation timed out|timed out after'; then
+    if [ "$port" = "22" ] && [ -n "$ep" ]; then
+      printf 'That is the network and not the credential: nothing answered on port 22, which is what an estate that blocks outbound SSH looks like. %s: put "Host %s / Hostname %s / Port 443" in ~/.ssh/config, then prove it with "ssh -T -p 443 git@%s". If 443 is blocked too, use an https remote or a transport that is not git' \
+        "$alt" "$host" "$ep" "$ep"
+    elif [ "$port" = "22" ]; then
+      printf 'That is the network and not the credential: nothing answered on port 22, which is what an estate that blocks outbound SSH looks like. Ask whether %s answers SSH on 443 as well - GitHub does, at ssh.github.com, and GitLab at altssh.gitlab.com - and point ~/.ssh/config at it with Hostname and Port 443. If 443 is blocked too, use an https remote or a transport that is not git' \
+        "${host:-this host}"
+    else
+      printf 'That is the network and not the credential: nothing answered on %s, so no credential was ever sent. Check egress from this machine to that port. %s' \
+        "${port:+port $port}${port:+ }${host:+at $host}" "$(_git_proxy_state)"
+    fi
+  elif printf '%s\n' "$out" | grep -qiE 'connection refused'; then
+    printf 'That is the network and not the credential: the connection to %s was refused outright, so no credential was ever sent. Something is listening and saying no, or an egress firewall is answering for it. %s' \
+      "${host:-the remote}${port:+ port $port}" "$(_git_proxy_state)"
+  elif printf '%s\n' "$out" | grep -qiE 'network is unreachable|no route to host'; then
+    printf 'That is routing and not the credential: this machine has no path to %s at all. Check the route and the egress rules before looking at the token' \
+      "${host:-the remote}"
+  fi
+}
+
 # --- the credential ----------------------------------------------------------
 # WHICH credential is even relevant is decided by the remote's scheme: an SSH
 # key is useless against an https:// remote and a token useless against git@.
@@ -495,11 +596,16 @@ _git_credential() {
 WRITE_CHECK_REF="refs/heads/heliograph-write-check"
 
 _git_verify() {
-  local out
+  local out why
   if out="$(cap_git ls-remote --heads origin 2>&1)"; then
     report ok "git read" "ls-remote returned $(printf '%s\n' "$out" | grep -c .) ref(s)"
   else
-    report FAIL "git read" "ls-remote failed: $(git_detail "$out"). Check the remote URL and the credential reported above"
+    # Classify the network before blaming the credential. See _git_network_cause:
+    # a timeout, a refusal and a DNS failure are statements about the estate, and
+    # each has a different remedy. Empty means it was not one of those, and the
+    # credential text below is then the right answer rather than the default one.
+    why="$(_git_network_cause "$out")"
+    report FAIL "git read" "ls-remote failed: $(git_detail "$out"). ${why:-Check the remote URL and the credential reported above}"
     return 0
   fi
 
@@ -511,6 +617,12 @@ _git_verify() {
     # Classify rather than blaming the credential for every refusal. A
     # fast-forward refusal is a statement about history, not about authorisation.
     report warn "git write" "the remote refused a fast-forward, so write access is unproven rather than denied. That is history, not the credential: the sync below pulls, and station.sh keeps retrying. If it persists, run 'git pull --rebase' by hand"
+  elif why="$(_git_network_cause "$out")" && [ -n "$why" ]; then
+    # The credential paragraph below asserts that the network is ruled out
+    # because the read check passed. When the push itself could not reach the
+    # host, that sentence is false - and stating it would be the same defect
+    # this classifier exists to remove, one check further down the table.
+    report FAIL "git write" "push --dry-run of HEAD:$WRITE_CHECK_REF was refused: $(git_detail "$out"). $why. The read check above did reach the host, so this is the network failing intermittently rather than a standing block"
   else
     # Every clause here has to name something this check can actually detect. It
     # used to end on "a remote that restricts which branch names may be created
