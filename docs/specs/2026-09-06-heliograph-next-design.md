@@ -330,6 +330,8 @@ heliograph.dbhq.uk/llms.txt    root of its own origin
 relay.heliograph.dbhq.uk       the hosted relay endpoint
 ```
 
+> **Not what shipped.** The relay deployed at `heliograph-relay.dbhq.uk`, because a four-label host under `dbhq.uk` needs an advanced certificate pack and those need a paid add-on - the whole lesson is in `edge/wrangler.toml`. `relay.heliograph.dbhq.uk` has never resolved. Left here rather than edited, because the name this document planned for is why the deployed one looks the way it does.
+
 `heliograph.com` is registered and significant, and the product name is an ordinary English word, so plan to rank for "heliograph agent", "heliograph skill" and "heliograph remote debugging" rather than for the word itself.
 
 ## The roadmap

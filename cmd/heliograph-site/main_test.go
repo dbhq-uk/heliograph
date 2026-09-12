@@ -851,3 +851,51 @@ func TestRedirectsCarryTheOldIntercomPath(t *testing.T) {
 		t.Errorf("_redirects does not carry the intercom redirect, got:\n%s", got)
 	}
 }
+
+// A published configuration block gave `RELAY_URL=https://relay.heliograph.dbhq.uk`,
+// and that host has never existed: the relay deployed at `heliograph-relay.dbhq.uk`
+// because a four-label host under `dbhq.uk` needs a paid certificate pack. The same
+// page carried the right host three times and the wrong one in the block people
+// paste, so a first-time operator configured a station from the documentation and
+// it failed at DNS.
+//
+// An allowlist rather than a resolver check, deliberately. A network call in the
+// build fails when somebody else's DNS has a bad minute, and this defect does not
+// need one: a hostname in our own zone that nobody has deployed is a typo, and a
+// typo is exactly what a list catches. Adding a host here is a deliberate act,
+// which is the point.
+//
+// The honest limit: this catches a wrong *host*. It does not catch a wrong path,
+// a wrong port, or a host that resolves and serves something else. The only
+// complete answer is executing the published example, which is #64's own finding.
+func TestEveryHostnameWePublishIsOneWeOwn(t *testing.T) {
+	deployed := map[string]bool{
+		"heliograph.dbhq.uk":       true, // the site itself
+		"heliograph-relay.dbhq.uk": true, // the relay. NOT relay.heliograph.dbhq.uk
+		"bbs.dbhq.uk":              true,
+		"modem.dbhq.uk":            true,
+		"skills.dbhq.uk":           true,
+	}
+
+	re := regexp.MustCompile(`[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:dbhq\.uk|heliograph\.io)`)
+	ents, err := os.ReadDir("../../site/content")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		if !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join("../../site/content", e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, host := range re.FindAllString(string(b), -1) {
+			if !deployed[host] {
+				t.Errorf("site/content/%s publishes %q, which is not a host we have deployed. "+
+					"If it is real, add it to this test; if it is a typo, that is the bug",
+					e.Name(), host)
+			}
+		}
+	}
+}
