@@ -19,12 +19,22 @@ side, so a container can start cleanly on a host with no network at all.
 a log; the station side picks the request up and sends the log back. One half on
 its own moves nothing, so the status column below names both.
 
-**Every transport is one of two shapes**, and it decides more about an estate's
-answer than anything else here: a **pigeonhole** is a dead letter drop that
-needs nothing to be reachable, and an **intercom** talks to the station
-directly. All six below are pigeonholes.
-[What works with what](/matrix) sets the two out side by side, along with every
-station and controller and which combinations actually run.
+### Two shapes, and the shape decides more than the speed
+
+Every transport is one of two, and this settles more about an estate's answer
+than anything else on the page.
+
+| | |
+|---|---|
+| **pigeonhole** | A dead letter drop. You cannot reach the far side, the far side cannot reach you, and **both can reach one agreed place**. Both sides dial out; neither ever accepts a connection |
+| **intercom** | You can reach the station's endpoint directly, so there is no drop in the middle. Unusual, because the whole tool exists for when you cannot |
+
+**All six below are pigeonholes.** The difference that matters is not latency
+but where the gates sit: on a pigeonhole the station decides whether to run a
+step it already has, while on an [intercom](/intercom) the script travels with
+the request and `heliograph-mode` becomes a claim rather than a control. A
+pigeonhole also needs nothing to be reachable, ever, which is why [raw TCP was
+dropped](/security). [What works with what](/matrix) has the whole grid.
 
 | transport | reach for it when | control side | station side |
 |---|---|---|---|
