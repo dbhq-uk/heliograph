@@ -317,3 +317,38 @@ func onValue(group string) string {
 		return "all"
 	}
 }
+
+// The page is an application, not an essay with a widget in it. Both shape
+// definitions have to survive the prose being cut, because that cut is what
+// this page was asked for and losing the distinction with it would be the
+// content disappearing rather than moving.
+func TestBothShapesAreDefinedInsideTheApp(t *testing.T) {
+	h := Matrix()
+	for _, kind := range []Kind{Pigeonhole, Intercom} {
+		if !strings.Contains(h, `data-def="`+string(kind)+`"`) {
+			t.Errorf("the app carries no definition of %q", kind)
+		}
+	}
+	if !strings.Contains(h, "dead letter drop") {
+		t.Error("the pigeonhole definition has lost the phrase the station itself uses")
+	}
+}
+
+// On a phone the panel is a sheet that rises over the grid, so it needs a way
+// back. A sheet with no close is a sheet that eats the bottom of the screen.
+func TestThePanelCanBeClosed(t *testing.T) {
+	if !strings.Contains(Matrix(), "data-close") {
+		t.Error("the detail panel has no close control, so the mobile sheet cannot be dismissed")
+	}
+	if !strings.Contains(MatrixCSS, ".mxa-panel[data-open]") {
+		t.Error("the panel has no open state, so the mobile sheet can never rise")
+	}
+}
+
+// Tap targets. A cell is a button on a grid somebody will use with a thumb,
+// and the WCAG 2.2 minimum is 24px with 44px the comfortable target.
+func TestCellsAreBigEnoughToTap(t *testing.T) {
+	if !strings.Contains(MatrixCSS, "min-height:2.9rem") {
+		t.Error("the mobile breakpoint does not raise the cell tap target")
+	}
+}

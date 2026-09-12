@@ -306,20 +306,20 @@ func controls() string {
 	var b strings.Builder
 	b.WriteString(`<div class="mxa-bar">`)
 
-	b.WriteString(`<div class="mxa-fg"><span class="mxa-fl">Shape</span><div class="mxa-chips" role="radiogroup">`)
+	b.WriteString(`<div class="mxa-fg"><span class="mxa-fl">Shape</span><div class="mxa-chips" role="radiogroup" aria-label="Transport shape">`)
 	chip(&b, "kind", "all", "Both", true)
 	chip(&b, "kind", string(Pigeonhole), "Pigeonhole", false)
 	chip(&b, "kind", string(Intercom), "Intercom", false)
 	b.WriteString(`</div></div>`)
 
-	b.WriteString(`<div class="mxa-fg"><span class="mxa-fl">Drive it from</span><div class="mxa-chips" role="radiogroup">`)
+	b.WriteString(`<div class="mxa-fg"><span class="mxa-fl">Drive it from</span><div class="mxa-chips" role="radiogroup" aria-label="Controller">`)
 	chip(&b, "ctl", "any", "Anything", true)
 	for _, c := range Controllers {
 		chip(&b, "ctl", c.ID, c.Name, false)
 	}
 	b.WriteString(`</div></div>`)
 
-	b.WriteString(`<div class="mxa-fg"><span class="mxa-fl">Show</span><div class="mxa-chips" role="radiogroup">`)
+	b.WriteString(`<div class="mxa-fg"><span class="mxa-fl">Show</span><div class="mxa-chips" role="radiogroup" aria-label="What to show">`)
 	chip(&b, "only", "all", "Everything", true)
 	chip(&b, "only", "runs", "Only what runs", false)
 	chip(&b, "only", "proven", "Only what is proven", false)
@@ -328,9 +328,18 @@ func controls() string {
 	// The count is the readout that makes a filter feel like it did something,
 	// and it is a fact rather than decoration: 70 combinations exist and most
 	// of them do not work.
-	fmt.Fprintf(&b, `<p class="mxa-count" data-count><b>%d</b> of %d combinations run</p>`,
+	fmt.Fprintf(&b, `<p class="mxa-count" data-count><b>%d</b> of %d run</p>`,
 		countRunnable(), len(Stations)*len(Transports))
 	b.WriteString(`</div>`)
+	// The shape definitions, one line each, shown only while that shape is
+	// selected. They used to be four paragraphs above the grid, which is the
+	// thing this page was asked to stop being.
+	b.WriteString(`<p class="mxa-def" data-def="pigeonhole">` +
+		`<b>Pigeonhole:</b> a dead letter drop. You cannot reach the far side, it cannot reach you, and both reach one agreed place. No inbound port, ever. ` +
+		`<a href="/transports">More</a></p>`)
+	b.WriteString(`<p class="mxa-def" data-def="intercom">` +
+		`<b>Intercom:</b> you can reach the station directly, so the script travels WITH the request - and the mode header stops being a gate and becomes a claim the caller makes. ` +
+		`<a href="/intercom">More</a></p>`)
 	return b.String()
 }
 
@@ -422,7 +431,8 @@ func panel() string {
 	b.WriteString(`</dl>`)
 	fmt.Fprintf(&b, `<p class="mxa-links"><a data-panel-tlink href="%s">About %s</a> <a data-panel-slink href="%s">About %s</a></p>`,
 		esc(t.Href), esc(t.Name), esc(s.Href), esc(s.Short))
-	b.WriteString(`<p class="mxa-hint">Click a cell, or use the arrow keys.</p>`)
+	b.WriteString(`<p class="mxa-hint">Tap a cell, or use the arrow keys.</p>`)
+	b.WriteString(`<button type="button" class="mxa-close" data-close aria-label="Close details">Close</button>`)
 	b.WriteString(`</aside>`)
 	return b.String()
 }

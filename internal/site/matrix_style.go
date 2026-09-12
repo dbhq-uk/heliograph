@@ -26,154 +26,189 @@ const MatrixCSS = `
 .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
   clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
-/* The page breaks its measure. A grid seven columns wide inside 80ch is a
-   horizontal scrollbar on a desktop, which is the one place it should not be. */
-.docs-shell--wide{max-width:118rem}
-.docs-shell--wide main{max-width:none}
-.mxa{margin:1.6rem 0 2.2rem}
+/* THIS PAGE IS AN APPLICATION, not a document with a widget in it. The prose
+   above the grid was cut to three sentences and the grid takes the room that
+   freed: full width of the shell, and the height of the viewport under it. */
+.docs-shell--wide{max-width:none;padding:0 clamp(.6rem,2vw,1.6rem)}
+.docs-shell--wide main{max-width:none;padding-top:1.2rem;padding-bottom:1.5rem}
+.docs-shell--wide .rail{display:none}
+.docs-shell--wide main h1{font-size:clamp(1.5rem,3.2vw,2.1rem);margin-bottom:.3rem}
+.docs-shell--wide main h1+p{margin:0 0 .9rem;color:var(--ink-3);font-size:.92rem}
+.mxa{margin:0 0 1.4rem;display:flex;flex-direction:column;gap:.8rem}
 
-/* -- the control bar -- */
-.mxa-bar{display:flex;flex-wrap:wrap;gap:1.1rem 1.6rem;align-items:flex-end;
-  padding:.9rem 1rem;border:1px solid var(--ridge);border-radius:12px;background:var(--dusk)}
-.mxa-fl{display:block;font-size:.7rem;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--ink-3);margin-bottom:.4rem}
-.mxa-chips{display:flex;flex-wrap:wrap;gap:.3rem}
+/* -- the toolbar -- */
+.mxa-bar{display:flex;flex-wrap:wrap;gap:.8rem 1.4rem;align-items:flex-end;
+  padding:.75rem .9rem;border:1px solid var(--ridge);border-radius:12px;background:var(--dusk)}
+.mxa-fg{min-width:0}
+.mxa-fl{display:block;font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:.35rem}
+.mxa-chips{display:flex;gap:.3rem;flex-wrap:wrap}
 .mxa-chip{border:1px solid var(--ridge);background:none;color:var(--ink-2);font:inherit;
-  font-size:.82rem;border-radius:999px;padding:.22rem .7rem;cursor:pointer;
+  font-size:.8rem;border-radius:999px;padding:.24rem .7rem;cursor:pointer;white-space:nowrap;
   transition:border-color .15s,color .15s,background .15s}
 .mxa-chip:hover{border-color:var(--brass);color:var(--ink)}
 .mxa-chip:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .mxa-chip[aria-checked="true"]{background:var(--gold);border-color:var(--gold);color:#06213A;font-weight:600}
-.mxa-count{margin:0 0 .1rem auto;font-size:.85rem;color:var(--ink-3);white-space:nowrap}
-.mxa-count b{color:var(--flash);font-size:1.5rem;font-weight:600;line-height:1;
+.mxa-count{margin:0 0 .1rem auto;font-size:.8rem;color:var(--ink-3);white-space:nowrap}
+.mxa-count b{color:var(--flash);font-size:1.45rem;font-weight:600;line-height:1;
   font-variant-numeric:tabular-nums;margin-right:.15rem}
 
-/* -- the body: grid beside panel, stacked on a narrow screen -- */
-.mxa-body{display:grid;grid-template-columns:minmax(0,1fr) 20rem;gap:1.1rem;margin-top:1.1rem;align-items:start}
-@media(max-width:70rem){
-  .mxa-body{grid-template-columns:1fr}
-  /* Stacked, it is no longer a side panel, and a sticky full-width block
-     under the grid follows the reader down the page covering it. */
-  .mxa-panel{position:static}
-}
-.mxa-gridwrap{overflow-x:auto;border:1px solid var(--ridge);border-radius:12px;background:var(--dusk)}
+/* One line, and only while that shape is chosen. */
+.mxa-def{display:none;margin:0;padding:.55rem .8rem;border-left:3px solid var(--brass);
+  background:var(--dusk);font-size:.85rem;color:var(--ink-2);border-radius:0 8px 8px 0}
+.mxa-def b{color:var(--flash)}
+[data-kindfilter="pigeonhole"] .mxa-def[data-def="pigeonhole"],
+[data-kindfilter="intercom"] .mxa-def[data-def="intercom"]{display:block}
 
-/* min-width is what makes the wrapper's overflow-x real. Without it,
-   table-layout:fixed honours width:100% at any size and squeezes seven data
-   columns into whatever is left beside an 11.5rem sticky label column. */
-.mxa-grid{border-collapse:separate;border-spacing:0;width:100%;min-width:40rem;margin:0;
+/* -- grid beside panel -- */
+.mxa-body{display:grid;grid-template-columns:minmax(0,1fr) 19rem;gap:1rem;align-items:stretch}
+.mxa-gridwrap{overflow:auto;border:1px solid var(--ridge);border-radius:12px;background:var(--dusk)}
+
+.mxa-grid{border-collapse:separate;border-spacing:0;width:100%;min-width:38rem;margin:0;
   font-size:.9rem;table-layout:fixed}
 .mxa-grid td,.mxa-grid th{border:0;padding:0;vertical-align:middle}
-.mxa-corner{width:11.5rem;min-width:11.5rem;padding:.5rem .7rem;line-height:1.15}
-.mxa-corner span{display:block;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
-.mxa-corner span:first-child{text-align:left}
+.mxa-corner{width:10.5rem;min-width:10.5rem;padding:.45rem .6rem;line-height:1.15;
+  position:sticky;left:0;top:0;z-index:4;background:var(--dusk)}
+.mxa-corner span{display:block;font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .mxa-corner span:last-child{text-align:right;color:var(--brass)}
 
-.mxa-grid thead th{padding:.5rem .25rem;text-align:center;font-size:.74rem;font-weight:600;
-  letter-spacing:.02em;text-transform:none;color:var(--ink-2);border-bottom:1px solid var(--ridge);
-  transition:color .15s,background .15s}
+/* The head row sticks too: scrolling ten rows should not cost you the column
+   names, and this grid is meant to be scrolled. */
+.mxa-grid thead th{padding:.45rem .25rem;text-align:center;font-size:.72rem;font-weight:600;
+  color:var(--ink-2);border-bottom:1px solid var(--ridge);background:var(--dusk);
+  position:sticky;top:0;z-index:3;transition:color .15s,background .15s}
 .mxa-grid thead th a{color:inherit;text-decoration:none}
 .mxa-grid thead th a:hover{text-decoration:underline}
-.mxa-grid thead th em{display:block;font-style:normal;font-size:.58rem;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--ink-3);margin-top:.12rem}
+.mxa-grid thead th em{display:block;font-style:normal;font-size:.56rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3);margin-top:.1rem}
 
-/* Sticky, because the grid scrolls sideways on a phone and a row of dots
-   with the label scrolled off is seven facts about nothing. */
-.mxa-grid tbody th{text-align:left;padding:.42rem .7rem;font-size:.82rem;font-weight:500;
+.mxa-grid tbody th{text-align:left;padding:.4rem .6rem;font-size:.8rem;font-weight:500;
   color:var(--ink-2);text-transform:none;letter-spacing:0;border-right:1px solid var(--ridge);
   transition:color .15s,background .15s;position:sticky;left:0;z-index:2;background:var(--dusk)}
-.mxa-corner{position:sticky;left:0;z-index:3;background:var(--dusk)}
 .mxa-grid tbody th a{color:inherit;text-decoration:none}
 .mxa-grid tbody th a:hover{text-decoration:underline}
-.mxa-grid tbody th em{display:block;font-style:normal;font-size:.62rem;color:var(--ink-3)}
+.mxa-grid tbody th em{display:block;font-style:normal;font-size:.6rem;color:var(--ink-3)}
 .mxa-grid tbody tr:nth-child(even) td{background:rgba(255,255,255,.012)}
 
 /* -- the cells -- */
 .mxa-grid tbody td{text-align:center}
-.mxa-grid tbody td button{display:block;width:100%;border:0;background:none;padding:.42rem .2rem;
-  cursor:pointer;color:inherit}
-/* A visible focus ring is the whole keyboard story: the pin moves focus to a
-   cell button, and suppressing the outline with nothing in its place made
-   that move invisible. */
+.mxa-grid tbody td button{display:block;width:100%;border:0;background:none;
+  padding:.5rem .2rem;cursor:pointer;color:inherit;min-height:2.6rem}
 .mxa-grid tbody td button:focus{outline:none}
 .mxa-grid tbody td button:focus-visible{outline:2px solid var(--flash);outline-offset:-2px;border-radius:6px}
-/* EVERY STATE HAS ITS OWN SHAPE as well as its own hue. Proven and works
-   were both solid rounded squares and differed by colour alone, which is the
-   distinction a colour-blind reader loses first - and there are five states
-   here, so hue on its own was never going to carry it. */
-.mxa-dot{display:inline-block;width:1.05rem;height:1.05rem;border-radius:4px;
+
+/* EVERY STATE HAS ITS OWN SHAPE as well as its own hue, because five states
+   in one hue differ only by brightness and that is the distinction a
+   colour-blind reader loses first. */
+.mxa-dot{display:inline-block;width:1rem;height:1rem;border-radius:4px;
   background:var(--mx-none);transition:transform .18s var(--ease),box-shadow .18s}
-[data-state="proven"] .mxa-dot{background:var(--mx-proven);border-radius:4px}      /* filled square */
-[data-state="works"] .mxa-dot{background:var(--mx-works);border-radius:50%}        /* filled circle */
-[data-state="needs"] .mxa-dot{background:none;border:2px solid var(--mx-needs);
-  border-radius:50%}                                                              /* hollow circle */
-[data-state="untested"] .mxa-dot{background:none;border:2px dashed var(--mx-untested);
-  border-radius:4px}                                                              /* dashed square */
+[data-state="proven"] .mxa-dot{background:var(--mx-proven);border-radius:4px}
+[data-state="works"] .mxa-dot{background:var(--mx-works);border-radius:50%}
+[data-state="needs"] .mxa-dot{background:none;border:2px solid var(--mx-needs);border-radius:50%}
+[data-state="untested"] .mxa-dot{background:none;border:2px dashed var(--mx-untested);border-radius:4px}
 [data-state="none"] .mxa-dot{background:none;position:relative;opacity:.5}
 [data-state="none"] .mxa-dot:before,[data-state="none"] .mxa-dot:after{
   content:"";position:absolute;inset:45% 12%;background:var(--slate);border-radius:1px}
 [data-state="none"] .mxa-dot:before{transform:rotate(45deg)}
 [data-state="none"] .mxa-dot:after{transform:rotate(-45deg)}
-.mxa-grid tbody td:hover .mxa-dot{transform:scale(1.22)}
+@media(hover:hover){.mxa-grid tbody td:hover .mxa-dot{transform:scale(1.22)}}
 
-/* -- the crosshair, and the flash -- */
-.mxa-grid tbody tr[data-lit] th,.mxa-grid thead th[data-lit]{color:var(--flash);background:rgba(123,167,212,.09)}
+/* -- crosshair and flash -- */
+.mxa-grid tbody tr[data-lit] th,.mxa-grid thead th[data-lit]{color:var(--flash);background:rgba(123,167,212,.14)}
 .mxa-grid td[data-lit]{background:rgba(123,167,212,.06)}
 .mxa-grid td[data-on] .mxa-dot{box-shadow:0 0 0 3px rgba(230,241,251,.22),0 0 16px 2px currentColor;transform:scale(1.3)}
 .mxa-grid td[data-on]{background:rgba(123,167,212,.14);box-shadow:inset 0 0 0 1px var(--gold)}
 
-/* The heliograph is a mirror flashing light across a valley. A selection
-   sweeps the row it lit, which is the one piece of motion on the page. */
+/* The heliograph is a mirror flashing light across a valley. */
 @keyframes mx-beam{from{background-position:-40% 0}to{background-position:140% 0}}
 .mxa-grid tbody tr[data-lit]{background-image:linear-gradient(90deg,
   transparent 0%,rgba(230,241,251,.10) 45%,rgba(230,241,251,.16) 50%,rgba(230,241,251,.10) 55%,transparent 100%);
   background-size:60% 100%;background-repeat:no-repeat;animation:mx-beam .55s var(--ease) 1}
 @media(prefers-reduced-motion:reduce){
   .mxa-grid tbody tr[data-lit]{animation:none;background-image:none}
-  .mxa-dot{transition:none}
+  .mxa-dot,.mxa-panel{transition:none}
 }
 
 /* -- the panel -- */
 .mxa-panel{border:1px solid var(--ridge);border-radius:12px;background:var(--dusk);
-  padding:1rem 1.1rem 1.1rem;position:sticky;top:1rem}
-.mxa-state{margin:0 0 .45rem;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;
+  padding:.9rem 1rem 1rem;align-self:start;position:sticky;top:1rem}
+.mxa-state{margin:0 0 .4rem;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
   font-weight:700;display:inline-block;padding:.16rem .5rem;border-radius:5px;color:#06213A}
 .mxa-state[data-state="proven"]{background:var(--mx-proven)}
 .mxa-state[data-state="works"]{background:var(--mx-works)}
 .mxa-state[data-state="needs"]{background:var(--mx-needs)}
 .mxa-state[data-state="untested"]{background:var(--mx-untested)}
 .mxa-state[data-state="none"]{background:var(--slate);color:var(--ink-2)}
-.mxa-panel h3{margin:0 0 .5rem;font-size:1.02rem;line-height:1.3;color:var(--flash)}
+.mxa-panel h3{margin:0 0 .45rem;font-size:1rem;line-height:1.3;color:var(--flash)}
 .mxa-panel h3 span{color:var(--ink-3);font-weight:400}
-.mxa-panel p[data-panel-note]{margin:0 0 .8rem;font-size:.88rem;color:var(--ink-2);line-height:1.5}
-.mxa-meta{margin:0 0 .8rem;display:grid;gap:.3rem;font-size:.78rem}
-.mxa-meta div{display:flex;gap:.5rem;justify-content:space-between;border-bottom:1px solid var(--ridge);padding-bottom:.25rem}
+.mxa-panel p[data-panel-note]{margin:0 0 .7rem;font-size:.86rem;color:var(--ink-2);line-height:1.5}
+.mxa-meta{margin:0 0 .7rem;display:grid;gap:.28rem;font-size:.76rem}
+.mxa-meta div{display:flex;gap:.5rem;justify-content:space-between;border-bottom:1px solid var(--ridge);padding-bottom:.22rem}
 .mxa-meta dt{color:var(--ink-3);margin:0}
 .mxa-meta dd{margin:0;color:var(--ink-2);text-align:right}
-.mxa-links{margin:0 0 .5rem;display:flex;gap:.8rem;flex-wrap:wrap;font-size:.82rem}
-.mxa-hint{margin:0;font-size:.74rem;color:var(--ink-3)}
+.mxa-links{margin:0 0 .4rem;display:flex;gap:.8rem;flex-wrap:wrap;font-size:.8rem}
+.mxa-hint{margin:0;font-size:.72rem;color:var(--ink-3)}
+.mxa-close{display:none}
 
-/* -- legend and the folded tables -- */
-.mxa-legend{list-style:none;display:flex;flex-wrap:wrap;gap:.35rem 1.1rem;margin:.9rem 0 0;padding:0;
-  font-size:.78rem;color:var(--ink-3)}
-.mxa-legend li{display:flex;align-items:center;gap:.4rem}
-.mxa-legend .mxa-dot{width:.8rem;height:.8rem;border-radius:4px}
-.mxa-tables{margin:1rem 0;border:1px solid var(--ridge);border-radius:10px;background:var(--dusk)}
-.mxa-tables summary{cursor:pointer;padding:.6rem .9rem;font-size:.88rem;color:var(--ink-2)}
+/* -- legend, folded tables, filter feedback -- */
+.mxa-legend{list-style:none;display:flex;flex-wrap:wrap;gap:.3rem 1rem;margin:0;padding:0;
+  font-size:.76rem;color:var(--ink-3)}
+.mxa-legend li{display:flex;align-items:center;gap:.35rem}
+.mxa-legend .mxa-dot{width:.75rem;height:.75rem}
+.mxa-tables{margin:.4rem 0 0;border:1px solid var(--ridge);border-radius:10px;background:var(--dusk)}
+.mxa-tables summary{cursor:pointer;padding:.55rem .9rem;font-size:.86rem;color:var(--ink-2)}
 .mxa-tables summary:hover{color:var(--flash)}
 .mxa-tables[open] summary{border-bottom:1px solid var(--ridge)}
 .mxa-tables .tw{padding:0 .9rem .4rem}
-
-/* A dimmed column or row is a filter answering, and it must still be readable
-   rather than invisible: the reader is deciding whether their case is here. */
 .mxa-grid [data-dim]{opacity:.22}
 .mxa-grid [data-dim] .mxa-dot{filter:grayscale(1)}
-.mxa-panel[data-hidden]{border-style:dashed;opacity:.72}
-.mxa-panel[data-hidden]:before{content:"Filtered out of the grid above";display:block;
-  font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--mx-needs);margin-bottom:.5rem}
-.mxa-empty{margin:.9rem 0 0;padding:.7rem .9rem;border:1px dashed var(--mx-needs);border-radius:8px;
-  color:var(--ink-2);font-size:.88rem}
+.mxa-panel[data-hidden]{border-style:dashed;opacity:.75}
+.mxa-panel[data-hidden]:before{content:"Filtered out of the grid";display:block;
+  font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;color:var(--mx-needs);margin-bottom:.45rem}
+.mxa-empty{margin:0;padding:.65rem .9rem;border:1px dashed var(--mx-needs);border-radius:8px;
+  color:var(--ink-2);font-size:.86rem}
 .mxa-empty[hidden]{display:none}
+
+/* ---------------------------------------------------------------- mobile */
+/* A phone gets a genuinely different layout rather than the desktop one made
+   small: the grid keeps the full width and the panel becomes a sheet that
+   rises when a cell is tapped, because a 19rem column beside a 7-column grid
+   on a 380px screen is two things neither of which is usable. */
+@media(max-width:62rem){
+  .mxa-body{grid-template-columns:1fr}
+  .mxa-bar{gap:.6rem 1rem;padding:.6rem .7rem}
+  .mxa-fg{flex:1 1 100%}
+  /* One scrolling line per group. Wrapping three groups of chips is a
+     toolbar taller than the grid it controls. */
+  .mxa-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:.15rem;
+    scrollbar-width:none;-ms-overflow-style:none}
+  .mxa-chips::-webkit-scrollbar{display:none}
+  .mxa-count{margin:0;order:-1;flex:1 1 100%}
+  .mxa-gridwrap{max-height:none}
+  .mxa-grid{min-width:34rem;font-size:.84rem}
+  .mxa-corner{width:7.5rem;min-width:7.5rem}
+  .mxa-grid tbody th{padding:.36rem .45rem;font-size:.74rem}
+  .mxa-grid tbody th em{display:none}
+  .mxa-grid thead th em{display:none}
+
+  .mxa-panel{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:40;
+    border-radius:14px 14px 0 0;border-bottom:0;max-height:62vh;overflow-y:auto;
+    box-shadow:0 -18px 40px rgba(0,0,0,.55);
+    transform:translateY(105%);transition:transform .22s var(--ease);
+    padding-bottom:calc(1rem + env(safe-area-inset-bottom))}
+  .mxa-panel[data-open]{transform:translateY(0)}
+  .mxa-hint{display:none}
+  .mxa-close{display:block;width:100%;margin-top:.6rem;border:1px solid var(--ridge);
+    background:none;color:var(--ink-2);font:inherit;font-size:.85rem;border-radius:8px;
+    padding:.55rem;cursor:pointer}
+  .mxa-close:hover{border-color:var(--gold);color:var(--flash)}
+  /* A 2.6rem tap target is below what a thumb can hit reliably. */
+  .mxa-grid tbody td button{min-height:2.9rem;padding:.55rem .2rem}
+}
+@media(max-width:26rem){
+  .mxa-grid{min-width:30rem}
+  .mxa-corner{width:6.2rem;min-width:6.2rem}
+}
 `
 
 // MatrixJS drives the crosshair, the panel, the filters and the deep link.
@@ -304,6 +339,9 @@ const MatrixJS = `
     if(history.replaceState)
       history.replaceState(null,'','#'+encodeURIComponent(td.getAttribute('data-cell')));
     if(opts&&opts.focus)td.querySelector('button').focus();
+    // The sheet rises only when a person chose a cell. Restoring a deep link
+    // on load must not cover the grid before they have seen it.
+    if(opts&&opts.open)P.box.setAttribute('data-open','');
     announce();
   }
 
@@ -349,16 +387,18 @@ const MatrixJS = `
         c.setAttribute('aria-checked',on?'true':'false');
         c.tabIndex=on?0:-1;
       });
+      if(g==='kind')root.setAttribute('data-kindfilter',filters.kind);
       applyFilters();
       describe(pinnedCell());
       return;
     }
+    if(e.target.closest('[data-close]')){P.box.removeAttribute('data-open');return;}
     // A link inside a header cell is a link. Let it be one.
     if(e.target.closest('a'))return;
     var td=e.target.closest('td[data-cell]');
     if(!td)return;
     var rw=G[rows.indexOf(td.parentNode)];
-    pin(rows.indexOf(td.parentNode),rw.indexOf(td),{focus:false});
+    pin(rows.indexOf(td.parentNode),rw.indexOf(td),{focus:false,open:true});
   });
 
   // Hover previews the panel and the crosshair without moving the pin.
@@ -390,18 +430,18 @@ const MatrixJS = `
     else if(k==='ArrowUp')dr=-1;
     else if(k==='Home')dc=-99;
     else if(k==='End')dc=99;
-    else if(k==='Enter'||k===' '){e.preventDefault();pin(cur.r,cur.c,{focus:true});return;}
+    else if(k==='Enter'||k===' '){e.preventDefault();pin(cur.r,cur.c,{focus:true,open:true});return;}
     else return;
     e.preventDefault();
     var r=cur.r,c=cur.c;
-    if(dc===-99){pin(r,0,{focus:true});return;}
-    if(dc===99){pin(r,G[r].length-1,{focus:true});return;}
+    if(dc===-99){pin(r,0,{focus:true,open:true});return;}
+    if(dc===99){pin(r,G[r].length-1,{focus:true,open:true});return;}
     // Step over anything the filters have dimmed: arrowing onto a cell the
     // reader has just filtered away is the filter appearing not to work.
     for(var i=0;i<G.length*G[0].length;i++){
       r+=dr;c+=dc;
       if(r<0||r>=G.length||c<0||c>=G[r].length)return;
-      if(!G[r][c].hasAttribute('data-dim')){pin(r,c,{focus:true});return;}
+      if(!G[r][c].hasAttribute('data-dim')){pin(r,c,{focus:true,open:true});return;}
     }
   });
 
@@ -413,11 +453,15 @@ const MatrixJS = `
         if(G[r][c].getAttribute('data-cell')===want)return {r:r,c:c};
     return null;
   }
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape')P.box.removeAttribute('data-open');
+  });
   window.addEventListener('hashchange',function(){
     var h=fromHash();
     if(h)pin(h.r,h.c,{focus:false});
   });
 
+  root.setAttribute('data-kindfilter',filters.kind||'all');
   applyFilters();
   var h=fromHash()||{r:0,c:0};
   cur=h;
