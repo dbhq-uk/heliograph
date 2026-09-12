@@ -23,8 +23,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27'
-          check-latest: true
+          go-version: '1.27.1'
 
       - name: gofmt
         run: |
@@ -88,8 +87,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27'
-          check-latest: true
+          go-version: '1.27.1'
 
       # The station lives in this repository since the merge, so there is no
       # second checkout and nothing for the test to skip - but the non-skip
@@ -192,6 +190,42 @@ jobs:
             }
           done
 
+  reproducible:
+    name: The release binaries build the same twice
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+
+      # THE CLAIM, MEASURED ON EVERY PULL REQUEST.
+      #
+      # "The binary in the path is the binary you can read" is worth nothing
+      # asserted and everything demonstrated, and it breaks quietly: one flag,
+      # one floating toolchain, one path baked into a binary, and every hash
+      # this project publishes is a number nobody else can arrive at.
+      #
+      # THE SECOND BUILD IS FROM A COPY WITH NO .git AND A DIFFERENT PATH,
+      # because those are the two things that actually broke it when it was
+      # first measured on 2026-09-12. Same source in a git checkout and in a
+      # tarball of that checkout gave 475be520... and 7a1ac692... - Go stamps
+      # the commit in by default and omits it silently where there is no
+      # repository, so the person verifying from the release tarball is the one
+      # who would have found out.
+      - name: two builds, one set of hashes
+        run: |
+          set -euo pipefail
+          packaging/reproduce.sh v0.0.0-ci /tmp/one > /tmp/one.log
+          mkdir -p /tmp/elsewhere
+          tar -c --exclude=.git --exclude=dist . | tar -x -C /tmp/elsewhere
+          ( cd /tmp/elsewhere && packaging/reproduce.sh v0.0.0-ci /tmp/two > /tmp/two.log )
+          if ! diff /tmp/one/SHA256SUMS /tmp/two/SHA256SUMS; then
+            echo "::error::the same source built twice produced different bytes. Whatever the docs say a stranger can reproduce, they cannot."
+            exit 1
+          fi
+          cat /tmp/one/SHA256SUMS
+
   station-purity:
     name: No Go crosses the gap
     runs-on: ubuntu-latest
@@ -233,8 +267,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27'
-          check-latest: true
+          go-version: '1.27.1'
       - name: build
         run: go run ./cmd/heliograph-site
       - name: every page has all three renderings
