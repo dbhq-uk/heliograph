@@ -115,22 +115,26 @@ func TestTheMatrixIsCompleteWithoutJavaScript(t *testing.T) {
 	}
 }
 
-// Both shapes have to appear, or the page's central claim is decoration. The
-// intercom is the only member of its kind and would be the one lost.
-func TestBothTransportShapesArePresent(t *testing.T) {
-	var pig, ic int
+// All shipped transports must carry one of the three shapes, or the page's
+// central claim is decoration. The flare is the only member of its kind and
+// would be the one lost. The beam is designed and not yet built (S4), so it is
+// permitted here and not required.
+func TestTransportShapesArePresent(t *testing.T) {
+	var beacon, flare, beam int
 	for _, tr := range Transports {
 		switch tr.Kind {
-		case Pigeonhole:
-			pig++
-		case Intercom:
-			ic++
+		case Beacon:
+			beacon++
+		case Flare:
+			flare++
+		case Beam:
+			beam++
 		default:
 			t.Errorf("transport %q has no shape", tr.ID)
 		}
 	}
-	if pig == 0 || ic == 0 {
-		t.Fatalf("want both shapes represented, got %d pigeonhole and %d intercom", pig, ic)
+	if beacon == 0 || flare == 0 {
+		t.Fatalf("want the beacon and the flare represented, got %d beacon and %d flare", beacon, flare)
 	}
 }
 

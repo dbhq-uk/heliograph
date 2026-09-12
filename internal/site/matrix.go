@@ -20,25 +20,26 @@ import (
 // exist is a build failure rather than a dead cell nobody notices.
 
 // Kind is the shape of a transport, and it is the distinction the whole
-// product rests on.
+// product rests on. The axis is what is held, and for how long: a beacon holds
+// a message, a flare is a single exchange, a beam holds the connection itself.
 //
-// The two words are not invented here. station/bash/pigeonhole.sh describes
-// itself as "a dead letter drop: you cannot reach the far side, the far side
-// cannot reach you, and both can reach one agreed place", and
-// station/bash/intercom.sh opens with "only when the station's endpoint is
-// reachable from here - that is unusual, the whole skill exists because it
-// normally is not". The site had both files and named neither shape.
+// The names come from signalling, which is what a heliograph is.
 type Kind string
 
 const (
-	// Pigeonhole is store-and-forward. Both sides dial OUT to one agreed
-	// place and neither ever accepts a connection. Everything shipped is one.
-	Pigeonhole Kind = "pigeonhole"
+	// Beacon is store-and-forward. Both sides dial OUT to one agreed place
+	// and neither ever accepts a connection. Everything shipped is one.
+	Beacon Kind = "beacon"
 
-	// Intercom is direct. You can reach the station's endpoint, so there is
+	// Flare is direct. You can reach the station's endpoint, so there is
 	// no drop in the middle - and the gates change shape, which is the part
 	// that matters rather than the latency.
-	Intercom Kind = "intercom"
+	Flare Kind = "flare"
+
+	// Beam is a live channel held open in both directions until it is torn
+	// down. Designed in S4 and not yet built, so nothing carries this Kind
+	// yet; it is named here because the vocabulary is one thing.
+	Beam Kind = "beam"
 )
 
 // Status is how far a thing has actually got, and the words are the ones the
@@ -107,20 +108,20 @@ func unsure(n string) Pairing { return Pairing{Status: Unproven, Note: n} }
 // Transports, in the order a reader should meet them: the three that are
 // driven end to end first, then the rest.
 var Transports = []Transport{
-	{ID: "git", Name: "git", Kind: Pigeonhole, Control: Proven, Station: Proven,
+	{ID: "git", Name: "git", Kind: Beacon, Control: Proven, Station: Proven,
 		Note: "A private repository is the channel in both directions. The only transport that can bring the station a newer copy of itself.", Href: "/transports#git"},
-	{ID: "relay", Name: "relay", Kind: Pigeonhole, Control: Proven, Station: Works,
+	{ID: "relay", Name: "relay", Kind: Beacon, Control: Proven, Station: Works,
 		Note: "Both sides dial out over ordinary HTTPS. Needs no git host, no storage account and no VNet - and needs heliograph-seal on the far side, which no other transport does.", Href: "/relay"},
-	{ID: "share", Name: "file share", Kind: Pigeonhole, Control: Proven, Station: Proven,
+	{ID: "share", Name: "file share", Kind: Beacon, Control: Proven, Station: Proven,
 		Note: "The cheapest there is, where both machines already mount the same directory. The mount is the credential.", Href: "/transports#file-share"},
-	{ID: "blob", Name: "Azure Blob", Kind: Pigeonhole, Control: Partial, Station: Works,
+	{ID: "blob", Name: "Azure Blob", Kind: Beacon, Control: Partial, Station: Works,
 		Note: "Reached through drop.sh in the station payload rather than through the heliograph binary. It is what the Azure Function App host uses.", Href: "/azure"},
-	{ID: "objstore", Name: "object store", Kind: Pigeonhole, Control: Works, Station: Missing,
+	{ID: "objstore", Name: "object store", Kind: Beacon, Control: Works, Station: Missing,
 		Note: "S3-compatible: AWS, R2, MinIO, B2, Spaces, Ceph. The CLI drives it and no station can read it, so the combination cannot work yet.", Href: "/transports#object-store"},
-	{ID: "bundle", Name: "bundle", Kind: Pigeonhole, Control: Works, Station: Missing,
+	{ID: "bundle", Name: "bundle", Kind: Beacon, Control: Works, Station: Missing,
 		Note: "The only thing that makes air-gapped literally true. A person carries the file. No station can read one yet.", Href: "/air-gapped"},
-	{ID: "intercom", Name: "intercom", Kind: Intercom, Control: Works, Station: Partial,
-		Note: "The one case where you CAN reach the station. The script travels with the request, so heliograph-mode stops being a control and becomes a claim the caller makes about its own file.", Href: "/intercom"},
+	{ID: "flare", Name: "flare", Kind: Flare, Control: Works, Station: Partial,
+		Note: "The one case where you CAN reach the station. The script travels with the request, so heliograph-mode stops being a control and becomes a claim the caller makes about its own file.", Href: "/flare"},
 }
 
 // Stations. Status words match /hosts exactly, because two pages disagreeing
@@ -128,7 +129,7 @@ var Transports = []Transport{
 var Stations = []Station{
 	{ID: "terminal", Name: "An operator's terminal", Status: Proven, Flavour: "bash, PowerShell",
 		Note: "Still the best host when there is a willing person. No infrastructure request, and start.sh prints its own preflight to somebody who can read it.", Href: "/station",
-		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "blob": yes(), "intercom": ok("the station must be reachable from your side")}},
+		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "blob": yes(), "flare": ok("the station must be reachable from your side")}},
 	{ID: "docker", Name: "Docker", Status: Proven, Flavour: "bash",
 		Note: "CI builds the image and runs a loop in it. The image plants the payload itself, so a transport with nothing to clone still has one.", Href: "/containers",
 		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "blob": yes()}},
@@ -152,7 +153,7 @@ var Stations = []Station{
 		Transports: map[string]Pairing{"git": yes(), "blob": yes(), "relay": needs("the key files, and a git host reachable once at first boot"), "share": needs("the share has to be mounted")}},
 	{ID: "azure-function", Name: "Azure Function App", Status: Written, Flavour: "bash",
 		Note: "A timer, not a loop. Validated and never deployed. It is the host the intercom was written for, because a Function App has a public endpoint while sitting inside the VNet.", Href: "/azure",
-		Transports: map[string]Pairing{"blob": ok("through pigeonhole.sh"), "intercom": ok("the one host with a reachable endpoint"), "git": needs("there is no git in the image")}},
+		Transports: map[string]Pairing{"blob": ok("through pigeonhole.sh"), "flare": ok("the one host with a reachable endpoint"), "git": needs("there is no git in the image")}},
 	{ID: "recipe", Name: "ECS Fargate, Cloud Run, anything else", Status: Missing, Flavour: "bash",
 		Note: "Recipes against the host contract, not templates. Issue #5 settled that deliberately: a template that has never started a station spends the credibility of the ones that have.", Href: "/hosts",
 		Transports: map[string]Pairing{"git": unsure("against the contract, never run"), "relay": unsure("against the contract, never run"), "share": unsure("against the contract, never run"), "blob": unsure("against the contract, never run")}},
@@ -163,7 +164,7 @@ var Stations = []Station{
 var Controllers = []Controller{
 	{ID: "cli", Name: "Linux, macOS or Windows", Status: Proven,
 		Note: "One static binary, amd64 or arm64, no runtime. Only the git transport shells out to anything - the rest are the binary alone.", Href: "/install",
-		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "objstore": yes(), "bundle": yes(), "intercom": ok("through intercom.sh")}},
+		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "objstore": yes(), "bundle": yes(), "flare": ok("through intercom.sh")}},
 	{ID: "agent", Name: "An AI agent, over MCP", Status: Proven,
 		Note: "heliograph mcp serves the same commands as typed tools over stdio. The gates do not move: a tool call publishes a request, and the station still decides whether to run it.", Href: "/mcp",
 		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "objstore": yes(), "bundle": yes()}},
@@ -392,7 +393,7 @@ const MatrixCSS = `
 .mx-col button[data-off]{opacity:.32}
 .mx-col button[data-off] .mx-n{text-decoration:line-through}
 .mx-note{margin:1rem 0 0;padding:.6rem .8rem;border-left:3px solid var(--gold);background:var(--dusk);font-size:.92rem}
-.mx-col button[data-kind="intercom"] .mx-n:after{content:"intercom";margin-left:.5rem;font-size:.68rem;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);border:1px solid var(--ridge);border-radius:4px;padding:0 .3rem;vertical-align:.1em}
+.mx-col button[data-kind="flare"] .mx-n:after{content:"flare";margin-left:.5rem;font-size:.68rem;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);border:1px solid var(--ridge);border-radius:4px;padding:0 .3rem;vertical-align:.1em}
 `
 
 const MatrixJS = `
