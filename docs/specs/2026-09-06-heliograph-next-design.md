@@ -126,7 +126,7 @@ A station reading a `version:` it does not know refuses the request and publishe
 | bundle | new | signed tarball, export and import, for a true air gap |
 | intercom (HTTP inbound) | keep | narrow case: you can reach the station |
 
-**TCP is dropped.** A persistent reverse connection from the far side to a listener you control is a C2 channel by any blue team's definition, and the README's claim that heliograph does not tunnel, proxy or hold a connection open is a large part of why the tool is permitted in regulated estates. The relay delivers the low-latency loop over ordinary HTTPS without spending that claim.
+**TCP is dropped.** A persistent reverse connection from the far side to a listener you control is a C2 channel by any blue team's definition, and the README's claim that heliograph does not tunnel, proxy or hold a connection open is a large part of why the tool is permitted in the estates it targets. The relay delivers the low-latency loop over ordinary HTTPS without spending that claim.
 
 **Message brokers are parked, not rejected.** AMQP 1.0 and MQTT have real value where an estate already runs one, but no pure-bash client exists, so the station would gain its first dependency. Revisit once the interface has proven itself.
 
@@ -149,7 +149,7 @@ Two, because the station token sits on a machine you do not trust and cannot rea
 
 ### End-to-end encryption is not optional
 
-A hosted relay would otherwise see everything every command in the estate prints. That is an unacceptable trust ask for regulated customers, who are the customers.
+A hosted relay would otherwise see everything every command in the estate prints. That is an unacceptable trust ask for customers who cannot let a third party read what their machines print, who are the customers.
 
 Content is encrypted with a key held only on control and station. The relay stores and forwards ciphertext and can demonstrate it never held the key. This extends `secret.sh`'s existing model from a single value to the whole channel.
 
@@ -440,4 +440,4 @@ Counts are PRs merged in wall-clock order across all tracks, not track labels.
 
 1. **Relay encryption** (C1). Key exchange, rotation, what the relay may see in metadata, and what happens when a station's key is lost. The largest unknown here
 2. **The compat shim's lifetime.** Removed at the first major version, but that version is not scheduled
-3. **Whether the station ever becomes a Go binary.** Deliberately left open. The Go CLI makes it cheap if it becomes right, and "it is just bash, you can read it before you run it" is a real part of why regulated estates permit this. Not a decision for now
+3. **Whether the station ever becomes a Go binary.** Deliberately left open. The Go CLI makes it cheap if it becomes right, and "it is just bash, you can read it before you run it" is a real part of why these estates permit this. Not a decision for now

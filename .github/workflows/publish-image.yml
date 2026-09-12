@@ -8,7 +8,7 @@ name: Publish container image
 # becomes the new `latest` pulled by every estate that has ever run
 # `docker pull ghcr.io/.../heliograph-toolkit`, within the few minutes CI
 # takes to run. There is also no good answer to "which version did we run"
-# beyond a commit SHA - a regulated estate's own change record wants a
+# beyond a commit SHA - an estate's own change record wants a
 # citable version, not "whatever was on main that day" - and `latest` moving
 # on every commit makes "what we pulled on Tuesday" and "what we would pull
 # today" different, unannounced answers to the same question.
@@ -26,7 +26,7 @@ name: Publish container image
 # A pushed tag is a deliberate act distinct from an ordinary commit: someone
 # ran `git tag vX.Y.Z && git push --tags` on purpose. It maps one-to-one onto
 # an exact commit and therefore an exact Dockerfile, and it is the version
-# string a regulated estate can write into its own change record and expect
+# string an estate can write into its own change record and expect
 # to still mean the same thing months later - "we ran
 # heliograph-toolkit:v1.2.3" is answerable by pulling that tag. The
 # strongest form of that answer is not even the tag - it is the image digest

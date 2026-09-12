@@ -170,7 +170,7 @@ that is not progress.
 
 A program that adds the third shape - the **beam**, a held-open live channel -
 renames the shapes onto one medium (**beacon** / **flare** / **beam**, from
-pigeonhole / intercom / the new open line), and drops the "regulated estate"
+pigeonhole / intercom / the new open line), and drops the compliance-label
 framing throughout. Six designs, each its own spec and PR, tracked by the
 umbrella issue #85 and coordinated by
 [`docs/plans/2026-09-11-signalling-toolkit-roadmap.md`](docs/plans/2026-09-11-signalling-toolkit-roadmap.md).

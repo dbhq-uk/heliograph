@@ -15,7 +15,7 @@ Until now every way across the gap left a *message* somewhere and collected it
 later, and the product defined itself by the one way across it refused to be: a
 tunnel. This program adds the way across that holds the *connection* open - the
 **beam** - renames the three shapes onto heliograph's own medium (light), and
-drops the "regulated estate" framing throughout. The proposition stops being
+drops the compliance-label framing throughout. The proposition stops being
 "the remote-execution tool that is not a C2 channel" and becomes "every way
 across the gap, each one honestly described, pick the one your estate allows".
 The beam is the biggest of these and the one that most needs saying plainly:
@@ -66,7 +66,7 @@ architecture is still open and the spec is a brainstorm of its own.
 | id | spec | delivers | depends on | state |
 |---|---|---|---|---|
 | S0 | *this file* | the program, the vocabulary, the order | - | written |
-| S1 | three shapes and the signalling names | rename to beacon/flare/beam, remove "regulated", rewrite the anti-tunnel prose into an honest beam characterisation, one generated matrix source, rename-with-aliases strategy | - | ready |
+| S1 | three shapes and the signalling names | rename to beacon/flare/beam, remove the compliance-label framing, rewrite the anti-tunnel prose into an honest beam characterisation, one generated matrix source, rename-with-aliases strategy | - | ready |
 | S2 | discrete transports, completed | wire the existing relay into CLI selection; build the **flare** control-side Go transport; close or document the `ListLogs` gap | - | ready |
 | S3 | `heliograph shell` | a REPL that authors an ephemeral step per line over any transport; read-only by default; Ctrl-C cancels; emulated cwd and env; wired to OS OpenSSH as a forced command | S2 | ready |
 | S4 | the beam: the live channel and the relayed beam | the `Channel` interface; Noise; the relayed-beam broker (both sides dial out `wss`, sealed stream, no inbound); a Go station component; the establishment gate with step-beam and raw-beam classes | S1 | drafted |

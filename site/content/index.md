@@ -18,7 +18,7 @@ You push a step; the station runs it; the log comes back. The operator runs one 
 - No SSH access to production, and you are not going to be given any
 - Air-gapped, or behind a bastion, a jump host or a VPN you are not on
 - A client-owned estate where only their staff can log in
-- Blocked by policy rather than capability: regulated, restricted, change-controlled
+- Blocked by policy rather than capability: restricted, change-controlled, or reached only through people who can
 - The fourth round of "can you run this and paste the output", and what came back was a screenshot of half a terminal
 
 ## For an AI agent that cannot reach the machine
@@ -63,7 +63,7 @@ open to a host you control, and there is nothing here to punch through a
 firewall with. A raw TCP transport was considered and dropped for exactly that
 reason: a persistent reverse connection is a C2 channel by any blue team's
 definition, and that sentence is a large part of why this class of tool is
-permitted in regulated estates.
+permitted in the estates it targets.
 
 Every command runs on the far side because someone with legitimate access chose
 to run it.

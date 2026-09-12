@@ -62,7 +62,7 @@ holds the *connection itself*.
 - You have **no SSH access to production**, and you are not going to be given any.
 - The environment is **air-gapped**, or behind a bastion, a jump host or a VPN you are not on.
 - It is a **client-owned or customer-managed estate**. Only their staff can log in.
-- Access is blocked by **policy, not capability**: regulated, restricted, change-controlled.
+- Access is blocked by **policy, not capability**: restricted, change-controlled, or reached only through people who can.
 - You are on the fourth round of **"can you run this and paste the output"**, and what came back was a screenshot of half a terminal.
 - You are an **AI coding agent** driving an investigation, and you need the evidence rather than somebody's summary of it.
 

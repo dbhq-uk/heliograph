@@ -38,6 +38,6 @@ compiler-exact .NET code search.
 ## The company
 
 [DBHQ](https://dbhq.uk) is Daniel Grimes: senior engineering delivery, mostly
-in regulated estates, which is where the constraint behind heliograph came
+in estates with no route in, which is where the constraint behind heliograph came
 from in the first place. The tools here are free because they were paid for by
 the work that produced them.
