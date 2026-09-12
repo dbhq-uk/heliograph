@@ -196,7 +196,11 @@ RELAY_SEAL_SHA256=<checksum from the release>   # bash station only
 `RELAY_SEAL_SHA256` is optional and should not be - see above. On the
 PowerShell station it does not exist, because neither does the binary.
 
-A request may **not** set `TRANSPORT`, `PUSH`, `REDACT` or `LOG_DIR`. See
+A request may **not** set anything that configures capture, delivery, redaction
+or identity - including every `RELAY_*` variable above. `RELAY_PEER` is the
+sharpest case: it is what an incoming request is verified against *and* what an
+outgoing log is sealed to, so a request that could choose it could choose who
+reads the log. Reserved by prefix rather than by name, and tested. See
 [security](/security).
 
 ## Self-hosting

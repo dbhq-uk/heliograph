@@ -310,7 +310,20 @@ assert_eq "  while the same step with an ordinary env line runs" "idle" "$(publi
 plant
 step_file probe read-only "Write-Output 'the evidence'"
 n=0
-for spelling in 'env: PUSH=0' 'env: FOO=1 "TRANSPORT=relay"' "env: T'RANSPORT'=relay" 'env: LOG_DIR=/tmp/elsewhere'; do
+#
+# THE TRANSPORT'S OWN VARIABLES ARE IN HERE TOO, and they are the ones the
+# original four-name list missed. Test-TpNeed reads them straight out of the
+# environment - that is how every transport is configured - so a request
+# setting RELAY_URL delivers the log to a relay of the author's choice, and
+# RELAY_PEER is BOTH what a request is verified against and who the log is
+# sealed to. A read-only step does it and no gate fires.
+#
+# It reached this station the moment it got a relay transport, which is why the
+# assertion is here and not only on the bash twin.
+for spelling in 'env: PUSH=0' 'env: FOO=1 "TRANSPORT=relay"' "env: T'RANSPORT'=relay" \
+                'env: LOG_DIR=/tmp/elsewhere' 'env: RELAY_URL=https://not-yours.invalid' \
+                'env: RELAY_PEER=/tmp/theirs.pub' 'env: SHARE_DIR=/tmp/elsewhere' \
+                'env: OBJSTORE_ENDPOINT=https://not-yours.invalid' 'env: ALLOW_ROOT=1'; do
   n=$((n + 1))
   want="${spelling#env: }"; want="${want##* }"; want="${want%%=*}"
   want="$(printf '%s' "$want" | tr -d "\"'")"
@@ -322,6 +335,25 @@ for spelling in 'env: PUSH=0' 'env: FOO=1 "TRANSPORT=relay"' "env: T'RANSPORT'=r
   # loop would only ever check the LAST one, which is how the first version of
   # this check passed while proving nothing about the three before it.
   assert_contains "  and the reason names $want" "$want" "$(published reason)"
+done
+
+# A LOWERCASE SPELLING IS REFUSED, AND ON WINDOWS THAT IS NOT PEDANTRY.
+#
+# Windows environment variable names are CASE-INSENSITIVE. The child
+# environment is a StringDictionary on .NET Framework, so `transport=relay` and
+# `TRANSPORT=relay` are the same entry and the second overwrites the first. A
+# case-sensitive guard would refuse the uppercase spelling, allow the lowercase
+# one, and Windows would honour it - the whole defect, in lowercase.
+#
+# Measured: on .NET on Linux that dictionary keeps two distinct keys, so the
+# hole is Windows-only and this test would pass on Linux either way. It is here
+# because the station targets Windows, and because a check that only holds on
+# the platform nobody deploys to is not a check.
+for spelling in 'env: transport=relay' 'env: Relay_Url=https://not-yours.invalid' 'env: push=0'; do
+  request "id: v-case-$RANDOM" 'step: ./steps/probe.ps1' "$spelling"
+  loop_once
+  assert_eq "a reserved name in another case is still refused [$spelling]" \
+    "refused" "$(published state)"
 done
 
 # The control, again: an ordinary assignment is not refused, and REACHES THE

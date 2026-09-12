@@ -613,19 +613,39 @@ while :; do
       continue
     }
 
-    # A REQUEST MAY NOT SET THE VARIABLES THAT CONTROL DELIVERY OR THE GATES.
+    # A REQUEST MAY NOT SET ANYTHING THAT CONFIGURES CAPTURE, DELIVERY,
+    # REDACTION OR IDENTITY. Those are settled when the station is started.
     #
     # The env line reaches run.sh through `env`, so every name in it becomes a
-    # variable the runner reads. Four of those are not the far side's to set:
+    # variable the runner reads - and `cap_need` in caplib.sh reads its value
+    # straight out of the environment (`eval "val=\${$name:-}"`). That is how
+    # every transport is configured, which makes the whole of a transport's
+    # configuration settable by a request unless it is reserved here.
     #
-    #   TRANSPORT  redirects where the log is delivered, or names a file that
-    #              gets sourced. The operator chose the channel at start
-    #   PUSH       PUSH=0 captures and delivers NOTHING, while the run still
-    #              looks clean from here. That is the exact defect tp_put_log
-    #              exists to remove, handed to whoever can write a request
-    #   REDACT     REDACT=0 turns off secret masking on a log that is about to
-    #              be committed and cannot be unpublished
-    #   LOG_DIR    moves the log somewhere this loop will not find to report it
+    # THIS USED TO BE A LIST OF FOUR NAMES AND THAT WAS THE BUG. TRANSPORT,
+    # PUSH, REDACT and LOG_DIR were reserved; RELAY_URL, RELAY_PEER, SHARE_DIR
+    # and the rest were not, and each of those reaches the same end by another
+    # road:
+    #
+    #   TRANSPORT       redirects where the log is delivered, or names a file
+    #                   that gets sourced. The operator chose the channel
+    #   PUSH            PUSH=0 captures and delivers NOTHING while the run still
+    #                   looks clean from here - the exact defect tp_put_log
+    #                   exists to remove, handed to whoever can write a request
+    #   REDACT          REDACT=0 turns off secret masking on a log that is about
+    #                   to be committed and cannot be unpublished
+    #   LOG_DIR         moves the log somewhere this loop will not find it
+    #   RELAY_URL       delivers the log to somebody else's relay
+    #   RELAY_PEER      seals the log to a public key the requester chose:
+    #                   relay.sh passes it to BOTH `seal open` and `seal seal`
+    #   SHARE_DIR       the same redirection on a share station
+    #   PIGEONHOLE_*    and on a blob station
+    #
+    # SO IT IS RESERVED BY PREFIX, NOT BY NAME. A new transport that introduces
+    # a new prefix must add it here, and tests/test-station-gate.sh fails if it
+    # does not: it reads this pattern and checks every `cap_need` name in
+    # station/bash/transports/ against it. A denylist that has to be remembered
+    # is a denylist that will be forgotten.
     #
     # CHECKED AFTER THE eval, ON THE PARSED ARRAY, and that is the whole point.
     # An earlier version matched ` TRANSPORT=` against the raw line, and
@@ -634,14 +654,16 @@ while :; do
     # plain TRANSPORT assignment. A guard applied before the parser is a guard
     # against the spelling rather than against the meaning.
     for _assign in ${ENVARR[@]+"${ENVARR[@]}"}; do
+      # RESERVED_ENV_PATTERN - read by tests/test-station-gate.sh. Keep on one line.
       case "${_assign%%=*}" in
-        TRANSPORT|PUSH|REDACT|LOG_DIR)
+        TRANSPORT|PUSH|REDACT|LOG_DIR|ALLOW_ROOT|ALLOW_ACTIONS|CAP_*|RELAY_*|SHARE_*|PIGEONHOLE_*|OBJSTORE_*|BLOB_*|BUNDLE_*)
           say "REFUSED: the env line sets ${_assign%%=*}, which the request may not choose"
           say "  env: $ENVLINE"
-          say "  TRANSPORT, PUSH, REDACT and LOG_DIR control delivery and redaction."
-          say "  They are settled when the station is started, not per request."
+          say "  Capture, delivery, redaction and identity are settled when the"
+          say "  station is started, not per request. That covers TRANSPORT, PUSH,"
+          say "  REDACT, LOG_DIR, the gates, and every transport's own variables."
           publish_status "refused" "$ID" "$STEP" \
-            "reason:   the env line sets ${_assign%%=*}, which controls delivery or redaction and is settled at station start, not per request"
+            "reason:   the env line sets ${_assign%%=*}, which configures capture, delivery, redaction or identity and is settled at station start, not per request"
           LAST_ID="$ID"; echo "$ID" > "$STATE_FILE"
           [ "$ONCE" = "1" ] && cleanup
           continue 2 ;;
