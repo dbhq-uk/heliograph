@@ -19,10 +19,11 @@ Left behind: `MontgomeryCurve25519`, `XSalsa20Poly1305`, `OneTimeAuth`,
 `Poly1305`, `Ed25519Signer`, the project files and the assembly metadata.
 Nothing here calls them.
 
-## The one edit made to upstream source
+## Two edits made to upstream source
 
-**`Ed25519.KeyExchange` is deleted**, both overloads, and a comment in
-`Ed25519.cs` says so at the point they were.
+### 1. `Ed25519.KeyExchange` is deleted
+
+Both overloads, and a comment in `Ed25519.cs` says so at the point they were.
 
 They return NaCl's `crypto_box_beforenm` - the raw X25519 secret run through
 HSalsa20 - and not the raw RFC 7748 secret this seal derives its key from.
@@ -33,11 +34,30 @@ protocol that is not the one Go speaks.
 
 Deleted rather than left unused, because an unused wrong function in the
 payload is one autocomplete away from being the used one, and no test catches a
-call nobody has written yet. `tests/test-seal-vectors.ps1` asserts the method is
+call nobody has written yet. `tests/test-seal-ps1.sh` asserts the method is
 absent.
 
 The raw one is `MontgomeryOperations.scalarmult`, in
 `Internal/Ed25519Ref10/scalarmult.cs`. It clamps the scalar internally.
+
+### 2. `Ed25519.GeneratePrivateKeySeed` is deleted
+
+It was the only preprocessor conditional in this tree, and its `#else` branch
+calls `RandomNumberGenerator.GetBytes(int)` - a .NET 6 overload.
+
+**`Add-Type` compiles with no symbols defined**, so Windows PowerShell 5.1 took
+that branch and refused the entire module at load, with *"the best overloaded
+method match for `RandomNumberGenerator.GetBytes(byte[])` has some invalid
+arguments"*. Every other file compiled; one dead helper stopped the station.
+
+Deleted rather than guarded. Defining `NET462` in our own build would make that
+build compile something Windows does not - which is exactly what happened
+first: the net48 check passed while the real 5.1 failed. `tests/test-seal-ps1.sh`
+now bans framework conditionals here outright and defines no symbols, so the
+local build is the same compilation `Add-Type` performs.
+
+Nothing here called it. `lib/seal.psm1`'s `New-SealIdentity` generates its own
+64 bytes through `RandomNumberGenerator.Create()`.
 
 ## What is checked, on every build
 

@@ -98,6 +98,25 @@ assert_eq "  and no PowerShell in the payload names it outside a comment" "" \
   "$(grep -rn 'MontgomeryCurve25519' --include='*.ps1' --include='*.psm1' \
        "$ROOT/station/powershell" 2>/dev/null | grep -vE ':[[:space:]]*#' || true)"
 
+# NO FRAMEWORK CONDITIONAL MAY SURVIVE IN THE VENDORED TREE.
+#
+# `Add-Type` compiles with NO preprocessor symbols defined, so every `#if
+# NETSTANDARD`, `#if NET6_0_OR_GREATER` and friend takes its `#else` branch on a
+# real station - and upstream's `#else` branches are written for the NEWEST
+# runtime, not the oldest. That is how `GeneratePrivateKeySeed` shipped: its
+# else-branch calls a .NET 6 overload, and Windows PowerShell 5.1 refused the
+# whole module at load.
+#
+# The build below cannot catch this on its own, because a build has to choose
+# some set of symbols and any choice that is not "none" compiles something other
+# than what Add-Type does. So the conditionals are banned outright and the
+# vendored helper is deleted rather than guarded.
+#
+# DEBUG is allowed: it is off by default in both, so both take the same branch.
+COND="$(grep -rn '^[[:space:]]*#\(if\|elif\)' "$SEAL" 2>/dev/null | grep -v '#if DEBUG' || true)"
+assert_eq "no framework conditional survives in the seal, because Add-Type defines no symbols" \
+  "" "$COND"
+
 # =============================================================================
 #  2. IT COMPILES AS C# 5 AGAINST net48
 # =============================================================================
@@ -109,14 +128,20 @@ else
   BUILD="$(mktemp -d)"
   mkdir -p "$BUILD/src"
   cp -r "$SEAL/." "$BUILD/src/"
-  # NET462 is defined because upstream guards one helper we do not use behind
-  # it. Nothing else in the tree is conditional.
+  # NO DefineConstants, AND THAT IS THE WHOLE POINT OF THIS BUILD.
+  #
+  # An earlier version defined NET462, because upstream guarded one helper
+  # behind it. `Add-Type` defines NOTHING - so that build compiled a different
+  # branch from the one Windows PowerShell 5.1 compiles, this check passed, and
+  # the real 5.1 refused the file with "the best overloaded method match for
+  # RandomNumberGenerator.GetBytes(byte[]) has some invalid arguments". A build
+  # check that does not use the real compiler's flags is checking something
+  # else. The helper is deleted from the vendored source instead.
   cat > "$BUILD/p.csproj" <<'EOF'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <LangVersion>5</LangVersion>
-    <DefineConstants>NET462</DefineConstants>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
