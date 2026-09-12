@@ -119,8 +119,8 @@ var Transports = []Transport{
 		Note: "Reached through drop.sh in the station payload rather than the heliograph binary. A VNet-local private endpoint is often the only thing reachable.", Href: "/azure"},
 	{ID: "objstore", Name: "object store", Short: "S3", Kind: Pigeonhole, Control: Works, Station: Missing,
 		Note: "S3-compatible: AWS, R2, MinIO, B2, Spaces, Ceph. The CLI drives it and no station can read one, so nothing in this column can work yet.", Href: "/transports#object-store"},
-	{ID: "bundle", Name: "bundle", Short: "bundle", Kind: Pigeonhole, Control: Works, Station: Missing,
-		Note: "The only thing that makes air-gapped literally true. A person carries the file. No station can read one yet.", Href: "/air-gapped"},
+	{ID: "bundle", Name: "bundle", Short: "bundle", Kind: Pigeonhole, Control: Works, Station: Works,
+		Note: "The only thing that makes air-gapped literally true: a person carries the file, and no path between the two machines is needed at all. Both halves work; a round trip takes as long as somebody takes to walk.", Href: "/air-gapped"},
 	{ID: "intercom", Name: "intercom", Short: "intercom", Kind: Intercom, Control: Works, Station: Partial,
 		Note: "The one case where you CAN reach the station. The script travels with the request, so heliograph-mode stops being a control and becomes a claim the caller makes about its own file.", Href: "/intercom"},
 }

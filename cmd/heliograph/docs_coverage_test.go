@@ -179,6 +179,10 @@ func TestTheFarSideIsDocumented(t *testing.T) {
 		{"sending a secret to the far side", "secret.sh"},
 		{"the pipeline loop guard", "NO_CI"},
 		{"the seal binary", "heliograph-seal"},
+		// The bundle's station side, which three pages said did not exist. It
+		// is the only transport that makes air-gapped literally true, so the
+		// page written for that search term has to say it works.
+		{"the bundle's station side", "BUNDLE_DIR"},
 	} {
 		if !strings.Contains(site, want.phrase) {
 			t.Errorf("the site never mentions %s (looked for %q)", want.what, want.phrase)

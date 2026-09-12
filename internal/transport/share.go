@@ -237,11 +237,15 @@ func (b *Bundle) PutRequest(r wire.Request) error {
 		return err
 	}
 	fmt.Printf("bundle written: %s\n", path)
-	// The station side of the bundle does not exist yet. This used to name a
-	// flag that has never existed, which is the sort of thing that costs
-	// somebody an afternoon before they conclude the tool is broken.
-	fmt.Println("  the bundle has no station side yet: carry the step across and run it by hand,")
-	fmt.Println("  PUSH=0 ./run.sh <step>, as described at https://heliograph.dbhq.uk/air-gapped")
+	// WHAT TO DO NEXT, and it has been wrong twice. It first named
+	// `./station.sh --bundle`, a flag that has never existed; it was then
+	// corrected to say the bundle had no station side at all, which was true
+	// until transports/bundle.sh landed. Both cost somebody an afternoon
+	// before they concluded the tool was broken, so this says the thing that
+	// is true now and names the variables rather than a flag.
+	fmt.Println("  carry it across, then on the far side:")
+	fmt.Println("    TRANSPORT=bundle BUNDLE_DIR=<where you mounted it> ./start.sh -- --once")
+	fmt.Println("  and carry the medium back. https://heliograph.dbhq.uk/air-gapped")
 	return nil
 }
 

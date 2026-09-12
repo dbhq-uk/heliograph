@@ -60,7 +60,7 @@ drv_supports() {
 # property exists to keep apart.
 _drv_deliverable() {
   case "$CONF_TRANSPORT" in
-    git|share) return 0 ;;
+    git|share|bundle) return 0 ;;
     relay)
       # heliograph-seal is Go, and the seal is not optional on this transport:
       # a station configured for the relay either speaks sealed or does not
@@ -304,6 +304,14 @@ _drv_farside() {
       # a transport that had quietly stopped creating it would still pass.
       mkdir -p "$dir.share"
       ;;
+    bundle)
+      # THE MEDIUM SOMEBODY CARRIES, standing in for a USB stick. The directory
+      # must exist before the station starts, for the same reason the share
+      # root must: tp_init refuses to create it, deliberately, because creating
+      # a missing mount point turns "the stick is not in" into a station
+      # writing replies onto local disk that nobody will carry anywhere.
+      mkdir -p "$dir.bundle"
+      ;;
     relay)
       _drv_relay_farside "$dir"
       ;;
@@ -317,6 +325,9 @@ _drv_env() {
     git) export TRANSPORT=git ;;
     share)
       export TRANSPORT=share SHARE_DIR="$dir.share" SHARE_SCOPE=conformance
+      ;;
+    bundle)
+      export TRANSPORT=bundle BUNDLE_DIR="$dir.bundle"
       ;;
     relay)
       # shellcheck disable=SC1090,SC1091
@@ -342,6 +353,17 @@ _drv_read() {
       # git case reads the bare remote.
       local newest
       newest="$(ls -1 "$dir.share/conformance/ops-logs/"*.txt 2>/dev/null | tail -1)"
+      [ -n "$newest" ] || return 1
+      cat "$newest"
+      ;;
+    bundle)
+      # FLAT IN THE BUNDLE DIRECTORY, not under ops-logs/, because that is
+      # where the control side's Bundle.ListLogs looks. Reading it the way the
+      # share does would pass against a station that put the logs one level
+      # down - which is the one mistake this transport cannot recover from,
+      # since the courier has already walked.
+      local newest
+      newest="$(ls -1 "$dir.bundle/"*.txt 2>/dev/null | tail -1)"
       [ -n "$newest" ] || return 1
       cat "$newest"
       ;;

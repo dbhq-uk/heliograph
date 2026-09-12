@@ -12,9 +12,10 @@ for the 19-PR breakdown. This file says where we are and what is next.
 
 ## Where we are
 
-Git, the file share and the relay work end to end, each with its own round trip
-in CI. The site documents the far side. **The PowerShell station is complete**: it
-polls, runs, delivers and publishes, and it is planted by all three bootstraps.
+Git, the file share, the relay and the bundle work end to end, each with its own
+round trip in CI. The site documents the far side. **The PowerShell station is
+complete**: it polls, runs, delivers and publishes, and it is planted by all
+three bootstraps.
 
 | | |
 |---|---|
@@ -23,7 +24,8 @@ polls, runs, delivers and publishes, and it is planted by all three bootstraps.
 | Azure Blob | works end to end via `drop.sh` and `pigeonhole.sh`, not via the CLI |
 | every host but a pipeline | carries a transport. Azure Blob works outright everywhere; the relay and the file share need a volume the templates do not mount |
 | file share | **works end to end**, proved by a CLI round trip in CI |
-| bundle, object store | control side only; **no station side at all** |
+| bundle | **works end to end**, proved by a CLI round trip across a directory that stands in for the medium. No `live` and no `self`, because a stick does not change while you watch it |
+| object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
 | PowerShell station | **complete and proven**. Polls, runs, delivers and publishes over git and share, with all four gates. Every conformance property, on 5.1 and on 7. No relay transport (needs `heliograph-seal`, which is Go) |
 | site | 29 pages, near and far side, plus `/matrix` (every transport, station and controller, from one source in Go) and `/roadmap`. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
@@ -169,6 +171,30 @@ that file is bounded by the clock now, and the condition requires a `progress:`
 key AND the step's own output, because each alone is satisfiable by something
 that is not progress.
 
+## Landed 2026-09-12
+
+| PR | |
+|---|---|
+| - | **the bundle's station side** (#68) - `transports/bundle.sh`, so the one transport that makes *air-gapped* literally true now has a far side. A station started with `TRANSPORT=bundle BUNDLE_DIR=<mount>` reads the request the CLI wrote, runs it, and writes the status and the log back onto the medium for somebody to carry home. It declares `request status progress` and **not** `live` or `self`: a stick does not change while you watch it, and nothing publishes a payload to one. Conformance runs over it, and `/air-gapped`, `/transports`, `/station` and `/matrix` are corrected - all four said a station could not read a bundle |
+
+### What that change found
+
+**The log goes flat in the bundle directory, not under `ops-logs/`.** Every
+other transport nests them; `Bundle.ListLogs` on the control side reads `*.txt`
+in the bundle root. A station that had followed the house pattern would have
+produced a medium that was carried back perfectly and showed no logs at all -
+on the one transport where the cost of getting it wrong is another walk.
+
+The conformance driver would not have caught it: it reads wherever the driver
+is told to look, so both sides of a disagreement can be self-consistent.
+`tests/test-bundle.sh` therefore drives the near side with the **real CLI** and
+asserts that `heliograph logs` can read what the station wrote. Mutating the
+transport to write under `ops-logs/` fails four assertions, three of them on
+the control side.
+
+`--check` is also asserted to leave the medium byte-for-byte as it found it. An
+operator runs the preflight on a machine where they may not yet alter anything.
+
 ## Next, in order
 
 Every item is an issue, so a priority can be linked to rather than remembered.
@@ -178,18 +204,17 @@ outranks a capability that does not exist.**
 | | | |
 |---|---|---|
 | 1 | **A service installer for the PowerShell payload** | `service.ps1` ships in the *bash* payload, registers the task against the launcher, and refuses to install without `start.sh` beside it - so `--flavour powershell` plants no way to survive a logout at all. [The service page](site/content/service.md) documents the scheduled task to register by hand, built from the settings `service.ps1` itself uses, and that is a workaround rather than an answer. It must carry the transport's variables into the task, and set a restart policy, because a PowerShell station asks for a restart by **exiting 75** |
-| 2 | **The bundle's station side** (#68) | `/air-gapped` says plainly that the bundle cannot be read by a station, and the CLI says the same. It is the only transport that makes *air-gapped* literally true, and that page is the first thing to update when it lands |
-| 3 | **The PowerShell relay transport** (#77) | **The reason this was deferred does not hold.** It was "the seal needs a native binary". All four primitives are available in **managed C#, 200 KB**, and were verified here against the standards' own vectors: X25519 and Ed25519 from `Chaos.NaCl` (djb's ref10, MIT), ChaCha20-Poly1305 from `NaCl.Core`, HKDF in 25 lines over `HMACSHA256`. No P/Invoke and no CNG, so it runs on Linux too and the seal is testable on an ordinary runner. [The design](docs/specs/2026-09-11-powershell-relay-design.md) recommends vendoring the source, and **test vectors before any porting**. Do not write the curve arithmetic |
-| 4 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
-| 5 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
-| 6 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
-| 7 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
-| 8 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
-| 9 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
-| 10 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
-| 11 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
+| 2 | **The PowerShell relay transport** (#77) | **The reason this was deferred does not hold.** It was "the seal needs a native binary". All four primitives are available in **managed C#, 200 KB**, and were verified here against the standards' own vectors: X25519 and Ed25519 from `Chaos.NaCl` (djb's ref10, MIT), ChaCha20-Poly1305 from `NaCl.Core`, HKDF in 25 lines over `HMACSHA256`. No P/Invoke and no CNG, so it runs on Linux too and the seal is testable on an ordinary runner. [The design](docs/specs/2026-09-11-powershell-relay-design.md) recommends vendoring the source, and **test vectors before any porting**. Do not write the curve arithmetic |
+| 3 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
+| 4 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
+| 5 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
+| 6 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
+| 7 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
+| 8 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
+| 9 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
+| 10 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
 
-Items 3 to 10 come from a survey of every transport, host and control node
+Items 2 to 9 come from a survey of every transport, host and control node
 anyone has proposed, with the ones ruled out and why:
 [`docs/specs/2026-09-10-new-transports-and-stations-design.md`](docs/specs/2026-09-10-new-transports-and-stations-design.md)
 holds the verdicts and
