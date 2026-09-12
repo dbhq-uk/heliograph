@@ -832,3 +832,11 @@ func TestTheMirrorSavingIsTheOneTheCommentsClaim(t *testing.T) {
 		t.Error("no pages were measured")
 	}
 }
+
+// A published path that stops existing is a 404 for everybody who linked it.
+func TestRedirectsCarryTheOldIntercomPath(t *testing.T) {
+	got := redirectsFile()
+	if !strings.Contains(got, "/intercom /flare 301") {
+		t.Errorf("_redirects does not carry the intercom redirect, got:\n%s", got)
+	}
+}

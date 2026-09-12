@@ -39,6 +39,21 @@ var order = []string{
 
 const baseURL = "https://heliograph.dbhq.uk"
 
+// redirects keeps a published path alive after its page is renamed. Cloudflare
+// Pages reads _redirects; a reader who followed an old link gets the new page
+// rather than the 404 handler.
+var redirects = [][2]string{
+	{"/intercom", "/flare"},
+}
+
+func redirectsFile() string {
+	var b strings.Builder
+	for _, r := range redirects {
+		fmt.Fprintf(&b, "%s %s 301\n", r[0], r[1])
+	}
+	return b.String()
+}
+
 func main() {
 	src := flagOr(1, "site/content")
 	out := flagOr(2, "site/dist")
@@ -148,6 +163,9 @@ func build(src, out string) (int, error) {
 		"Sitemap: " + baseURL + "/sitemap.xml\n" +
 		"\n# Markdown mirrors of every page at <path>.md, and " + baseURL + "/llms.txt\n"
 	if err := os.WriteFile(filepath.Join(out, "robots.txt"), []byte(robots), 0o644); err != nil {
+		return 0, err
+	}
+	if err := os.WriteFile(filepath.Join(out, "_redirects"), []byte(redirectsFile()), 0o644); err != nil {
 		return 0, err
 	}
 	// Fonts and the logo. Copied by the build rather than by a step in the
