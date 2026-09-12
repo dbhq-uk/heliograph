@@ -905,3 +905,46 @@ func TestEveryHostnameWePublishIsOneWeOwn(t *testing.T) {
 		}
 	}
 }
+
+// The hosted relay was named on five published pages and no page said how to
+// get a token for it. A reader could reach any of them, believe the hosted
+// route was theirs to use, and find no way in and no statement of what they
+// were being offered.
+//
+// So: name the hosted relay and you carry the way in. This asserts on the
+// BUILT HTML rather than the markdown, because a page that renders wrong while
+// the source reads right is the failure this repository has already had twice,
+// and the anchor either exists in the output or it does not.
+//
+// Two honest limits. It proves a link and an anchor, not that the section
+// still says anything useful: deleting the terms while leaving the heading
+// passes. And it keys on the hostname, so a page that advertises "the hosted
+// one" without naming it is invisible here - which is exactly what
+// transports.md did, and why that one had to be found by reading.
+func TestNoPageOffersTheHostedRelayWithoutTheWayIn(t *testing.T) {
+	const (
+		host   = "heliograph-relay.dbhq.uk"
+		anchor = "the-hosted-relay-and-how-to-ask-for-a-token"
+	)
+	out := buildSite(t)
+	pages := htmlPages(t, out)
+
+	if !strings.Contains(pages["relay.html"], `id="`+anchor+`"`) {
+		t.Errorf("relay.html has no #%s section, so every page that links to it is a 404 fragment", anchor)
+	}
+
+	named := 0
+	for name, h := range pages {
+		if !strings.Contains(h, host) || name == "relay.html" {
+			continue
+		}
+		named++
+		if !strings.Contains(h, `/relay#`+anchor) {
+			t.Errorf("%s names %s and does not link to /relay#%s: it advertises the hosted relay "+
+				"with no way in and no terms", name, host, anchor)
+		}
+	}
+	if named == 0 {
+		t.Error("no page outside relay.html names the hosted relay, so this test asserted nothing")
+	}
+}
