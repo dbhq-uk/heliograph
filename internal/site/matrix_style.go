@@ -68,7 +68,7 @@ const MatrixCSS = `
   font-size:.9rem;table-layout:fixed}
 .mxa-grid td,.mxa-grid th{border:0;padding:0;vertical-align:middle}
 .mxa-corner{width:10.5rem;min-width:10.5rem;padding:.45rem .6rem;line-height:1.15;
-  position:sticky;left:0;top:0;z-index:4;background:var(--dusk)}
+  position:sticky;left:0;top:0;z-index:4;background:var(--dusk);overflow:hidden}
 .mxa-corner span{display:block;font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .mxa-corner span:last-child{text-align:right;color:var(--brass)}
 
@@ -114,7 +114,15 @@ const MatrixCSS = `
 @media(hover:hover){.mxa-grid tbody td:hover .mxa-dot{transform:scale(1.22)}}
 
 /* -- crosshair and flash -- */
-.mxa-grid tbody tr[data-lit] th,.mxa-grid thead th[data-lit]{color:var(--flash);background:rgba(123,167,212,.14)}
+/* A STICKY CELL MUST STAY OPAQUE. This rule set a translucent tint with the
+   background shorthand, which threw away the opaque var(--dusk) underneath -
+   so on the lit row the label column became see-through and the cells
+   scrolling beneath it showed straight through the label. The tint goes on as
+   an image layer over an opaque colour instead, which looks identical and
+   hides what is behind it. */
+.mxa-grid tbody tr[data-lit] th,.mxa-grid thead th[data-lit]{color:var(--flash);
+  background-color:var(--dusk);
+  background-image:linear-gradient(rgba(123,167,212,.14),rgba(123,167,212,.14))}
 .mxa-grid td[data-lit]{background:rgba(123,167,212,.06)}
 .mxa-grid td[data-on] .mxa-dot{box-shadow:0 0 0 3px rgba(230,241,251,.22),0 0 16px 2px currentColor;transform:scale(1.3)}
 .mxa-grid td[data-on]{background:rgba(123,167,212,.14);box-shadow:inset 0 0 0 1px var(--gold)}
@@ -187,6 +195,8 @@ const MatrixCSS = `
   .mxa-gridwrap{max-height:none}
   .mxa-grid{min-width:34rem;font-size:.84rem}
   .mxa-corner{width:7.5rem;min-width:7.5rem}
+  /* "TRANSPORT" does not fit 7.5rem and was spilling over the first column. */
+  .mxa-corner span{font-size:.52rem;letter-spacing:.04em}
   .mxa-grid tbody th{padding:.36rem .45rem;font-size:.74rem}
   .mxa-grid tbody th em{display:none}
   .mxa-grid thead th em{display:none}
@@ -208,6 +218,7 @@ const MatrixCSS = `
 @media(max-width:26rem){
   .mxa-grid{min-width:30rem}
   .mxa-corner{width:6.2rem;min-width:6.2rem}
+  .mxa-corner span:last-child{display:none}
 }
 `
 
