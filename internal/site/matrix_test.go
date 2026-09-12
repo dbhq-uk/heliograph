@@ -352,3 +352,43 @@ func TestCellsAreBigEnoughToTap(t *testing.T) {
 		t.Error("the mobile breakpoint does not raise the cell tap target")
 	}
 }
+
+// A sticky cell has the grid scrolling underneath it, so its background must
+// be OPAQUE or the cells behind show straight through.
+//
+// Found on a phone, not by a test: the lit row's label went translucent and
+// the pinned cell scrolled under it was visible inside the word "Terminal".
+// The cause is the background shorthand - `background:rgba(...)` discards the
+// opaque colour the sticky rule set, where `background-image` layers over it.
+func TestStickyCellsNeverLoseTheirOpaqueBackground(t *testing.T) {
+	sticky := []string{".mxa-corner", ".mxa-grid tbody th", ".mxa-grid thead th"}
+	for _, rule := range strings.Split(MatrixCSS, "}") {
+		i := strings.Index(rule, "{")
+		if i < 0 {
+			continue
+		}
+		sel, body := rule[:i], rule[i+1:]
+		// Only rules that could apply to a cell which sticks.
+		var touches bool
+		for _, s := range sticky {
+			if strings.Contains(sel, s) || strings.Contains(sel, "th[data-lit]") || strings.Contains(sel, "tr[data-lit] th") {
+				touches = true
+			}
+		}
+		if !touches {
+			continue
+		}
+		for _, decl := range strings.Split(body, ";") {
+			d := strings.TrimSpace(decl)
+			if !strings.HasPrefix(d, "background:") {
+				continue
+			}
+			v := strings.TrimPrefix(d, "background:")
+			if strings.Contains(v, "rgba(") || v == "none" {
+				t.Errorf("a sticky cell sets %q, which is see-through: the grid scrolls underneath it.\n"+
+					"  selector: %s\n  use background-color for the opaque base and background-image for the tint",
+					d, strings.TrimSpace(sel))
+			}
+		}
+	}
+}
