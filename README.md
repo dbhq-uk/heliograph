@@ -99,6 +99,12 @@ go install github.com/dbhq-uk/heliograph/cmd/heliograph@latest
 A single static binary, no runtime. Checksums are published with each
 release, and the binary carries the station payload it was built with.
 
+The build is reproducible: `packaging/reproduce.sh v0.4.0` rebuilds every
+released artefact from the tag and arrives at the published hashes, so "the
+binary in the path is the source you read" is something you check rather than
+something we say. Full account, including what is not yet covered, at
+[heliograph.dbhq.uk/provenance](https://heliograph.dbhq.uk/provenance).
+
 **The agent skill** - the same loop, driven from Claude Code, Codex, Cursor
 and friends:
 
