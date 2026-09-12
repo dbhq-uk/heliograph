@@ -57,8 +57,8 @@ const MatrixCSS = `
 .mxa-def{display:none;margin:0;padding:.55rem .8rem;border-left:3px solid var(--brass);
   background:var(--dusk);font-size:.85rem;color:var(--ink-2);border-radius:0 8px 8px 0}
 .mxa-def b{color:var(--flash)}
-[data-kindfilter="pigeonhole"] .mxa-def[data-def="pigeonhole"],
-[data-kindfilter="intercom"] .mxa-def[data-def="intercom"]{display:block}
+[data-kindfilter="beacon"] .mxa-def[data-def="beacon"],
+[data-kindfilter="flare"] .mxa-def[data-def="flare"]{display:block}
 
 /* -- grid beside panel -- */
 .mxa-body{display:grid;grid-template-columns:minmax(0,1fr) 19rem;gap:1rem;align-items:stretch}

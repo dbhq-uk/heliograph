@@ -50,7 +50,7 @@ re-proposed.
 | email | never | declined by the master design: large operational burden, small population |
 | chat - Slack, Teams | never | captured logs in a chat system is a compliance problem, not a feature |
 | DNS | never | a covert channel gets the product banned from the estates it targets |
-| raw TCP, reverse tunnel | never | a C2 channel by any blue team's definition. Not being one is why this is permitted at all |
+| raw TCP, reverse tunnel | **superseded** | An unauthenticated always-on reverse connection stays refused, and for the original reason. The **beam** is the answer that was designed instead: off unless explicitly enabled on both ends, sealed, signed, and torn down when idle. See the beam design (S4) and the direct beam (S6) |
 
 ### Stations
 
@@ -130,7 +130,7 @@ Nothing found in this survey changes any of those five.
 **Recommended first.** It is the largest population of the lot and the
 cheapest to build.
 
-Every regulated estate that refuses a git host and refuses a storage account
+Every estate that refuses a git host and refuses a storage account
 still has an artifact repository, because that is how software gets into the
 estate at all. It is already an approved egress path with an owner, a change
 record and a credential model, which is the whole argument: the transport is
@@ -377,7 +377,7 @@ Two small ones that are close to free.
 
 `station/bash/pipelines/` ships GitHub Actions and Azure Pipelines. **GitLab CI
 is missing and GitLab is the git host of choice in a large part of the
-regulated market**, so this is one YAML file against a pattern that already
+enterprise git market**, so this is one YAML file against a pattern that already
 exists, loop guard included.
 
 `station/bash/kubernetes/heliograph.yaml` is a Deployment. A CronJob beside it

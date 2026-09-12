@@ -1,5 +1,10 @@
 # intercom - design
 
+> **Superseded in part on 2026-09-11.** The shape this document calls the
+> *intercom* is now the **flare**; see
+> [the three shapes](2026-09-11-three-shapes-and-signalling-names-design.md).
+> The design below is unchanged and still describes what ships.
+
 **Date:** 2026-09-03
 **Status:** approved, ready to implement
 

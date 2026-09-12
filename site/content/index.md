@@ -59,11 +59,19 @@ reads as clearly as a successful one and a round trip is never wasted.
 
 ## What it will not do
 
-Give you access you do not have. It does not tunnel, proxy or hold a connection
-open to a host you control, and there is nothing here to punch through a
-firewall with. A raw TCP transport was considered and dropped for exactly that
-reason: a persistent reverse connection is a C2 channel by any blue team's
-definition, and nothing here is worth having if a blue team has to call it one.
+Give you access you do not have. Two of its three shapes, the beacon and the
+flare, never tunnel, proxy or hold a connection open to a host you control,
+and there is nothing in either to punch through a firewall with. A raw TCP
+transport was considered and dropped for exactly that reason: an
+unauthenticated, always-on reverse connection is a C2 channel by any blue
+team's definition, and that sentence is a large part of why this class of tool
+is permitted in the estates it targets.
+
+The third shape, the beam, is a live connection and does hold a line open -
+deliberately, off by default, and under [its own
+controls](/security#the-beam-and-the-blast-radius-of-a-held-open-line). Where
+an estate forbids a reverse connection outright, the beacon and the flare still
+do the whole job without one.
 
 Every command runs on the far side because someone with legitimate access chose
 to run it.

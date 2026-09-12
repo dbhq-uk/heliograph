@@ -95,7 +95,7 @@ only take the long tail with heliograph in it.
 
 No keyword with measurable volume was found for install, quickstart,
 station, steps, runner, conformance, hosts, service, pipelines, windows,
-relay, intercom, cli, secrets or security. Their current titles are fine.
+relay, flare, cli, secrets or security. Their current titles are fine.
 The security page has an adjacent cluster (see long tail and gap 1) that
 should be handled in a section, not a title.
 

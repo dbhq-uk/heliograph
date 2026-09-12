@@ -27,6 +27,36 @@ station    picks it up within seconds, runs it
 you        heliograph logs --last --gaps ◀────────────
 ```
 
+## The three ways across
+
+heliograph carries a request to a machine you cannot log into, and brings the
+log back. There are three ways across the gap, and they differ in one thing:
+**what stays held, and for how long.**
+
+**Beacon.** You cannot reach the machine and it cannot reach you - but you can
+both reach one agreed place. You leave the request there and walk away. Later
+the machine passes by, picks it up, runs it, and leaves the log for you to
+collect. Nobody is ever connected; a *message* waits in the middle. It is the
+safest of the three, because the code being run is already on the far side and
+can be read before anything happens - and the slowest, because you wait for the
+next visit.
+
+**Flare.** You can reach the machine's door directly. You knock, hand over the
+request, wait on the step while it runs, and take the log away in the same
+visit. Nothing waits in the middle and no line stays open. Faster, because
+there is no pickup to wait for. The trade: you bring the code with you, so the
+machine trusts *the door* rather than vetting the code in advance.
+
+**Beam.** You and the machine bring up a connection and hold it open. Either
+side can speak at any moment and the other hears it at once, until you hang up.
+A real session, not a message or a knock - and the most exposed, because while
+the line is open anything can travel down it. You turn it on deliberately and
+close it when you are done. It is designed, and not yet a transport you can
+pick.
+
+In one line: a beacon holds a *message*, a flare is a *single exchange*, a beam
+holds the *connection itself*.
+
 ## Does this sound familiar
 
 - You have **no SSH access to production**, and you are not going to be given any.
@@ -171,17 +201,27 @@ The relay server is its own repository,
 because it holds no keys and must be publicly, obviously incapable of reading
 anything it carries.
 
-## What it will not do
+## What the beam is, and what it costs
 
-Give you access you do not have. It does not tunnel, proxy or hold a
-connection open to a host you control, and there is nothing here to punch
-through a firewall with. A raw TCP transport was considered and **dropped**
-for exactly that reason: a persistent reverse connection is a C2 channel by
-any blue team's definition, and nothing here is worth having if a blue team
-has to call it one.
+The beam is designed and not yet built; what follows is what it will do when
+it lands.
 
-Every command runs on the far side because someone with legitimate access
-chose to run it.
+Two of the three shapes never hold a connection open. A **beacon** leaves a
+message where both sides can reach it, and needs nothing to be reachable,
+ever - no inbound port, no endpoint, no tunnel. A **flare** knocks, waits and
+leaves; what it does not do is hold the line open once the answer is back, and
+between the two of them an estate that will not have a held-open line at all
+still gets the whole job done.
+
+The **beam** does hold a line open, live and two-way, and that is a tunnel. A
+blue team will read a held-open channel as one, because it is one. So it is
+**off unless it is explicitly enabled on both ends**, it is sealed and signed,
+and the station refuses to establish one unless it was started to allow it.
+Where an estate forbids a reverse connection, the beacon and the flare are the
+answer and nothing is lost but latency.
+
+Every command still runs on the far side because someone with legitimate access
+chose to let it.
 
 ## Layout
 

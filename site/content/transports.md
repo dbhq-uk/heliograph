@@ -1,5 +1,35 @@
 # Transports
 
+## The three ways across
+
+heliograph carries a request to a machine you cannot log into, and brings the
+log back. There are three ways across the gap, and they differ in one thing:
+**what stays held, and for how long.**
+
+**Beacon.** You cannot reach the machine and it cannot reach you - but you can
+both reach one agreed place. You leave the request there and walk away. Later
+the machine passes by, picks it up, runs it, and leaves the log for you to
+collect. Nobody is ever connected; a *message* waits in the middle. It is the
+safest of the three, because the code being run is already on the far side and
+can be read before anything happens - and the slowest, because you wait for the
+next visit.
+
+**Flare.** You can reach the machine's door directly. You knock, hand over the
+request, wait on the step while it runs, and take the log away in the same
+visit. Nothing waits in the middle and no line stays open. Faster, because
+there is no pickup to wait for. The trade: you bring the code with you, so the
+machine trusts *the door* rather than vetting the code in advance.
+
+**Beam.** You and the machine bring up a connection and hold it open. Either
+side can speak at any moment and the other hears it at once, until you hang up.
+A real session, not a message or a knock - and the most exposed, because while
+the line is open anything can travel down it. You turn it on deliberately and
+close it when you are done. It is designed, and not yet a transport you can
+pick.
+
+In one line: a beacon holds a *message*, a flare is a *single exchange*, a beam
+holds the *connection itself*.
+
 A transport is the channel a request goes out on and a log comes back through.
 The loop is identical whichever you pick: same request format, same gates, same
 log. That is deliberate, and it is what lets you change transport without
@@ -19,22 +49,13 @@ side, so a container can start cleanly on a host with no network at all.
 a log; the station side picks the request up and sends the log back. One half on
 its own moves nothing, so the status column below names both.
 
-### Two shapes, and the shape decides more than the speed
-
-Every transport is one of two, and this settles more about an estate's answer
-than anything else on the page.
-
-| | |
-|---|---|
-| **pigeonhole** | A dead letter drop. You cannot reach the far side, the far side cannot reach you, and **both can reach one agreed place**. Both sides dial out; neither ever accepts a connection |
-| **intercom** | You can reach the station's endpoint directly, so there is no drop in the middle. Unusual, because the whole tool exists for when you cannot |
-
-**All six below are pigeonholes.** The difference that matters is not latency
-but where the gates sit: on a pigeonhole the station decides whether to run a
-step it already has, while on an [intercom](/intercom) the script travels with
-the request and `heliograph-mode` becomes a claim rather than a control. A
-pigeonhole also needs nothing to be reachable, ever, which is why [raw TCP was
-dropped](/security). [What works with what](/matrix) has the whole grid.
+**Every transport is one of three shapes**, and it decides more about an
+estate's answer than anything else here: a **beacon** is a signal left where
+both can see it and collected later, a **flare** is fired straight at a
+station you can reach, and a **beam** is a live line held open in both
+directions. All six below are beacons.
+[What works with what](/matrix) sets the three out side by side, along with
+every station and controller and which combinations actually run.
 
 | transport | reach for it when | control side | station side |
 |---|---|---|---|
@@ -382,7 +403,7 @@ S3-compatible. Pass `--region auto` (the default) for R2 and MinIO, which have
 no regions but reject a request without one.
 
 Azure Blob is **not** S3-compatible. The station reaches it through its own
-pigeonhole path instead.
+beacon path instead.
 
 ### The layout
 

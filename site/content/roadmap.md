@@ -53,7 +53,7 @@ change request, which is the thing this exists to avoid.
 | email | never | It genuinely works in a mail-only air gap. It also carries a large operational burden - size limits at every relay, SPF and DKIM alignment, base64 inflation - for a small population |
 | chat - Slack, Teams | never | Captured logs in a chat system is a compliance problem, not a feature |
 | DNS | never | A covert channel. Shipping one would get the product banned from exactly the estates it is for |
-| raw TCP, reverse tunnel | never | A persistent reverse connection is a C2 channel by any blue team's definition, and not being one is a large part of why this class of tool is permitted at all. See [security](/security) |
+| raw TCP, reverse tunnel | **superseded** | An unauthenticated, always-on reverse connection stays refused, and for the original reason: it is a C2 channel by any blue team's definition. The **beam** is the answer designed instead - off unless explicitly enabled on both ends, sealed, signed, and torn down when idle. See [security](/security) |
 
 ## Stations
 
@@ -61,7 +61,7 @@ change request, which is the thing this exists to avoid.
 |---|---|---|
 | AWS ECS Fargate | **do**, with an account to prove it on | The plainest gap in the product. There are five [Azure templates](/azure) and no AWS ones, while [the comparison page](/compared) argues against AWS SSM Run Command - so a reader arriving from that argument finds nothing to deploy. It maps onto the Container Instances template: same image, same environment, same transport selection. The condition is real: every Azure template here has been deployed live and torn down, and shipping an AWS one that has never started a station would be a row that looks authoritative and is not |
 | AWS EC2 | **do**, with an account to prove it on | Maps onto the Azure VM template, and its `cloud-init.sh` already exists. Same condition as Fargate |
-| GitLab CI | **do** | One file, against the pattern [pipelines](/pipelines) already establishes, loop guard included. GitLab is the git host of choice across a large part of the regulated market |
+| GitLab CI | **do** | One file, against the pattern [pipelines](/pipelines) already establishes, loop guard included. GitLab is the git host of choice across a large part of the enterprise git market |
 | Kubernetes CronJob | **do** | The same image with `--once`, beside the Deployment [containers](/containers) already ships. It is what an estate that will not run a long-lived pod will accept |
 | Arista EOS | **do** | Bash on an Arista switch is documented and supported, in every command mode but EXEC, with `awk` and `egrep` present. That is the host contract met with no new code - a proving exercise and a page. It waits on one of the curl-only transports, because git is usually absent and installing it is out of the question |
 | AWS Lambda | later | The timer-not-a-loop pattern the Azure Function App already uses, ported |

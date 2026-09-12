@@ -32,12 +32,33 @@ var order = []string{
 	"claude-code", "codex", "mcp",
 	"station", "bootstrap", "steps", "runner", "conformance",
 	"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped",
-	"transports", "matrix", "relay", "intercom", "cli", "secrets", "security", "method",
+	"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "method",
 	"roadmap",
 	"dbhq",
 }
 
 const baseURL = "https://heliograph.dbhq.uk"
+
+// redirects keeps a published path alive after its page is renamed. Cloudflare
+// Pages reads _redirects; a reader who followed an old link gets the new page
+// rather than the 404 handler.
+//
+// GitHub Pages, which is what actually serves this site, does not read
+// _redirects at all - it is kept here anyway because it costs nothing and is
+// correct the day the host changes. The redirect GitHub Pages does serve is a
+// static stub written by .github/workflows/pages.yml after this build runs,
+// not generated from this map.
+var redirects = [][2]string{
+	{"/intercom", "/flare"},
+}
+
+func redirectsFile() string {
+	var b strings.Builder
+	for _, r := range redirects {
+		fmt.Fprintf(&b, "%s %s 301\n", r[0], r[1])
+	}
+	return b.String()
+}
 
 func main() {
 	src := flagOr(1, "site/content")
@@ -152,6 +173,9 @@ func build(src, out string) (int, error) {
 		"Sitemap: " + baseURL + "/sitemap.xml\n" +
 		"\n# Markdown mirrors of every page at <path>.md, and " + baseURL + "/llms.txt\n"
 	if err := os.WriteFile(filepath.Join(out, "robots.txt"), []byte(robots), 0o644); err != nil {
+		return 0, err
+	}
+	if err := os.WriteFile(filepath.Join(out, "_redirects"), []byte(redirectsFile()), 0o644); err != nil {
 		return 0, err
 	}
 	// Fonts and the logo. Copied by the build rather than by a step in the
@@ -315,7 +339,7 @@ var groups = []struct {
 	{"Drive it from an agent", []string{"claude-code", "codex", "mcp"}},
 	{"The far side", []string{"station", "bootstrap", "steps", "runner", "conformance"}},
 	{"Where it runs", []string{"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped"}},
-	{"Reference", []string{"transports", "matrix", "relay", "intercom", "cli", "secrets", "security", "method", "roadmap"}},
+	{"Reference", []string{"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "method", "roadmap"}},
 	{"More from DBHQ", []string{"dbhq"}},
 }
 
@@ -329,7 +353,7 @@ var groups = []struct {
 //
 // The navigation used the H1, and at eight pages that was survivable. At
 // twenty-three it produced a header reading "Making the loop outlive the
-// session", "Intercom - when you can reach the station", "Where a station can
+// session", "Flare - when you can reach the station", "Where a station can
 // run" - a sitemap poured into a nav bar, three rows deep.
 var labels = map[string]string{
 	"index":       "Overview",
@@ -354,7 +378,7 @@ var labels = map[string]string{
 	"transports":  "Transports",
 	"matrix":      "What works with what",
 	"relay":       "Relay",
-	"intercom":    "Intercom",
+	"flare":       "Flare",
 	"cli":         "CLI reference",
 	"secrets":     "Secrets",
 	"security":    "Security",
@@ -1003,7 +1027,7 @@ var titles = map[string]string{
 	"relay":       "The relay - zero-infrastructure heliograph over ordinary HTTPS",
 	"secrets":     "Secrets - redaction, and getting a value to the far side",
 	"security":    "Security - the gates, the blast radius, and what this refuses to do",
-	"intercom":    "Intercom - submit a step over HTTPS when you can reach the station",
+	"flare":       "Flare - submit a step over HTTPS when you can reach the station",
 }
 
 // descriptions are the search-result sentence for each page. See description().
@@ -1028,9 +1052,9 @@ var descriptions = map[string]string{
 	"pipelines":   "Run a heliograph station on a GitHub Actions or Azure DevOps agent, which is often the one machine in an estate that can already reach the far side.",
 	"windows":     "heliograph on Windows: hosting the station loop through Git for Windows, and writing steps in PowerShell that are still captured line by line with timestamps.",
 	"transports":  "A transport carries a step out and a log back. heliograph supports git, an HTTPS relay, a file share, a bundle and object store, behind one interface and gates.",
-	"matrix":      "Every heliograph transport, station and controller in one place, which combinations work, and the pigeonhole-versus-intercom split that decides the rest.",
+	"matrix":      "Every heliograph transport, station and controller in one place, which combinations work, and the beacon-versus-flare split that decides the rest.",
 	"relay":       "The relay runs heliograph over ordinary HTTPS with no git host and no storage account, encrypted end to end so the relay can read nothing and run nothing.",
-	"intercom":    "Intercom submits a step to a heliograph station over HTTPS, for the rarer case where you can reach the machine's network but still cannot log into it.",
+	"flare":       "A flare submits a step to a heliograph station over HTTPS, for the rarer case where you can reach the machine's network but still cannot log into it.",
 	"cli":         "Every heliograph command: init, bootstrap, plant, send, logs --gaps, station add, mcp and doctor, with the reasoning behind the ones that are not obvious.",
 	"secrets":     "Captured logs are committed to history, so heliograph redacts what it can. How redaction works, where it stops, and how to get a secret to the far side safely.",
 	"security":    "What heliograph refuses to do, what it gates, and what it cannot promise: read-only by default, no root, no credentials, and the account as the blast radius.",

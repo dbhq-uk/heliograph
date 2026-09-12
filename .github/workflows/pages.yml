@@ -58,6 +58,30 @@ jobs:
           echo "heliograph.dbhq.uk" > CNAME
           ls -la
 
+      - name: redirect stub for the old /intercom URL
+        # GitHub Pages does not read the generator's _redirects file (that is
+        # a Cloudflare Pages mechanism), so the published /intercom link would
+        # otherwise 404. Written here, after the build, rather than emitted by
+        # the site generator, so it never has to carry a markdown mirror or
+        # JSON-LD the way a real generated page must.
+        run: |
+          set -euo pipefail
+          mkdir -p site/dist/intercom
+          cat > site/dist/intercom/index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+          <meta charset="utf-8">
+          <title>Moved to /flare</title>
+          <link rel="canonical" href="/flare">
+          <meta http-equiv="refresh" content="0; url=/flare">
+          </head>
+          <body>
+          <p>This page moved. Continue to <a href="/flare">/flare</a>.</p>
+          </body>
+          </html>
+          EOF
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

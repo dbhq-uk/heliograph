@@ -20,25 +20,26 @@ import (
 // build failure rather than a dead cell nobody notices.
 
 // Kind is the shape of a transport, and it is the distinction the whole
-// product rests on.
+// product rests on. The axis is what is held, and for how long: a beacon holds
+// a message, a flare is a single exchange, a beam holds the connection itself.
 //
-// The two words are not invented here. station/bash/pigeonhole.sh describes
-// itself as "a dead letter drop: you cannot reach the far side, the far side
-// cannot reach you, and both can reach one agreed place", and
-// station/bash/intercom.sh opens with "only when the station's endpoint is
-// reachable from here - that is unusual, the whole skill exists because it
-// normally is not". The site had both files and named neither shape.
+// The names come from signalling, which is what a heliograph is.
 type Kind string
 
 const (
-	// Pigeonhole is store-and-forward. Both sides dial OUT to one agreed
-	// place and neither ever accepts a connection. Everything shipped is one.
-	Pigeonhole Kind = "pigeonhole"
+	// Beacon is store-and-forward. Both sides dial OUT to one agreed place
+	// and neither ever accepts a connection. Everything shipped is one.
+	Beacon Kind = "beacon"
 
-	// Intercom is direct. You can reach the station's endpoint, so there is
+	// Flare is direct. You can reach the station's endpoint, so there is
 	// no drop in the middle - and the gates change shape, which is the part
 	// that matters rather than the latency.
-	Intercom Kind = "intercom"
+	Flare Kind = "flare"
+
+	// Beam is a live channel held open in both directions until it is torn
+	// down. Designed in S4 and not yet built, so nothing carries this Kind
+	// yet; it is named here because the vocabulary is one thing.
+	Beam Kind = "beam"
 )
 
 // Status is how far a thing has actually got, and the words are the ones the
@@ -109,20 +110,20 @@ func unsure(n string) Pairing { return Pairing{Status: Unproven, Note: n} }
 // Transports, in the order a reader should meet them: the three the CLI drives
 // end to end first, then the rest, then the one that is a different shape.
 var Transports = []Transport{
-	{ID: "git", Name: "git", Short: "git", Kind: Pigeonhole, Control: Proven, Station: Proven,
+	{ID: "git", Name: "git", Short: "git", Kind: Beacon, Control: Proven, Station: Proven,
 		Note: "A private repository is the channel in both directions. The only transport that can bring the station a newer copy of itself.", Href: "/transports#git"},
-	{ID: "relay", Name: "relay", Short: "relay", Kind: Pigeonhole, Control: Proven, Station: Works,
+	{ID: "relay", Name: "relay", Short: "relay", Kind: Beacon, Control: Proven, Station: Works,
 		Note: "Both sides dial out over ordinary HTTPS. No git host, no storage account, no VNet - and the only transport needing a binary on the far side.", Href: "/relay"},
-	{ID: "share", Name: "file share", Short: "share", Kind: Pigeonhole, Control: Proven, Station: Proven,
+	{ID: "share", Name: "file share", Short: "share", Kind: Beacon, Control: Proven, Station: Proven,
 		Note: "The cheapest there is, where both machines already mount the same directory. The mount is the credential, and that is the whole security model.", Href: "/transports#file-share"},
-	{ID: "blob", Name: "Azure Blob", Short: "blob", Kind: Pigeonhole, Control: Partial, Station: Works,
+	{ID: "blob", Name: "Azure Blob", Short: "blob", Kind: Beacon, Control: Partial, Station: Works,
 		Note: "Reached through drop.sh in the station payload rather than the heliograph binary. A VNet-local private endpoint is often the only thing reachable.", Href: "/azure"},
-	{ID: "objstore", Name: "object store", Short: "S3", Kind: Pigeonhole, Control: Works, Station: Missing,
+	{ID: "objstore", Name: "object store", Short: "S3", Kind: Beacon, Control: Works, Station: Missing,
 		Note: "S3-compatible: AWS, R2, MinIO, B2, Spaces, Ceph. The CLI drives it and no station can read one, so nothing in this column can work yet.", Href: "/transports#object-store"},
-	{ID: "bundle", Name: "bundle", Short: "bundle", Kind: Pigeonhole, Control: Works, Station: Works,
+	{ID: "bundle", Name: "bundle", Short: "bundle", Kind: Beacon, Control: Works, Station: Works,
 		Note: "The only thing that makes air-gapped literally true: a person carries the file, and no path between the two machines is needed at all. Both halves work; a round trip takes as long as somebody takes to walk.", Href: "/air-gapped"},
-	{ID: "intercom", Name: "intercom", Short: "intercom", Kind: Intercom, Control: Works, Station: Partial,
-		Note: "The one case where you CAN reach the station. The script travels with the request, so heliograph-mode stops being a control and becomes a claim the caller makes about its own file.", Href: "/intercom"},
+	{ID: "flare", Name: "flare", Short: "flare", Kind: Flare, Control: Works, Station: Partial,
+		Note: "The one case where you CAN reach the station. The script travels with the request, so heliograph-mode stops being a control and becomes a claim the caller makes about its own file.", Href: "/flare"},
 }
 
 // Stations. Status words match /hosts exactly, because two pages disagreeing
@@ -130,7 +131,7 @@ var Transports = []Transport{
 var Stations = []Station{
 	{ID: "terminal", Name: "An operator's terminal", Short: "Terminal", Status: Proven, Flavour: "bash, PowerShell",
 		Note: "Still the best host when there is a willing person: no infrastructure request, and start.sh prints its own preflight to somebody who can read it.", Href: "/station",
-		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "blob": yes(), "intercom": ok("only where the station's endpoint is reachable from your side")}},
+		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "blob": yes(), "flare": ok("only where the station's endpoint is reachable from your side")}},
 	{ID: "docker", Name: "Docker", Short: "Docker", Status: Proven, Flavour: "bash",
 		Note: "CI builds the image and runs a loop inside it. The image plants the payload itself, so a transport with nothing to clone still has one.", Href: "/containers",
 		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "blob": yes()}},
@@ -153,8 +154,8 @@ var Stations = []Station{
 		Note: "Deployed live on a Standard_D2s_v3. The exception to everything else here: a bare VM has no image, so git clone is how the toolkit arrives whatever transport then carries the logs.", Href: "/azure",
 		Transports: map[string]Pairing{"git": yes(), "blob": yes(), "relay": needs("the key files, and a git host reachable once at first boot"), "share": needs("the share has to be mounted")}},
 	{ID: "azure-function", Name: "Azure Function App", Short: "Function App", Status: Written, Flavour: "bash",
-		Note: "A timer, not a loop. Validated and never deployed. It is the host the intercom was written for, because a Function App has a public endpoint while sitting inside the VNet.", Href: "/azure",
-		Transports: map[string]Pairing{"blob": ok("through pigeonhole.sh, on a timer"), "intercom": ok("the one host with an endpoint you can reach"), "git": needs("there is no git in the image")}},
+		Note: "A timer, not a loop. Validated and never deployed. It is the host the flare was written for, because a Function App has a public endpoint while sitting inside the VNet.", Href: "/azure",
+		Transports: map[string]Pairing{"blob": ok("through pigeonhole.sh, on a timer"), "flare": ok("the one host with an endpoint you can reach"), "git": needs("there is no git in the image")}},
 	{ID: "recipe", Name: "ECS Fargate, Cloud Run, anything else", Short: "Your own host", Status: Missing, Flavour: "bash",
 		Note: "Recipes against the host contract, not templates. Issue #5 settled that deliberately: a template that has never started a station spends the credibility of the ones that have.", Href: "/hosts",
 		Transports: map[string]Pairing{"git": unsure("meets the contract, never run"), "relay": unsure("meets the contract, never run"), "share": unsure("meets the contract, never run"), "blob": unsure("meets the contract, never run")}},
@@ -165,7 +166,7 @@ var Stations = []Station{
 var Controllers = []Controller{
 	{ID: "cli", Name: "The CLI, on Linux, macOS or Windows", Status: Proven,
 		Note: "One static binary, amd64 or arm64, no runtime. Only the git transport shells out to anything - the rest are the binary alone.", Href: "/install",
-		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "objstore": yes(), "bundle": yes(), "intercom": ok("through intercom.sh")}},
+		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "objstore": yes(), "bundle": yes(), "flare": ok("through intercom.sh")}},
 	{ID: "agent", Name: "An AI agent, over MCP", Status: Proven,
 		Note: "heliograph mcp serves the same commands as typed tools. The gates do not move: a tool call publishes a request, and the station still decides whether to run it.", Href: "/mcp",
 		Transports: map[string]Pairing{"git": yes(), "relay": yes(), "share": yes(), "objstore": yes(), "bundle": yes()}},
@@ -308,8 +309,8 @@ func controls() string {
 
 	b.WriteString(`<div class="mxa-fg"><span class="mxa-fl">Shape</span><div class="mxa-chips" role="radiogroup" aria-label="Transport shape">`)
 	chip(&b, "kind", "all", "Both", true)
-	chip(&b, "kind", string(Pigeonhole), "Pigeonhole", false)
-	chip(&b, "kind", string(Intercom), "Intercom", false)
+	chip(&b, "kind", string(Beacon), "Beacon", false)
+	chip(&b, "kind", string(Flare), "Flare", false)
 	b.WriteString(`</div></div>`)
 
 	b.WriteString(`<div class="mxa-fg"><span class="mxa-fl">Drive it from</span><div class="mxa-chips" role="radiogroup" aria-label="Controller">`)
@@ -334,12 +335,12 @@ func controls() string {
 	// The shape definitions, one line each, shown only while that shape is
 	// selected. They used to be four paragraphs above the grid, which is the
 	// thing this page was asked to stop being.
-	b.WriteString(`<p class="mxa-def" data-def="pigeonhole">` +
-		`<b>Pigeonhole:</b> a dead letter drop. You cannot reach the far side, it cannot reach you, and both reach one agreed place. No inbound port, ever. ` +
+	b.WriteString(`<p class="mxa-def" data-def="beacon">` +
+		`<b>Beacon:</b> a dead letter drop. You cannot reach the far side, it cannot reach you, and both reach one agreed place. No inbound port, ever. ` +
 		`<a href="/transports">More</a></p>`)
-	b.WriteString(`<p class="mxa-def" data-def="intercom">` +
-		`<b>Intercom:</b> you can reach the station directly, so the script travels WITH the request - and the mode header stops being a gate and becomes a claim the caller makes. ` +
-		`<a href="/intercom">More</a></p>`)
+	b.WriteString(`<p class="mxa-def" data-def="flare">` +
+		`<b>Flare:</b> you can reach the station directly, so the script travels WITH the request - and the mode header stops being a gate and becomes a claim the caller makes. ` +
+		`<a href="/flare">More</a></p>`)
 	return b.String()
 }
 

@@ -1,8 +1,8 @@
 # Security
 
 What heliograph refuses to do, what it gates, and what it cannot promise. This
-page is written to be read by somebody deciding whether to permit it on their
-estate.
+page is written to be read by somebody deciding whether to permit it in
+an estate nobody outside can log into.
 
 ```diagram gates
 Four gates, all failing closed, all in one place.
@@ -10,8 +10,11 @@ Four gates, all failing closed, all in one place.
 
 ## It does not give you access you do not have
 
-heliograph does not tunnel, proxy, or hold a connection open to a host you
-control. There is nothing here to punch through a firewall with.
+Two of the three shapes never hold a connection open, and this section is
+about them: heliograph does not tunnel, proxy, or hold a connection open to a
+host you control. There is nothing here to punch through a firewall with. The
+third, the beam, does hold one open, deliberately and under controls of its
+own - covered below.
 
 A raw TCP transport was considered and **dropped** for exactly that reason: a
 persistent reverse connection from the far side to a listener you control is a
@@ -25,6 +28,26 @@ it targets.
 **Every command runs on the far side because somebody with legitimate access
 chose to run it.** The operator clones a repo they can read and runs a script
 they can read first.
+
+## The beam, and the blast radius of a held-open line
+
+The beam is designed and not yet built; what follows is what it will do when
+it lands. A beam is a live channel. While it is up, a step beam still runs
+each line through `run.sh`, so the read-only gate and the captured log
+survive - but a **raw** beam carries opaque bytes, and `run.sh` cannot see
+inside them. That is interactive access to the account the station runs as,
+gated once, at the door.
+
+The controls are therefore at establishment, and there are three:
+
+- a beam does not establish at all unless the station was started to allow one
+- a raw beam needs a further, separate permission, because it is the one that
+  removes the per-command gate
+- an onward forward reaches only destinations the operator listed by name
+
+A raw beam leaves a connection record rather than a captured log: class,
+destination, peer, open and close times, and bytes each way. It is not the
+content, and the page says so rather than implying otherwise.
 
 ## The four gates, all failing closed
 

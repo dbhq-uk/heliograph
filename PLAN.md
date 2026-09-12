@@ -82,7 +82,7 @@ three bootstraps.
 | #71 | **HTTPS enforced, and `llms.txt` announced** (#70) - a `<link rel=alternate>` in every head and a visible footer anchor. It had been reachable only by an agent that already knew the path |
 | #72 | **the rest of #70's code half** - `author` splits from `publisher`, so a named person writes the pages and DBHQ publishes them, with a footer byline saying so; `datePublished` from the first commit beside `dateModified`; and Googlebot and Bingbot are kept off the `.md` mirrors, under their own groups so no other agent is. Also corrected: the "roughly 31 times more bytes" claim, quoted in four files and never measured. It is three to sixteen times, about eight on the median page, and a test now measures it on every build |
 | - | **the PowerShell station, finished** (Track B, PRs 13-14 merged into one). `station.ps1` - the loop, gate 3, the receive half of both transports, the bootstrap that plants it, and the documentation. Split no further on purpose: every earlier PR was split so that each piece could be *proved*, and once the loop exists the remaining pieces are provable end to end together. See below for what it found |
-| - | **`/dbhq` loses the browser-tools table, and the word "regulated" leaves the repository** - the two hosted tools are no longer listed, and the company line now says senior engineering delivery across multiple industries. The claim that this class of tool "is permitted in regulated estates" was an overclaim - nobody in a regulated sector has certified it - and it appeared in the README, `/index`, `/security`, `/relay`, `/claude-code` and the design spec. Each one is rewritten to make the same argument without asserting somebody else's approval: the TCP paragraph now ends "nothing here is worth having if a blue team has to call it one", and the relay threat model argues from the estate that would not give you SSH rather than from "regulated customers, who are the customers". The audience list drops "regulated" for "somebody else's sign-off" |
+| - | **`/dbhq` loses the browser-tools table, and the compliance-label word leaves the repository** - the two hosted tools are no longer listed, and the company line now says senior engineering delivery across multiple industries. The claim that this class of tool was permitted on account of its customers' compliance status was an overclaim - nobody in that sector has certified it - and the word appeared in the README, `/index`, `/security`, `/relay`, `/claude-code` and the design spec. Each one is rewritten to make the same argument without asserting somebody else's approval: the TCP paragraph now ends "nothing here is worth having if a blue team has to call it one", and the relay threat model argues from the estate that would not give you SSH rather than from naming its customers' compliance status. The audience list drops the word for "somebody else's sign-off" |
 | - | **verve run over every markdown file in the repository, and the prose passed** - 27 site pages, the README, AGENTS.md, CONTRIBUTING.md, SECURITY.md, PLAN.md, and every file under `docs/`. No em dashes, no curly quotes, no AI vocabulary, no throat-clearing openers, no filler phrases, no meta-commentary. The forty-eight adverb hits are all doing semantic work ("literally true rather than nearly true", "what they really break", "publicly, obviously incapable"), and the "not X, it is Y" constructions each correct a misreading, which is the case the rule keeps. Recorded so nobody runs it again expecting a yield. Three real edits: `in order to` in the relay spec, "a feature, not an accident" in the B1 plan (a stock construction, now says what the feature is for), and `references/` listed twice in one CONTRIBUTING sentence. Plus seven prose lines rewrapped to the 80 columns their own file keeps, in `/index`, `/conformance`, `/containers`, `/transports`, PLAN.md and `dev-setup.md`. The soft-wrapped specs and plans are left alone: that is their convention, not drift |
 | - | **the mirror saving remeasured, forced by the line above** - removing the browser-tools table made `/dbhq` the shortest page on the site, which pushed its HTML-to-markdown ratio to 20.5 and failed `TestTheMirrorSavingIsTheOneTheCommentsClaim`. Remeasured again after merging main, which added `/matrix` and `/roadmap`: over 29 pages it is 2.8 to 20.5, about seven on the median page and 5.8 across the whole site. The ceiling is the shortest page rather than a mid-length one, because chrome is a fixed cost that short pages cannot dilute - `/dbhq` is an outlier, and the next page down is `/pipelines` at 14.8. The bounds keep the slack main added in #84 and move only the ceiling, 18 to 23 |
 | #76 | **content gap 5, and two H2s that are questions** (#70) - `/method` answers "run a command on a remote machine" the way that SERP is written: the `ssh`, `Invoke-Command`, PsExec and cloud-agent answers first, then the case where each has been refused. One question-form H2 each on `/claude-code` and `/mcp`, and nowhere else |
@@ -221,6 +221,32 @@ Language Mode plainly cannot throw while loading a config file first.
 
 Also corrected: the preflight still warned that *"this payload ships no service
 installer"*, printed by the very script the installer registers.
+
+## The signalling toolkit (in design)
+
+A program that adds the third shape - the **beam**, a held-open live channel -
+renames the shapes onto one medium (**beacon** / **flare** / **beam**, from
+pigeonhole / intercom / the new open line), and drops the compliance-label
+framing throughout. Six designs, each its own spec and PR, tracked by the
+umbrella issue #85 and coordinated by
+[`docs/plans/2026-09-11-signalling-toolkit-roadmap.md`](docs/plans/2026-09-11-signalling-toolkit-roadmap.md).
+
+| id | issue | spec | state |
+|---|---|---|---|
+| S1a | #86 | [three shapes and the signalling names](docs/specs/2026-09-11-three-shapes-and-signalling-names-design.md) - the docs half | **done in PR #94** |
+| S1b | #102 | the script and env-var rename (`pigeonhole.sh`/`intercom.sh`/`intercom.py` and `PIGEONHOLE_*`/`INTERCOM_*`), with aliases | to build |
+| S2 | #87 | [discrete transports completed](docs/specs/2026-09-11-discrete-transports-completed-design.md) (relay CLI selection, flare transport) | spec ready |
+| S3 | #89 | [`heliograph shell`](docs/specs/2026-09-11-heliograph-shell-design.md) (REPL over flare, SSH front door) | spec ready |
+| S4 | #90 | [the beam: the live `Channel` and the relayed beam](docs/specs/2026-09-11-beam-live-channel-design.md) | drafted, open questions |
+| S5 | #91 | [SSH and interactive over the beam](docs/specs/2026-09-11-ssh-and-interactive-over-the-beam-design.md) (PTY, `ssh` passthrough, gated TCP forward) | drafted, open questions |
+| S6 | #92 | [the direct beam](docs/specs/2026-09-11-direct-beam-p2p-design.md) (P2P: ICE, STUN, WebRTC data channel; relayed-beam fallback, no TURN) | drafted, open questions |
+| - | #103 | guard the claim, not just the word - a test needle for "does not tunnel" with an allowlist of pages that qualify it | follow-up |
+| - | #93 | reproducible builds for the beam binary, and seams a cloud layer can extend | decided; folded into S4 and S5 |
+
+**This reverses a stated anti-goal**: the beam is the reverse connection the
+raw-TCP transport was dropped for being. S1 rewrites the "what it will not do"
+prose into an honest characterisation rather than pretending the line did not
+move. Decided by the owner with the C2 trade-off on the table.
 
 ## Next, in order
 

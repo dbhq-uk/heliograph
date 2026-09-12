@@ -1,4 +1,4 @@
-# Intercom - when you can reach the station
+# Flare - when you can reach the station
 
 Every other transport exists because you cannot reach the far side. This one is
 for the narrower case where you *can*: the station sits behind a public HTTPS
@@ -15,14 +15,14 @@ log back in seconds rather than in poll intervals.
 
 Realistically, one shape: an **Azure Function App** inside the VNet, which has
 a public HTTPS front door *and* sits inside the network. That combination is
-unusual and is exactly what makes intercom worth having when it occurs.
+unusual and is exactly what makes flare worth having when it occurs.
 
 If you cannot reach the station, use [any other transport](/transports). If you
 can reach the *machine* properly, use SSH and do not use heliograph at all.
 
 ## Read this before exposing it
 
-Intercom makes a trade the other transports do not, and it is stated here
+Flare makes a trade the other transports do not, and it is stated here
 rather than buried.
 
 **It ships the script it wants run.** So `# heliograph-mode: read-only`
@@ -63,7 +63,7 @@ side, so a container can start cleanly on a host with no network at all.
 
 ## Both ship in one host
 
-Leaving `HELIOGRAPH_ACCOUNT` unset leaves intercom off. Setting
+Leaving `HELIOGRAPH_ACCOUNT` unset leaves flare off. Setting
 `HELIOGRAPH_SCHEDULE` to a date that never comes leaves the blob timer off.
 Running both is fine and is what the reference deployment does. See
 [Azure](/azure).
