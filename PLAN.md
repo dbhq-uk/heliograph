@@ -175,9 +175,10 @@ that is not progress.
 
 | PR | |
 |---|---|
+| #96 | **the PowerShell payload can survive a logout, and carry its own configuration** - `station/powershell/service.ps1`. A scheduled task rather than a service, registered against `start.ps1` so the preflight runs on every start. `--flavour powershell` had planted no way to survive a logout at all. The hard part is not the task: a task inherits nothing, so the transport's variables and the credential go into `.station-env-ps` - `KEY=value`, read and never executed, values verbatim, a newline refused rather than stripped, ACL set to this account only, deleted on uninstall. `install` refuses when a detached loop could not deliver, because nobody sees that failure until hours later |
 | - | **the bundle's station side** (#68) - `transports/bundle.sh`, so the one transport that makes *air-gapped* literally true now has a far side. A station started with `TRANSPORT=bundle BUNDLE_DIR=<mount>` reads the request the CLI wrote, runs it, and writes the status and the log back onto the medium for somebody to carry home. It declares `request status progress` and **not** `live` or `self`: a stick does not change while you watch it, and nothing publishes a payload to one. Conformance runs over it, and `/air-gapped`, `/transports`, `/station` and `/matrix` are corrected - all four said a station could not read a bundle |
 
-### What that change found
+### What the bundle found
 
 **The log goes flat in the bundle directory, not under `ops-logs/`.** Every
 other transport nests them; `Bundle.ListLogs` on the control side reads `*.txt`
@@ -194,9 +195,8 @@ the control side.
 
 `--check` is also asserted to leave the medium byte-for-byte as it found it. An
 operator runs the preflight on a machine where they may not yet alter anything.
-| #96 | **the PowerShell payload can survive a logout, and carry its own configuration** - `station/powershell/service.ps1`. A scheduled task rather than a service, registered against `start.ps1` so the preflight runs on every start. `--flavour powershell` had planted no way to survive a logout at all. The hard part is not the task: a task inherits nothing, so the transport's variables and the credential go into `.station-env-ps` - `KEY=value`, read and never executed, values verbatim, a newline refused rather than stripped, ACL set to this account only, deleted on uninstall. `install` refuses when a detached loop could not deliver, because nobody sees that failure until hours later |
 
-### What that change found
+### What the service installer found
 
 **A config file only the loop could read.** The reader lived in `station.ps1`,
 and the task registers `start.ps1`, which preflights first and hands over only

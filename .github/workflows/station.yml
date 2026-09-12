@@ -681,15 +681,30 @@ jobs:
 
           # THE ASSERTION. A task that runs and a station that delivers are
           # different claims, and only the far side settles the second.
+          #
+          # WAITING FOR THE STATE, NOT FOR THE FILE. Waiting on Test-Path broke
+          # on the first turn every time: the loop publishes `running` before it
+          # starts the step, so the file exists within a second and the wait
+          # ended while the run was still going. The assertion below then read
+          # `running` and reported that the task had not delivered - about a
+          # station that delivered four seconds later.
+          #
+          # The wait and the assertion now ask the same question. A wait whose
+          # condition is weaker than the assertion it guards is not a wait.
+          $statusFile = Join-Path $share 'svc\status'
           $deadline = (Get-Date).AddSeconds(180)
           while ((Get-Date) -lt $deadline) {
-            if (Test-Path (Join-Path $share 'svc\status')) { break }
+            $s = if (Test-Path $statusFile) { Get-Content $statusFile -Raw -EA SilentlyContinue } else { '' }
+            if ($s -match 'state:\s*idle') { break }
             Start-Sleep -Seconds 3
           }
-          $status = if (Test-Path (Join-Path $share 'svc\status')) { Get-Content (Join-Path $share 'svc\status') -Raw } else { '' }
+          $status = if (Test-Path $statusFile) { Get-Content $statusFile -Raw } else { '' }
           Write-Output "--- published status`n$status"
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\service.ps1 status 2>&1 | Out-String | Write-Output
-          if ($status -notmatch 'state:    idle') {
+          # `\s*` rather than the four spaces the document happens to align to.
+          # The assertion is about the state, and a column that moves is not a
+          # reason for CI to fail.
+          if ($status -notmatch 'state:\s*idle') {
             Write-Output '::error::the scheduled task did not run a station that delivered'
             Write-Output (Get-Content (Join-Path $payload '.station-service.log') -Raw -EA SilentlyContinue)
             Pop-Location; exit 1
