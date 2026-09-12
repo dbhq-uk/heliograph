@@ -271,4 +271,45 @@ else
     "undelivered" "$(status_field state)"
 fi
 
+# --- a transport's own variables are the request's to set, and are not ---------
+# This was a real defect. The guard was a denylist of four names - TRANSPORT,
+# PUSH, REDACT, LOG_DIR - while `cap_need` in caplib.sh reads every transport's
+# configuration straight out of the environment. So RELAY_URL delivered the log
+# to somebody else's relay, and RELAY_PEER sealed it to a public key the
+# requester chose, because relay.sh passes --peer to `seal seal` as well as to
+# `seal open`. A read-only step did it and no gate fired.
+for _v in RELAY_URL RELAY_PEER RELAY_IDENTITY SHARE_DIR PIGEONHOLE_ACCOUNT CAP_TRANSPORT ALLOW_ROOT; do
+  request "env-$_v" reader "$_v=/tmp/somewhere-else"
+  agent
+  assert_eq "a request setting $_v is refused" "refused" "$(status_field state)"
+done
+
+# ...and the refusal is published with a reason, because a silent one sends the
+# reader to the wrong side of the gap.
+assert_contains "and the published reason names the variable" \
+  "ALLOW_ROOT" "$(sed -n 's/^reason:[[:space:]]*//p' "$TR/station/status" | head -1)"
+
+# --- the guard cannot be outgrown by a new transport --------------------------
+# The pattern is reserved by PREFIX, and this asserts that every variable any
+# transport actually asks for is covered by it. Add a transport with a new
+# prefix and forget to reserve it, and this fails rather than shipping the
+# defect again.
+_pat="$(sed -n 's/^ *\(TRANSPORT|PUSH|REDACT|LOG_DIR.*\))$/\1/p' "$TR/station.sh" | head -1)"
+if [ -z "$_pat" ]; then
+  t_no "could not read the reserved-env pattern out of station.sh"
+else
+  _uncovered=""
+  for _name in $(grep -ho 'cap_need [A-Z_][A-Z0-9_]*' "$TR"/transports/*.sh | awk '{print $2}' | sort -u); do
+    _hit=0
+    _ifs="$IFS"; IFS='|'
+    for _alt in $_pat; do
+      # shellcheck disable=SC2254
+      case "$_name" in $_alt) _hit=1; break ;; esac
+    done
+    IFS="$_ifs"
+    [ "$_hit" = "1" ] || _uncovered="$_uncovered $_name"
+  done
+  assert_eq "every cap_need variable across all transports is reserved" "" "$_uncovered"
+fi
+
 t_summary

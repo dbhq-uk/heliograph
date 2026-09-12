@@ -145,9 +145,19 @@ still not a reason to hand it a shell.
   `|`, `<`, `>` or `(`. It is split the way a shell would split it, honouring
   quotes, and assigned as an array - so a value that got past the guard still
   could not execute
-- It may not set `TRANSPORT`, `PUSH`, `REDACT` or `LOG_DIR`. Those control
-  where the log goes, whether it is delivered at all, and whether secrets are
-  masked in it. They are settled when the station is started, not per request.
+- **It may not set anything that configures capture, delivery, redaction or
+  identity.** Those decide where the log goes, whether it is delivered at all,
+  whether secrets are masked in it, and who can read it - and they are settled
+  when the station is started, not per request. That covers `TRANSPORT`, `PUSH`,
+  `REDACT` and `LOG_DIR`, the gate variables, and **every transport's own
+  configuration**: `RELAY_*`, `SHARE_*`, `PIGEONHOLE_*` and the rest.
+
+  It is reserved by **prefix rather than by name**, because a transport is
+  configured through the environment and a list of names would be outgrown by
+  the next transport added. `tests/test-station-gate.sh` reads the pattern out
+  of `station.sh` and fails if any variable a transport asks for is not covered
+  by it, so the guard cannot quietly fall behind the code.
+
   The check runs on the **parsed** assignments rather than on the raw line, so
   quoting cannot walk around it
 - The transport name is validated before it becomes a filename that gets
