@@ -50,7 +50,16 @@ function Import-CapStationEnv {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return $applied }
 
     try {
-        foreach ($line in @(Get-Content -LiteralPath $file -ErrorAction Stop)) {
+        # -Encoding UTF8, EXPLICITLY. Windows PowerShell 5.1's Get-Content
+        # defaults to the ANSI CODEPAGE, so a value holding any byte above 0x7F
+        # comes back as Windows-1252 characters - a token with a non-ASCII
+        # character in it authenticates as something else, and the failure is a
+        # 401 on a machine nobody can log into. `service.ps1` writes this file
+        # as UTF-8 without a BOM.
+        #
+        # Still a cmdlet rather than [System.IO.File], for the CLM reason at
+        # the top of this file.
+        foreach ($line in @(Get-Content -LiteralPath $file -Encoding UTF8 -ErrorAction Stop)) {
             if (-not $line -or $line.StartsWith('#')) { continue }
             $eq = $line.IndexOf('=')
             if ($eq -lt 1) { continue }

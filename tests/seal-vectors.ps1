@@ -122,7 +122,15 @@ if (-not (Test-Path -LiteralPath $vf -PathType Leaf)) {
     "FAIL the Go vectors are missing from $vf"
     $script:fail++
 } else {
-    $v = Get-Content -LiteralPath $vf -Raw | ConvertFrom-Json
+    # ReadAllText, NOT `Get-Content -Raw`. On Windows PowerShell 5.1
+    # Get-Content defaults to the ANSI CODEPAGE, so the UTF-8 bytes c3 a9 in
+    # `café-01` came back as the two Windows-1252 characters `Ã©` and were then
+    # re-encoded to c3 83 c2 a9. The canonical metadata was two bytes longer
+    # than Go's, the derived key differed, and the signature differed - a
+    # perfect mojibake cascade, on Windows only, in the one vector case with a
+    # non-ASCII field. .NET's ReadAllText is UTF-8 with BOM detection on both
+    # editions, and it is what the station itself uses to read a key file.
+    $v = [System.IO.File]::ReadAllText($vf) | ConvertFrom-Json
     CheckTrue 'the vectors are for the version this module speaks' ($v.version -eq 1)
 
     $ids = @{
