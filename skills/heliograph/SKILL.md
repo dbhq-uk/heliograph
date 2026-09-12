@@ -51,8 +51,8 @@ curl -sSL https://github.com/dbhq-uk/heliograph/releases/latest/download/heliogr
 If you cannot install it (no network, no permission), stop and say so. The
 no-CLI fallback is a procedure for a person, not for you: clone
 [dbhq-uk/heliograph](https://github.com/dbhq-uk/heliograph) and run
-`station/bootstrap.sh` by hand - the station is plain bash and stands on its
-own. Do not reimplement `send`, `watch` or the gates by editing files: one
+`station/bootstrap.sh` by hand - the station is plain text and stands on its
+own, and `--flavour powershell` plants the twin for a box with no bash. Do not reimplement `send`, `watch` or the gates by editing files: one
 driver is the point.
 
 The far side needs bash 4+, git and GNU coreutils, nothing else, and that

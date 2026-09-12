@@ -12,9 +12,10 @@ for the 19-PR breakdown. This file says where we are and what is next.
 
 ## Where we are
 
-Git, the file share and the relay work end to end, each with its own round trip
-in CI. The site documents the far side. **The PowerShell station is complete**: it
-polls, runs, delivers and publishes, and it is planted by all three bootstraps.
+Git, the file share, the relay and the bundle work end to end, each with its own
+round trip in CI. The site documents the far side. **The PowerShell station is
+complete**: it polls, runs, delivers and publishes, and it is planted by all
+three bootstraps.
 
 | | |
 |---|---|
@@ -23,7 +24,8 @@ polls, runs, delivers and publishes, and it is planted by all three bootstraps.
 | Azure Blob | works end to end via `drop.sh` and `pigeonhole.sh`, not via the CLI |
 | every host but a pipeline | carries a transport. Azure Blob works outright everywhere; the relay and the file share need a volume the templates do not mount |
 | file share | **works end to end**, proved by a CLI round trip in CI |
-| bundle, object store | control side only; **no station side at all** |
+| bundle | **works end to end**, proved by a CLI round trip across a directory that stands in for the medium. No `live` and no `self`, because a stick does not change while you watch it |
+| object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
 | PowerShell station | **complete and proven**. Polls, runs, delivers and publishes over git and share, with all four gates. Every conformance property, on 5.1 and on 7. No relay transport (needs `heliograph-seal`, which is Go) |
 | site | 29 pages, near and far side, plus `/matrix` (every transport, station and controller, from one source in Go) and `/roadmap`. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
@@ -80,6 +82,9 @@ polls, runs, delivers and publishes, and it is planted by all three bootstraps.
 | #71 | **HTTPS enforced, and `llms.txt` announced** (#70) - a `<link rel=alternate>` in every head and a visible footer anchor. It had been reachable only by an agent that already knew the path |
 | #72 | **the rest of #70's code half** - `author` splits from `publisher`, so a named person writes the pages and DBHQ publishes them, with a footer byline saying so; `datePublished` from the first commit beside `dateModified`; and Googlebot and Bingbot are kept off the `.md` mirrors, under their own groups so no other agent is. Also corrected: the "roughly 31 times more bytes" claim, quoted in four files and never measured. It is three to sixteen times, about eight on the median page, and a test now measures it on every build |
 | - | **the PowerShell station, finished** (Track B, PRs 13-14 merged into one). `station.ps1` - the loop, gate 3, the receive half of both transports, the bootstrap that plants it, and the documentation. Split no further on purpose: every earlier PR was split so that each piece could be *proved*, and once the loop exists the remaining pieces are provable end to end together. See below for what it found |
+| - | **`/dbhq` loses the browser-tools table, and the compliance-label word leaves the repository** - the two hosted tools are no longer listed, and the company line now says senior engineering delivery across multiple industries. The claim that this class of tool was permitted on account of its customers' compliance status was an overclaim - nobody in that sector has certified it - and the word appeared in the README, `/index`, `/security`, `/relay`, `/claude-code` and the design spec. Each one is rewritten to make the same argument without asserting somebody else's approval: the TCP paragraph now ends "nothing here is worth having if a blue team has to call it one", and the relay threat model argues from the estate that would not give you SSH rather than from naming its customers' compliance status. The audience list drops the word for "somebody else's sign-off" |
+| - | **verve run over every markdown file in the repository, and the prose passed** - 27 site pages, the README, AGENTS.md, CONTRIBUTING.md, SECURITY.md, PLAN.md, and every file under `docs/`. No em dashes, no curly quotes, no AI vocabulary, no throat-clearing openers, no filler phrases, no meta-commentary. The forty-eight adverb hits are all doing semantic work ("literally true rather than nearly true", "what they really break", "publicly, obviously incapable"), and the "not X, it is Y" constructions each correct a misreading, which is the case the rule keeps. Recorded so nobody runs it again expecting a yield. Three real edits: `in order to` in the relay spec, "a feature, not an accident" in the B1 plan (a stock construction, now says what the feature is for), and `references/` listed twice in one CONTRIBUTING sentence. Plus seven prose lines rewrapped to the 80 columns their own file keeps, in `/index`, `/conformance`, `/containers`, `/transports`, PLAN.md and `dev-setup.md`. The soft-wrapped specs and plans are left alone: that is their convention, not drift |
+| - | **the mirror saving remeasured, forced by the line above** - removing the browser-tools table made `/dbhq` the shortest page on the site, which pushed its HTML-to-markdown ratio to 20.5 and failed `TestTheMirrorSavingIsTheOneTheCommentsClaim`. Remeasured again after merging main, which added `/matrix` and `/roadmap`: over 29 pages it is 2.8 to 20.5, about seven on the median page and 5.8 across the whole site. The ceiling is the shortest page rather than a mid-length one, because chrome is a fixed cost that short pages cannot dilute - `/dbhq` is an outlier, and the next page down is `/pipelines` at 14.8. The bounds keep the slack main added in #84 and move only the ceiling, 18 to 23 |
 | #76 | **content gap 5, and two H2s that are questions** (#70) - `/method` answers "run a command on a remote machine" the way that SERP is written: the `ssh`, `Invoke-Command`, PsExec and cloud-agent answers first, then the case where each has been refused. One question-form H2 each on `/claude-code` and `/mcp`, and nowhere else |
 
 **The MCP registry lists heliograph** as of 2026-09-11, at
@@ -166,6 +171,57 @@ that file is bounded by the clock now, and the condition requires a `progress:`
 key AND the step's own output, because each alone is satisfiable by something
 that is not progress.
 
+## Landed 2026-09-12
+
+| PR | |
+|---|---|
+| #96 | **the PowerShell payload can survive a logout, and carry its own configuration** - `station/powershell/service.ps1`. A scheduled task rather than a service, registered against `start.ps1` so the preflight runs on every start. `--flavour powershell` had planted no way to survive a logout at all. The hard part is not the task: a task inherits nothing, so the transport's variables and the credential go into `.station-env-ps` - `KEY=value`, read and never executed, values verbatim, a newline refused rather than stripped, ACL set to this account only, deleted on uninstall. `install` refuses when a detached loop could not deliver, because nobody sees that failure until hours later |
+| - | **the bundle's station side** (#68) - `transports/bundle.sh`, so the one transport that makes *air-gapped* literally true now has a far side. A station started with `TRANSPORT=bundle BUNDLE_DIR=<mount>` reads the request the CLI wrote, runs it, and writes the status and the log back onto the medium for somebody to carry home. It declares `request status progress` and **not** `live` or `self`: a stick does not change while you watch it, and nothing publishes a payload to one. Conformance runs over it, and `/air-gapped`, `/transports`, `/station` and `/matrix` are corrected - all four said a station could not read a bundle |
+
+### What the bundle found
+
+**The log goes flat in the bundle directory, not under `ops-logs/`.** Every
+other transport nests them; `Bundle.ListLogs` on the control side reads `*.txt`
+in the bundle root. A station that had followed the house pattern would have
+produced a medium that was carried back perfectly and showed no logs at all -
+on the one transport where the cost of getting it wrong is another walk.
+
+The conformance driver would not have caught it: it reads wherever the driver
+is told to look, so both sides of a disagreement can be self-consistent.
+`tests/test-bundle.sh` therefore drives the near side with the **real CLI** and
+asserts that `heliograph logs` can read what the station wrote. Mutating the
+transport to write under `ops-logs/` fails four assertions, three of them on
+the control side.
+
+`--check` is also asserted to leave the medium byte-for-byte as it found it. An
+operator runs the preflight on a machine where they may not yet alter anything.
+
+### What the service installer found
+
+**A config file only the loop could read.** The reader lived in `station.ps1`,
+and the task registers `start.ps1`, which preflights first and hands over only
+if it passes. So a task installed with `TRANSPORT=share ALLOW_ROOT=1` in its
+config file was refused twice over - for being an Administrator, and for
+running the `git` transport - and never reached the loop that would have read
+either. The install reported success.
+
+The local test passed throughout, because it asserted that *the loop* reads the
+file. Testing the half you wrote rather than the half the operator runs is what
+let it ship; CI on a real Windows runner is what caught it. The reader now
+lives in `lib/stationenv.psm1` and both entry points call it, the test compares
+the preflight's verdict from the file against its verdict from the environment,
+and removing the reader fails four assertions.
+
+Two smaller things fell out of it. The preflight prints a **`config`** line
+naming which variables came from the file, because "the task is misconfigured"
+and "your shell is" are otherwise the same refusal. And the reader uses cmdlets
+rather than `[System.Environment]`, because `start.ps1` loads it before it has
+reported what the language mode is - a table whose job is to name Constrained
+Language Mode plainly cannot throw while loading a config file first.
+
+Also corrected: the preflight still warned that *"this payload ships no service
+installer"*, printed by the very script the installer registers.
+
 ## The signalling toolkit (in design)
 
 A program that adds the third shape - the **beam**, a held-open live channel -
@@ -200,18 +256,17 @@ outranks a capability that does not exist.**
 
 | | | |
 |---|---|---|
-| 1 | **The bundle's station side** (#68) | `/air-gapped` says plainly that the bundle cannot be read by a station, and the CLI says the same. It is the only transport that makes *air-gapped* literally true, and that page is the first thing to update when it lands |
-| 2 | **The PowerShell relay transport** (#77) | Deferred deliberately: it needs `heliograph-seal`, which is a Go binary, and a station that must ship a binary is a different bootstrap question on exactly the estates that will not let you install Git for Windows. **Decide the bootstrap story before porting anything** |
-| 3 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
-| 4 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
-| 5 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
-| 6 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
-| 7 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
-| 8 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
-| 9 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
-| 10 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
+| 1 | **The PowerShell relay transport** (#77) | **The reason this was deferred does not hold.** It was "the seal needs a native binary". All four primitives are available in **managed C#, 200 KB**, and were verified here against the standards' own vectors: X25519 and Ed25519 from `Chaos.NaCl` (djb's ref10, MIT), ChaCha20-Poly1305 from `NaCl.Core`, HKDF in 25 lines over `HMACSHA256`. No P/Invoke and no CNG, so it runs on Linux too and the seal is testable on an ordinary runner. [The design](docs/specs/2026-09-11-powershell-relay-design.md) recommends vendoring the source, and **test vectors before any porting**. Do not write the curve arithmetic |
+| 2 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
+| 3 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
+| 4 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
+| 5 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
+| 6 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
+| 7 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
+| 8 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
+| 9 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
 
-Items 3 to 10 come from a survey of every transport, host and control node
+Items 1 to 8 come from a survey of every transport, host and control node
 anyone has proposed, with the ones ruled out and why:
 [`docs/specs/2026-09-10-new-transports-and-stations-design.md`](docs/specs/2026-09-10-new-transports-and-stations-design.md)
 holds the verdicts and
@@ -221,6 +276,17 @@ holds the evidence, measurements and sources. Both are published as
 
 ## Known defects, recorded rather than fixed
 
+- **The Windows credential-injection assertion has failed once, unexplained.**
+  `tests/test-transports-ps1.sh:273` runs `Invoke-CapGit config --get
+  http.extraHeader` with `GIT_TOKEN` set and asserts git received an
+  `Authorization` header. On 2026-09-12 it failed on 45517b3 (#84) with "git
+  received no Authorization header at all" and passed on the two runs since,
+  285ca02 and 9860c22, same job and same runner image. One failure in three is
+  not a flake anybody has characterised: the assertion is deliberately written
+  to ask git what it received rather than to grep the source, so a red here
+  means the injection genuinely did not happen that time. Worth catching the
+  next occurrence with the resolved `GIT_CONFIG_*` environment dumped on
+  failure, rather than guessing at a race now
 - **Delivery pushes to the configured upstream, not to `origin` explicitly.**
   `cap_push` (bash) and `Send-TpLog` (PowerShell) both use a bare `git push`, so
   a branch tracking another remote takes every log somewhere the control side
@@ -387,7 +453,14 @@ It read as "the transport is fine, and `Send-TpLog` does not exist". `-Global`
 is the fix, and the reason it was not obvious is that the failure names the
 FUNCTION rather than the import.
 
-**A value type read through a property is a COPY.** `$info.BasicLimitInformation.LimitFlags = 0x2000` set the flag on a copy of the nested struct and threw it away, so the Job Object was created without KILL_ON_JOB_CLOSE and guaranteed nothing. Every call succeeded, the mechanism reported itself in force, the tests were green, and `taskkill` was quietly doing all the work. Assign the nested struct back. And the reason it survived: the only assertion looked for `strategy=`, which an empty value satisfies - so nothing ever asked whether the job existed.
+**A value type read through a property is a COPY.**
+`$info.BasicLimitInformation.LimitFlags = 0x2000` set the flag on a copy of the
+nested struct and threw it away, so the Job Object was created without
+KILL_ON_JOB_CLOSE and guaranteed nothing. Every call succeeded, the mechanism
+reported itself in force, the tests were green, and `taskkill` was quietly
+doing all the work. Assign the nested struct back. And the reason it survived:
+the only assertion looked for `strategy=`, which an empty value satisfies - so
+nothing ever asked whether the job existed.
 
 **A test that passes with the thing deleted is worse than no test.** An
 assertion here claimed `Test-CapAlive` is not fooled by a zombie, and it passed

@@ -2,10 +2,11 @@
 
 **Remote, captured, auditable execution on a machine you cannot log into.**
 
-A CLI, and a [Claude Code skill](/claude-code). Someone can reach the machine. You cannot, and you are the one who knows what to
-ask it. heliograph runs that gap as a loop rather than a relay: you push a step,
-it runs on the far side, and the whole run comes back as a log with every line
-timestamped in UTC, whether it passed or failed.
+A CLI, and a [Claude Code skill](/claude-code). Someone can reach the machine.
+You cannot, and you are the one who knows what to ask it. heliograph runs that
+gap as a loop rather than a relay: you push a step, it runs on the far side,
+and the whole run comes back as a log with every line timestamped in UTC,
+whether it passed or failed.
 
 If you can SSH in yourself, do that instead. This is for when you cannot.
 
@@ -18,7 +19,7 @@ You push a step; the station runs it; the log comes back. The operator runs one 
 - No SSH access to production, and you are not going to be given any
 - Air-gapped, or behind a bastion, a jump host or a VPN you are not on
 - A client-owned estate where only their staff can log in
-- Blocked by policy rather than capability: restricted, change-controlled, or reached only through the people who can log in
+- Blocked by policy rather than capability: restricted, change-controlled, somebody else's sign-off
 - The fourth round of "can you run this and paste the output", and what came back was a screenshot of half a terminal
 
 ## For an AI agent that cannot reach the machine
@@ -40,7 +41,7 @@ any agent through the [MCP server](/mcp).
 |---|---|
 | **control** | your machine: the `heliograph` CLI, the [skill](/claude-code) that drives it, and you |
 | **transport** | the channel: git, relay, file share, bundle, object store |
-| **station** | the far side: plain bash, planted by `heliograph bootstrap`, and the loop running on it |
+| **station** | the far side: plain bash - or plain PowerShell, for an estate with no bash - planted by `heliograph bootstrap`, and the loop running on it |
 
 One repository carries all three, and the boundary is the gap: everything
 under `station/` runs on the far side and depends on nothing - bash 4+, git,

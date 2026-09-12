@@ -36,9 +36,9 @@ and every edit takes effect with no re-run. Codex does not substitute
 
 ## 3. Work on the station
 
-`station/bash/` is never executed from this repo. It is a payload
-that `heliograph bootstrap` (or `station/bootstrap.sh`) plants into a transport repo, so develop it from a
-bootstrapped copy:
+`station/bash/` is never executed from this repo. It is a payload that
+`heliograph bootstrap` (or `station/bootstrap.sh`) plants into a transport
+repo, so develop it from a bootstrapped copy:
 
 ```bash
 ./station/bootstrap.sh /tmp/transport

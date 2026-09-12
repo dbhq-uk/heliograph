@@ -4,13 +4,12 @@
 // /page.md, and llms.txt at the root.
 //
 // The markdown mirror is not a nicety. Measured across all 29 pages, the same
-// page costs under three to sixteen times more bytes as HTML than as
-// markdown - about eight times on the median page, six times across the whole
-// site - so serving chrome to an agent is a token tax on every read, and
-// agents read these pages far more often than people do. The figure used to
-// say "roughly 31 times", which nobody had measured;
-// TestTheMirrorSavingIsTheOneTheCommentsClaim now measures it on every build,
-// so this sentence cannot drift again.
+// page costs three to twenty-one times more bytes as HTML than as markdown -
+// about seven times on the median page, six times across the whole site - so serving
+// chrome to an agent is a token tax on every read, and agents read these pages
+// far more often than people do. The figure used to say "roughly 31 times",
+// which nobody had measured; TestTheMirrorSavingIsTheOneTheCommentsClaim now
+// measures it on every build, so this sentence cannot drift again.
 package main
 
 import (
@@ -131,9 +130,13 @@ func build(src, out string) (int, error) {
 			[]byte(page(p, pages)), 0o644); err != nil {
 			return 0, err
 		}
-		// The markdown mirror, byte for byte the source.
+		// The markdown mirror, byte for byte the source - except for a
+		// ```matrix fence, which is a name in the source and a grid in the
+		// HTML. Left alone, the mirror says "here is a grid" and carries no
+		// grid, which is a page that lies to the audience that reads mirrors
+		// most.
 		if err := os.WriteFile(filepath.Join(out, p.Slug+".md"),
-			[]byte(p.Body), 0o644); err != nil {
+			[]byte(site.ExpandMatrix(p.Body)), 0o644); err != nil {
 			return 0, err
 		}
 	}
@@ -619,7 +622,15 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
   </div>
 </dialog>`, site.Mark, sidebarItems(p, all, "drawer"))
 
-		shellOpen = `<div class="docs-shell"><aside class="side">` +
+		// The matrix is seven columns wide and does not fit an 80ch
+		// measure. It gets the shell a class rather than a page of its own
+		// layout, so the sidebar, the rail and the drawer stay exactly as
+		// they are everywhere else.
+		shellMod := ""
+		if strings.Contains(p.Body, "```matrix") {
+			shellMod = " docs-shell--wide"
+		}
+		shellOpen = `<div class="docs-shell` + shellMod + `"><aside class="side">` +
 			`<a class="brand side-brand" href="/">` + site.Mark + ` heliograph</a>` +
 			`<nav class="side-nav" aria-label="Documentation">` +
 			sidebarItems(p, all, "desktop") + `</nav></aside><div class="col">`
@@ -1049,7 +1060,7 @@ var descriptions = map[string]string{
 	"security":    "What heliograph refuses to do, what it gates, and what it cannot promise: read-only by default, no root, no credentials, and the account as the blast radius.",
 	"method":      "How to debug across a gap you cannot cross: one question per step, never truncate, keep a control, and change one thing between runs.",
 	"roadmap":     "Every transport, host and control node anyone has proposed for heliograph, each with a verdict - do, later, maybe or never - and the reason behind it.",
-	"dbhq":        "The other free and open-source things DBHQ makes: bbs and modem in a browser, skills for Claude Code and Codex, and two tools that run without a sign-up.",
+	"dbhq":        "The other free and open-source things DBHQ makes: bbs and modem in a browser, and skills for Claude Code and Codex, installed with one command.",
 }
 
 // heroHTML is the index's opening: the signal crossing the valley, then a real

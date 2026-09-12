@@ -28,13 +28,6 @@ Among them: research that says when it cannot settle a question, a repository
 coherence checker, Microsoft 365 mail and calendar, Trello, Garmin, and
 compiler-exact .NET code search.
 
-## Free tools that run in a browser
-
-| | |
-|---|---|
-| [Spreadsheet health check](https://dbhq.uk/spreadsheet-health-check/) | A risk scan of a workbook, entirely client-side. Nothing is uploaded |
-| [Azure Well-Architected taster](https://dbhq.uk/azure-well-architected-review/) | A read-only five-pillar score from Azure Advisor signal. No AI, no sign-up, nothing leaves your tenant |
-
 ## The company
 
 [DBHQ](https://dbhq.uk) is Daniel Grimes: senior engineering delivery, mostly

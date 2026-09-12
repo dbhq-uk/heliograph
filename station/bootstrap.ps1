@@ -73,7 +73,7 @@ foreach ($r in $roots) {
 # refuses to let them into the binary at all.
 $RuntimeState = @(
     '.station.lock', '.station-state', '.station-approved', '.station-approved-ps',
-    '.station-delivery', '.station-env', '.station-relay-state',
+    '.station-delivery', '.station-env', '.station-env-ps', '.station-relay-state',
     '.agent-service.pid', '.station-service.log'
 )
 

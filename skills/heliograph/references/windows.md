@@ -424,14 +424,21 @@ moment it runs, so a process started immediately after can survive.
 
 ### Limits, stated rather than implied
 
-- **Transports are git and share only.** No relay: it needs `heliograph-seal`,
-  which is a Go binary, and a station that must ship a binary is a different
-  bootstrap question on the estates this exists for.
+- **Transports are git and share only.** No relay - and NOT because it needs a
+  native binary, which is what this said until it was measured. All four
+  primitives are available in ~200 KB of managed C#, verified against the RFC
+  vectors. It is simply not built. See
+  `docs/specs/2026-09-11-powershell-relay-design.md`.
 - **A self-update needs a restart.** `run.ps1`, `caplib.psm1` and the steps come
   forward with no restart - every run is a fresh process. `station.ps1` itself
   cannot be replaced while running (PowerShell has no `exec`, and a respawn is
   killed by the Job Object the cancel depends on), so it exits **75**, which a
   scheduled task treats as *restart me*.
+- **Surviving a logout** is `.\service.ps1 install` in that payload - a
+  scheduled task registering `start.ps1`, with the transport's variables
+  carried into `.station-env-ps` because a task inherits none of them. It is a
+  DIFFERENT file from the bash payload's service.ps1, which registers the
+  launcher and refuses without a start.sh.
 - **A `kill` leaves `.station.lock`.** 5.1 cannot catch SIGTERM. The next
   station finds the pid dead and clears it.
 - **Pinning uses `.station-approved-ps`**, not the bash station's file: each

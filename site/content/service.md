@@ -55,7 +55,7 @@ error no bash 4 or newer on this Mac, and /bin/bash is 3.2.
 
 `brew install bash` and run it again.
 
-## Windows: `service.ps1`
+## Windows, with Git for Windows: `service.ps1`
 
 ```powershell
 .\service.ps1 install
@@ -84,6 +84,89 @@ Three settings that are not incidental:
   and stores no password. The trade is that it gets no network *credentials*,
   which does not matter here: git authenticates with a token from a file or an
   ssh key, not with the Windows identity
+
+## Windows, without bash: the PowerShell payload's own `service.ps1`
+
+```powershell
+.\service.ps1 install              # survive logout and reboot
+.\service.ps1 install -- --once    # args after -- go to the loop
+.\service.ps1 status
+.\service.ps1 logs
+.\service.ps1 stop
+.\service.ps1 uninstall
+```
+
+A different file from the one above, and not interchangeable with it. That one
+registers the **launcher** and refuses to install without a `start.sh` beside
+it, so on a payload with no bash it refuses every time. Until this shipped,
+`--flavour powershell` planted no way to survive a logout at all.
+
+It registers `start.ps1` rather than the loop directly, so the **preflight runs
+on every start**. A machine that has since had Constrained Language Mode
+applied, or lost its share mount, refuses and says why instead of starting a
+loop that cannot work.
+
+### The hard part is not the task
+
+**A scheduled task starts with a fresh environment and inherits nothing from
+the shell that registered it.** So the transport's variables and any credential
+simply are not there. The loop then starts, polls happily, captures a perfect
+log and cannot deliver it - and the far side waits for hours with nothing
+reporting a fault.
+
+`service.ps1 install` therefore copies what the station needs into
+`.station-env-ps` beside the payload, and **`start.ps1` reads it before its
+first check** - not just the loop:
+
+That ordering is the whole point, and it was wrong once. The reader lived in
+`station.ps1` alone, so a task installed with `TRANSPORT=share ALLOW_ROOT=1` in
+its config file was refused by the preflight twice over - for being an
+Administrator, and for running the `git` transport - and never reached the loop
+that would have read either. The install reported success, and the table named
+neither the config file nor the task, so every line of it pointed at the
+machine. The preflight now prints a `config` line saying which variables came
+from the file, because "the task is misconfigured" and "your shell is" are
+otherwise the same refusal.
+
+The format:
+
+- **`KEY=value`, one per line, read and never executed.** A `.ps1` there would
+  be a file the loop runs at every start, sitting in a directory the far side
+  can write to on some transports. Configuration must not be code.
+- **Values are verbatim** - everything after the first `=`. No quoting scheme,
+  so a token containing a quote, a space or a backslash survives. A newline is
+  *refused* rather than stripped, because it would forge a second variable and
+  silently changing a credential is worse than not writing it.
+- **A named list, not the whole environment.** Copying everything would put
+  `PATH` and `TEMP` into a file that also holds a token, and make "what is this
+  station configured with" unanswerable.
+- **The environment wins.** Running the station by hand overrides whatever the
+  service was installed with, so debugging does not start with editing a
+  dotfile. A task has a clean environment, so there the file always applies.
+- **Read with cmdlets, not .NET.** `start.ps1` loads it before it has reported
+  what the language mode is, and `[System.Environment]` is refused under
+  Constrained Language Mode. A table whose job is to name that policy plainly
+  cannot throw while loading a config file first.
+- **It holds a token**, so its ACL is set to this account only - inheritance
+  off, inherited rules dropped - which is the Windows equivalent of the bash
+  side's mode 600. `uninstall` deletes it; leaving a credential behind is not
+  tidying up.
+
+`install` **refuses** when a detached loop could not deliver - no `SHARE_DIR`,
+no origin remote, no credential at all - because that is the failure nobody
+sees until hours later. `-Force` overrides it.
+
+### Exit 75 is why the restart policy matters more here
+
+A PowerShell station that updates itself **exits 75** rather than
+re-executing: PowerShell has no `exec`, and a respawn is killed by the Job
+Object the cancel depends on. The task is registered with `-RestartCount 5
+-RestartInterval 1 minute`, so that exit is what makes the update take effect.
+Without it, a self-update stops the station and looks exactly like a station
+that finished.
+
+`service.ps1 status` says so when it sees that code, because a non-zero result
+otherwise reads as a fault.
 
 ## The credential is where an unattended loop actually fails
 

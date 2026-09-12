@@ -159,6 +159,8 @@ wait_until() {  # wait_until <seconds> <predicate-fn> - 0 if it came true in tim
   return 1
 }
 
+loop_gone() { [ -n "${LOOP_PID:-}" ] && ! kill -0 "$LOOP_PID" 2>/dev/null; }
+
 # THE FAR SIDE, and only the far side.
 published() { sed -n "s/^$1:[[:space:]]*//p" "$S/scope/status" 2>/dev/null | head -1; }
 delivered_names() { ls -1 "$S/scope/ops-logs/" 2>/dev/null; }
@@ -512,9 +514,25 @@ else
   assert_eq "  and the step did NOT run to completion" "no" \
     "$(delivered_body | grep -q '^.*finished$' && echo yes || echo no)"
 
-  # THE STEP IS ACTUALLY DEAD. A cancel that publishes `cancelled` while the
-  # step carries on changing the estate is the worst outcome available here -
-  # the operator is told it stopped.
+  # THE STEP ITSELF IS DEAD, not merely the runner above it.
+  #
+  # THIS IS THE ASSERTION THE OTHERS CANNOT MAKE. If a cancel kills run.ps1 and
+  # stops there, the capture stops, the log stops growing, and every check below
+  # passes - while the step carries on changing the estate with the operator
+  # told it was cancelled. That is the worst outcome available to this file, and
+  # it was the real behaviour on Unix until the loop started the step under
+  # `setsid`: Process.Start puts the child in the STATION'S group, and
+  # Stop-CapTree rightly refuses to signal a group it is itself in.
+  #
+  # Matched on the step's own path, because that is the process that would
+  # survive. `ps -eo args` rather than pgrep: pgrep is not on a stock Git-Bash.
+  step_procs() { ps -eo args 2>/dev/null | grep -c "steps/slow\.ps1" ; }
+  sleep 3
+  LEFT="$(step_procs)"
+  # One match is this pipeline's own grep on some platforms, none on others.
+  assert_eq "  and the STEP is gone too, not just the runner above it" "yes" \
+    "$([ "${LEFT:-0}" -le 1 ] && echo yes || echo no)"
+
   sleep 2
   before="$(ls -1 "$D/ops-logs/"slow-*.txt 2>/dev/null | head -1)"
   size1="$(wc -c < "$before" 2>/dev/null || echo 0)"
@@ -653,13 +671,19 @@ EXTRA_ENV=()
 # finishes, so "running for forty minutes" and "wedged" look identical from the
 # only side that can see anything.
 plant
-# FIVE MINUTES, and that is not padding. The step has to still be running when
-# the assertions read the far side, and a Windows runner is slow enough that a
-# 40-second step finished before the first version of this check got to look -
-# so it read a DELIVERED log and called it a partial one.
+# LONG ENOUGH TO OUTLAST THE WAIT, AND NO LONGER. The step has to still be
+# running when the assertions read the far side, and a Windows runner is slow
+# enough that a 40-second step finished before the first version of this check
+# got to look - so it read a DELIVERED log and called it a partial one.
+#
+# 150 seconds against a 60-second budget is two and a half times the headroom.
+# Five minutes was the over-correction, and it cost ten minutes of Windows CI:
+# the step is CANCELLED below rather than killed with the station, because a
+# station killed with SIGTERM cannot run its own finally and leaves the step
+# running to the end.
 step_file slow read-only \
   "Write-Output 'the first line'" \
-  'foreach ($i in 1..300) { Write-Output "probe $i"; Start-Sleep -Seconds 1 }'
+  'foreach ($i in 1..150) { Write-Output "probe $i"; Start-Sleep -Seconds 1 }'
 request 'id: pr1' 'step: ./steps/slow.ps1'
 ( cd "$D" && env TRANSPORT=share "SHARE_DIR=$(winpath "$S")" SHARE_SCOPE=scope \
     "${ROOT_ENV[@]+"${ROOT_ENV[@]}"}" PROGRESS_EVERY=1 \
@@ -690,8 +714,8 @@ LOOP_PID=$!
 progress_carries_output() {
   [ -n "$(published progress)" ] && delivered_body 2>/dev/null | grep -q 'the first line'
 }
-if ! wait_until 120 progress_carries_output; then
-  t_skip "no progress carrying the step's output reached the far side in 120s, so the progress path was NOT exercised"
+if ! wait_until 60 progress_carries_output; then
+  t_skip "no progress carrying the step's output reached the far side in 60s, so the progress path was NOT exercised"
 else
   assert_eq "while a step runs the far side sees state running" "running" "$(published state)"
   assert_contains "  with a line count" "lines" "$(published progress)"
@@ -706,7 +730,20 @@ else
   assert_eq "  and it is genuinely partial - no footer yet" "no" \
     "$(delivered_body | grep -q 'finished UTC' && echo yes || echo no)"
 fi
-kill -TERM "$LOOP_PID" 2>/dev/null; wait "$LOOP_PID" 2>/dev/null; LOOP_PID=""
+
+# CANCELLED, NOT KILLED, and the difference is a process left running.
+#
+# `kill -TERM` on the station does not stop the STEP on Unix: PowerShell cannot
+# catch that signal, so the finally that signals the child never runs and the
+# step carries on to its end. Measured - five step processes before the kill and
+# five after. On Windows the Job Object covers it, which is why this only shows
+# up as an orphan on Linux and as ten minutes of wasted CI on Windows.
+#
+# So this asks the station to cancel, which is its own mechanism and is tested
+# in its own section, and only then stops the station.
+request 'id: pr1' 'step: ./steps/slow.ps1' 'cancel: yes'
+wait_until 30 loop_gone || kill -TERM "$LOOP_PID" 2>/dev/null
+wait "$LOOP_PID" 2>/dev/null; LOOP_PID=""
 
 # =============================================================================
 #  13. Pinning: only what the operator approved

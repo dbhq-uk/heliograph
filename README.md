@@ -62,7 +62,7 @@ holds the *connection itself*.
 - You have **no SSH access to production**, and you are not going to be given any.
 - The environment is **air-gapped**, or behind a bastion, a jump host or a VPN you are not on.
 - It is a **client-owned or customer-managed estate**. Only their staff can log in.
-- Access is blocked by **policy, not capability**: restricted, change-controlled, or reached only through the people who can log in.
+- Access is blocked by **policy, not capability**: restricted, change-controlled, somebody else's sign-off.
 - You are on the fourth round of **"can you run this and paste the output"**, and what came back was a screenshot of half a terminal.
 - You are an **AI coding agent** driving an investigation, and you need the evidence rather than somebody's summary of it.
 
@@ -78,9 +78,11 @@ The boundary is the gap, and the layout states it once:
 | **transport** | the channel: git, relay, file share, bundle, object store - all behind one interface, so the read-only gates live in one place and cannot drift per transport |
 | **station** | the far side: [`station/bash/`](station/), planted into a private transport repo. Bash 4+, git and GNU coreutils. No packages, no credentials, no tunnel |
 
-**Nothing is ever installed on the far side.** The station is plain bash you
-can read before you run, and no Go will ever appear under `station/bash/` -
-CI enforces it. That constraint is the entire proposition on a locked-down
+**Nothing is ever installed on the far side.** The station is plain text you
+can read before you run - bash 4+, or PowerShell 5.1 for a Windows estate that
+has no bash and will not be given any - and no Go will ever appear under
+`station/` beyond the one file that lets the CLI carry the payload. CI
+enforces it. That constraint is the entire proposition on a locked-down
 box where installing anything is its own change request.
 
 ## Install

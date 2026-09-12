@@ -34,6 +34,24 @@ Set-StrictMode -Version 2.0
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# --- BEFORE ANY CHECK READS AN ENVIRONMENT VARIABLE ---------------------------
+# A scheduled task inherits nothing, so `.station-env-ps` is where TRANSPORT,
+# ALLOW_ROOT and the credential come from. Load it first or the table below
+# describes a machine nobody is going to run on: CI installed a task with
+# `TRANSPORT=share ALLOW_ROOT=1` in that file and the preflight refused it twice
+# over, for being an Administrator running the `git` transport. Both readings
+# were of an environment the loop would never have seen.
+#
+# Guarded, because this runs before the table exists. A payload missing this
+# module is reported by the `payload` check below, in the format the operator
+# is reading - not as a stack trace above the heading.
+$FromEnvFile = @()
+$envModule = Join-Path $RepoRoot 'lib/stationenv.psm1'
+if (Test-Path -LiteralPath $envModule -PathType Leaf) {
+    Import-Module $envModule -Force -Global
+    $FromEnvFile = @(Import-CapStationEnv -Root $RepoRoot)
+}
+
 $CheckOnly = $false
 $Rest = @()
 foreach ($a in $args) {
@@ -124,6 +142,21 @@ switch ($strategy) {
 # station whose clock is wrong produces logs nobody can line up with anything.
 report ok 'clock' "$([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))  <- compare this with a clock you trust"
 
+# --- where the settings below came from ---------------------------------------
+# EVERY CHECK AFTER THIS POINT READS AN ENVIRONMENT VARIABLE, and the operator
+# reading the table has no other way to tell whether it came from their shell or
+# from a file the installer wrote. That distinction is the whole difference
+# between "the task is misconfigured" and "your shell is", and it is invisible
+# in a refusal that only names the variable.
+$cfgPath = Get-CapStationEnvPath -Root $RepoRoot
+if ($FromEnvFile.Count -gt 0) {
+    report ok 'config' "$($FromEnvFile -join ', ') read from .station-env-ps. Anything already set in this shell was left alone"
+} elseif (Test-Path -LiteralPath $cfgPath -PathType Leaf) {
+    report warn 'config' '.station-env-ps is there and set nothing, because every name in it is already set in this shell. A scheduled task starts clean, so it will get the file'
+} else {
+    report ok 'config' 'no .station-env-ps, so everything below comes from this shell. A detached start inherits none of it - see .\service.ps1'
+}
+
 # --- the account IS the blast radius ------------------------------------------
 Import-Module (Join-Path $RepoRoot 'caplib.psm1') -Force
 $who = Get-CapUser
@@ -183,7 +216,7 @@ if ($CheckOnly) {
 }
 
 # --- the payload is all here --------------------------------------------------
-foreach ($need in 'run.ps1', 'caplib.psm1', 'lib/probe.psm1', 'lib/cancel.psm1') {
+foreach ($need in 'run.ps1', 'caplib.psm1', 'lib/probe.psm1', 'lib/cancel.psm1', 'lib/stationenv.psm1') {
     if (Test-Path -LiteralPath (Join-Path $RepoRoot $need) -PathType Leaf) {
         report ok 'payload' "$need"
     } else {
@@ -216,9 +249,20 @@ if (Import-Tp) {
     report FAIL 'transport' "the '$tpName' transport will not initialise here - see the line(s) above. Set TRANSPORT to one of: $((Get-TpNames) -join ', ')"
 }
 
-# STILL SAID, because it is the difference between this station and the bash
-# one, and a preflight that stayed silent would read as a full round trip.
-report warn 'receive' 'this station DELIVERS but does not yet RECEIVE: there is no loop, so a request has to be handed to run.ps1 by whoever is driving. For a station that polls, use the bash station'
+# WHAT THIS STATION CANNOT DO, still said, because a preflight that lists only
+# what works reads as a full feature set. These are the three that change what
+# an operator should plan for, and none of them is guessable from the table
+# above.
+if (-not (Test-TpCapability -Name 'self')) {
+    report warn 'self-update' "the '$tpName' transport cannot bring a newer payload down. To change this station, re-plant it"
+} else {
+    report warn 'self-update' 'a newer station.ps1 makes the loop EXIT 75 rather than replace itself - PowerShell has no exec. Run it under something that restarts it, or it stops instead of updating. run.ps1, caplib.psm1 and the steps update with no restart at all'
+}
+if (Test-Path -LiteralPath (Join-Path $RepoRoot 'service.ps1') -PathType Leaf) {
+    report ok 'service' '.\service.ps1 install registers a scheduled task, and carries this configuration into it'
+} else {
+    report warn 'service' 'this payload ships no service installer, so to survive a logout you must register a scheduled task yourself - see the Windows page'
+}
 
 Write-Output ''
 if ($script:Failed -gt 0) {
@@ -234,12 +278,39 @@ if ($CheckOnly) {
 }
 
 # --- hand over ----------------------------------------------------------------
-# There is no loop to hand over TO yet, and saying so is better than starting
-# something that cannot poll. run.ps1 is what works today.
+# THE PREFLIGHT'S WHOLE JOB IS TO GET OUT OF THE WAY once it has said its piece.
+# start.sh execs station.sh here; this starts it and exits with its code, which
+# is as close as PowerShell gets.
+#
+# THIS DID NOT HAPPEN FOR ONE RELEASE, and the shape of the mistake is worth
+# keeping. The loop landed, the preflight was not updated, and `.\start.ps1` -
+# the one command the operator types - printed "the loop is not implemented for
+# PowerShell yet" and exited 0. Every check above passed, so it read as a
+# successful preflight rather than as a station that never started. Found by
+# sweeping the docs for stale claims and discovering the code made the same one.
+#
+# Anything after `--` goes to the loop, exactly as start.sh passes it on:
+#     .\start.ps1 -- --once --interval 15
+$loop = Join-Path $RepoRoot 'station.ps1'
+if (-not (Test-Path -LiteralPath $loop -PathType Leaf)) {
+    Write-Output ''
+    Write-Output "There is no station.ps1 beside this script, so there is no loop to start."
+    Write-Output "A step still runs by hand:  .\run.ps1 env"
+    exit 1
+}
+
+# `--` ITSELF IS DROPPED, and everything after it is passed through. Without
+# that, `-- --once` reaches the loop as an unknown option and it exits 2.
+$pass = @()
+$seen = $false
+foreach ($a in $Rest) {
+    if (-not $seen -and $a -ceq '--') { $seen = $true; continue }
+    $pass += $a
+}
+
 Write-Output ''
-Write-Output 'The loop is not implemented for PowerShell yet - there is no transport for it to poll.'
-Write-Output 'What works today is a step, run by hand or by a scheduled task:'
+Write-Output "Handing over to the loop. Ctrl-C stops it, or send 'stop: yes' from the far side."
 Write-Output ''
-Write-Output '    .\run.ps1 env'
-Write-Output ''
-exit 0
+$shell = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+& $shell -NoProfile -File $loop @pass
+exit $LASTEXITCODE

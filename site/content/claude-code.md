@@ -63,8 +63,7 @@ Yes, and it is the only way this runs them: no SSH is involved anywhere in the
 loop. In the estates this is for, there is no SSH to give. The machine is
 behind a bastion you are not on, or in a client's estate where only their staff
 may log in, or the access is blocked by policy rather than capability:
-restricted, change-controlled, or reached only through the people who can log
-in.
+restricted, change-controlled, somebody else's sign-off.
 
 heliograph does not get around any of that, and it is worth being plain about
 what it does and does not do instead. Two of its three shapes, the beacon and
@@ -106,5 +105,5 @@ The skill is one component. The full set, all in
 | the skill | the method, the workflow, and how to write a step. Drives the CLI |
 | the CLI | `heliograph bootstrap`, `send`, `watch`, `logs --gaps`, `plant` - and the gates |
 | the MCP server | `heliograph mcp`, the same CLI as typed tools |
-| the station | plain bash on the far side, nothing to install, planted by the CLI |
+| the station | plain bash on the far side - or plain PowerShell where there is none - nothing to install, planted by the CLI |
 | the relay | when there is no git host, no storage and no share |

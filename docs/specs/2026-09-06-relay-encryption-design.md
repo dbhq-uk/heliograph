@@ -144,7 +144,7 @@ If `heliograph-seal` is missing or fails its checksum, the station **refuses to 
 
 ## Enrolment
 
-The chicken-and-egg is that control and station must learn each other's public keys through a channel the relay controls. The answer is that the operator already has to receive something in order to plant a station at all, so that string carries the trust.
+The chicken-and-egg is that control and station must learn each other's public keys through a channel the relay controls. The answer is that the operator already has to receive something to plant a station at all, so that string carries the trust.
 
 ```
 control                             operator                     station

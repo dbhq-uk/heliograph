@@ -39,7 +39,7 @@ message is how tokens end up in chat history.
 
 ## Without the CLI
 
-The station is plain bash and stands on its own. This is the route for a person
+The station is plain text and stands on its own. This is the route for a person
 who cannot install a binary, and it is a procedure for a human rather than for
 an agent:
 

@@ -50,20 +50,5 @@ transport was dropped](/security) rather than built.
 ## Pick what you have
 
 ```matrix
-Every transport, station and controller, and what each one can work with.
+Every transport, station and controller, and which combinations run.
 ```
-
-## Two things the matrix cannot show you
-
-**A transport needs both halves.** The object store and the bundle are
-implemented on your side and have no station side at all, so the combination
-cannot work however the rows line up. That is why the transport table has a
-column for each side rather than one status.
-
-**Proven is not the same as written.** A station that has never run is a
-template that looks authoritative, and shipping twenty of those would spend the
-credibility of the ones that work. [The host contract](/hosts) is published so
-you can judge an unlisted host yourself.
-
-What might be added next, what is deliberately refused, and why, is on
-[the roadmap](/roadmap).

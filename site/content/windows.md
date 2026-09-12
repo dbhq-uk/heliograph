@@ -242,10 +242,19 @@ documented git form in which **the secret is the username**.
 
 ### Two limits worth knowing before you rely on it
 
-**No relay transport yet.** git and the file share, and that is all. The relay
-needs `heliograph-seal`, which is a Go binary, and a station that must ship a
-binary is a different bootstrap question on an estate that would not let you
-install Git for Windows.
+**Surviving a logout** is `.\service.ps1 install`, which this payload ships - a
+scheduled task, with the transport's variables carried into a restricted file
+because a task inherits none of them. See [service](/service).
+
+**No relay transport yet.** git and the file share, and that is all.
+
+This page said for a while that the relay *needs* `heliograph-seal`, a native
+Go binary, and that shipping one is a harder ask than the estate already
+refused. That was wrong: all four primitives the seal uses are available in
+about 200 KB of portable managed C#, each verified against its own standard's
+vectors. It is not built, which is a different thing from not possible -
+[the design](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-11-powershell-relay-design.md)
+says what it would take.
 
 **A self-update needs a restart.** `run.ps1`, `caplib.psm1` and the steps come
 forward with no restart at all, because every run is a fresh process that loads

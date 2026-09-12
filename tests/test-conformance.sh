@@ -24,10 +24,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DRIVER="$HERE/conformance/drivers/bash.sh"
 
-# git and share need nothing. The relay needs a Go toolchain to build
+# git, share and bundle need nothing. The relay needs a Go toolchain to build
 # heliograph-seal from this tree and python3 for the stub relay - both present
 # in CI, and both named here so a machine without them says which.
-COVERED="git share relay"
+#
+# THE BUNDLE IS IN HERE DESPITE NOT BEING A LOOP. A courier channel cannot be
+# polled and cannot carry a cancel, so it declares neither `live` nor `self`
+# and the suite skips what depends on them by name. Everything else - the
+# stamps, the exit code, the footer, the gates, the redaction, and above all
+# that the finished log reaches the far side - is exactly the same question,
+# and the answer has to be the same or the method does not survive the walk.
+COVERED="git share bundle relay"
 
 # blob is excluded on purpose: its far side is an Azure storage account, and
 # there is no honest way to stand one up offline. Excluded WITH A REASON that is
