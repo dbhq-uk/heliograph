@@ -152,7 +152,7 @@ var Stations = []Station{
 		Note: "Deployed live on a Standard_D2s_v3. The exception to everything else here: a bare VM has no image, so git clone is how the toolkit arrives whatever transport carries the logs.", Href: "/azure",
 		Transports: map[string]Pairing{"git": yes(), "blob": yes(), "relay": needs("the key files, and a git host reachable once at first boot"), "share": needs("the share has to be mounted")}},
 	{ID: "azure-function", Name: "Azure Function App", Status: Written, Flavour: "bash",
-		Note: "A timer, not a loop. Validated and never deployed. It is the host the intercom was written for, because a Function App has a public endpoint while sitting inside the VNet.", Href: "/azure",
+		Note: "A timer, not a loop. Validated and never deployed. It is the host the flare was written for, because a Function App has a public endpoint while sitting inside the VNet.", Href: "/azure",
 		Transports: map[string]Pairing{"blob": ok("through pigeonhole.sh"), "flare": ok("the one host with a reachable endpoint"), "git": needs("there is no git in the image")}},
 	{ID: "recipe", Name: "ECS Fargate, Cloud Run, anything else", Status: Missing, Flavour: "bash",
 		Note: "Recipes against the host contract, not templates. Issue #5 settled that deliberately: a template that has never started a station spends the credibility of the ones that have.", Href: "/hosts",
