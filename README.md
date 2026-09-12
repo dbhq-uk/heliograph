@@ -51,7 +51,8 @@ machine trusts *the door* rather than vetting the code in advance.
 side can speak at any moment and the other hears it at once, until you hang up.
 A real session, not a message or a knock - and the most exposed, because while
 the line is open anything can travel down it. You turn it on deliberately and
-close it when you are done.
+close it when you are done. It is designed, and not yet a transport you can
+pick.
 
 In one line: a beacon holds a *message*, a flare is a *single exchange*, a beam
 holds the *connection itself*.

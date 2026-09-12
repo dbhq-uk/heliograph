@@ -30,19 +30,19 @@ the vocabulary is one thing.
 
 The obvious difference is latency, and it is the less important one.
 
-**A pigeonhole keeps the gates where they belong.** The step is already on the
+**A beacon keeps the gates where they belong.** The step is already on the
 far side, the station reads a request that names it, and the station decides
 whether to run it. `# heliograph-mode: read-only` is a property of a file the
 operator can read before anything happens.
 
-**On an intercom the script travels with the request.** There is no git on the
+**On a flare the script travels with the request.** There is no git on the
 far side to have planted it, so the caller ships the thing to be run - and at
 that moment the mode header stops being a control and becomes *a claim the
 caller makes about its own file*. What is left is the function key and an IP
 allowlist. That is a real trade and [the flare page](/flare) makes it in
 full; it is not a worse transport, it is a different security model.
 
-**A pigeonhole also needs nothing to be reachable, ever.** No inbound port, no
+**A beacon also needs nothing to be reachable, ever.** No inbound port, no
 endpoint, no tunnel. That single property is what makes this permissible in
 estates where a reverse connection would be a breach, and it is why [a raw TCP
 transport was dropped](/security) rather than built.
