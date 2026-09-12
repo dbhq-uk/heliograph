@@ -531,6 +531,20 @@ func TestNothingStillClaimsTheStationCannotPoll(t *testing.T) {
 		{"designed and not built", "it is built"},
 		{"which is a later PR", "the later PR landed"},
 		{"cannot RECEIVE", "it receives"},
+		// THE RELAY'S REASON, which outlived being disproved in five files at
+		// once. The claim was that the seal needs a native binary; all four
+		// primitives are ~200 KB of managed C#, verified against RFC 7748,
+		// 8032, 8439 and 5869. The station still has no relay - it is not
+		// built - but "not built" and "not possible" are different sentences
+		// and only one of them is true.
+		//
+		// MATCHED ON THE ASSERTION'S OWN SHAPE, not on "native binary". The
+		// first version banned that, and failed on the pages CORRECTING the
+		// claim - which have to say the words in order to withdraw them. A
+		// guard that cannot tell an assertion from its retraction makes the
+		// retraction unwritable.
+		{"is a different bootstrap question", "the seal needs no native binary, so that is not the reason"},
+		{"which is a Go binary, and a station", "the seal needs no native binary, so that is not the reason"},
 	}
 
 	checked := 0

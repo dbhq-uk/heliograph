@@ -64,9 +64,12 @@ X25519, HKDF-SHA256, ChaCha20-Poly1305 and Ed25519, and hand-assembling those
 in shell across openssl versions is where crypto bugs live and where they are
 silent. Every other transport is pure text.
 
-That exception is also why the PowerShell station has **no relay**: it exists
-for estates that would not let you install Git for Windows, and a native binary
-is a harder request than the one they already refused.
+The PowerShell station has **no relay either**, but not for that reason - and
+the reason it was given for a while turned out to be wrong. All four primitives
+are available in about 200 KB of managed C#, verified against the standards'
+own vectors, so no native binary is needed there at all. It is simply not
+built. [The design](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-11-powershell-relay-design.md)
+says what it would take.
 
 ## The files
 
