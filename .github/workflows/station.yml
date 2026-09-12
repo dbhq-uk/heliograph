@@ -408,11 +408,19 @@ jobs:
           fi
           # Named, not counted. These four are the assertions that would still
           # leave dozens of passes behind if they quietly stopped running.
+          #
+          # COPIED FROM THE TEST'S OWN OUTPUT, not paraphrased. The first
+          # version of this list looked for `opens Go`, and the line says
+          # `it opens what Go sealed` - so the job failed with "the seal did
+          # not assert" on a run in which all 26 assertions had passed. A guard
+          # that quotes a string nothing prints is a guard that only ever
+          # fails.
           for want in \
             'compiles as C# 5 against net48' \
-            'opens Go' \
-            'matches Go byte for byte' \
-            'refuses: wrong-recipient-fingerprint'; do
+            'opens what Go sealed' \
+            'produces what Go would have sealed, byte for byte' \
+            'refuses a message forwarded to a third party' \
+            'three distinct sequence numbers'; do
             grep -qF "$want" /tmp/seal.out || {
               echo "::error::the seal did not assert: $want"; exit 1; }
           done
@@ -876,8 +884,10 @@ jobs:
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the seal failed under $ps"; rc=1; }
             # The vectors are the whole point of that file, so a run that
             # skipped them is a run that proved nothing about the seal.
-            grep -q "matches Go byte for byte" "/tmp/seal-$ps.out" || {
+            grep -qF "produces what Go would have sealed, byte for byte" "/tmp/seal-$ps.out" || {
               echo "::error::$ps did not compare the seal against Go's own bytes"; rc=1; }
+            grep -qF "three distinct sequence numbers" "/tmp/seal-$ps.out" || {
+              echo "::error::$ps did not exercise a REPEATED delivery over the relay"; rc=1; }
             bad="$(grep '^SKIP' "/tmp/seal-$ps.out" | grep -v 'no dotnet SDK' || true)"
             [ -z "$bad" ] || { echo "::error::the seal skipped something it may not under $ps:"; echo "$bad"; rc=1; }
             # AND CONFORMANCE OVER THE RELAY, on this edition. The station side

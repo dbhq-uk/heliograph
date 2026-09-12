@@ -32,10 +32,34 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 SEAL="$ROOT/station/powershell/lib/seal"
 
-PS_BIN=""
-for c in pwsh powershell powershell.exe; do
-  if command -v "$c" >/dev/null 2>&1; then PS_BIN="$c"; break; fi
-done
+# CONF_PS_SHELL OVERRIDES, for the reason the conformance driver honours it:
+# Windows PowerShell 5.1 is the floor, and a runner with both editions installed
+# would otherwise only ever test 7 - which is the edition where none of this
+# file's constraints apply.
+PS_BIN="${CONF_PS_SHELL:-}"
+if [ -n "$PS_BIN" ]; then
+  command -v "$PS_BIN" >/dev/null 2>&1 || PS_BIN=""
+else
+  for c in pwsh powershell powershell.exe; do
+    if command -v "$c" >/dev/null 2>&1; then PS_BIN="$c"; break; fi
+  done
+fi
+
+# A PATH POWERSHELL WILL UNDERSTAND.
+#
+# Git-Bash converts Unix-looking paths at the EXEC BOUNDARY, so `-File /tmp/x`
+# arrives native. A path EMBEDDED IN A SCRIPT - which is what `-Command` takes -
+# gets no such conversion: PowerShell reads `/home/runner/...` as
+# `C:\home\runner\...`, Import-Module fails, and the assertion below sees an
+# empty string rather than an error.
+#
+# That is exactly how the capability checks in section 4 failed on Windows and
+# nowhere else, reporting "the transport declares no capabilities" about a
+# transport that was never loaded. The conformance driver's header warns about
+# this trap; this file walked into it anyway.
+winpath() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
+}
 
 # =============================================================================
 #  1. WHAT IS VENDORED, AND WHAT IS NOT
@@ -162,10 +186,18 @@ assert_eq "the PowerShell payload ships a relay transport" "yes" \
   "$([ -f "$RELAY" ] && echo yes || echo no)"
 
 if [ -n "$PS_BIN" ]; then
+  # winpath, because these are EMBEDDED IN A SCRIPT rather than passed as
+  # arguments. See the note on winpath above.
   CAPS="$( timeout 120 "$PS_BIN" -NoProfile -Command "
-    Import-Module '$ROOT/station/powershell/lib/transport.psm1' -Force
-    Import-Module '$RELAY' -Force
-    Get-TpCapabilities" 2>/dev/null | tr -d '\r' )"
+    Import-Module '$(winpath "$ROOT/station/powershell/lib/transport.psm1")' -Force
+    Import-Module '$(winpath "$RELAY")' -Force
+    Get-TpCapabilities" 2>&1 | tr -d '\r' )"
+  # NAMED WHEN IT IS EMPTY. An empty string satisfies none of the assertions
+  # below and they each report "wanted [request], in: []", which describes the
+  # transport rather than the import that failed.
+  if [ -z "$CAPS" ]; then
+    t_no "the relay transport would not load, so its capabilities could not be read"
+  fi
   assert_contains "it carries a request" "request" "$CAPS"
   assert_contains "  a status" "status" "$CAPS"
   assert_contains "  and progress" "progress" "$CAPS"
@@ -214,16 +246,28 @@ if [ -z "$PS_BIN" ] || ! command -v go >/dev/null 2>&1 || ! command -v python3 >
   t_skip "no PowerShell, Go or python3, so REPEATED delivery over the relay was NOT exercised"
 else
   W="$(mktemp -d)"
+  # THE RUNS' OUTPUT IS KEPT, and this is a correction rather than a nicety.
+  #
+  # The first version sent all three to /dev/null. When this failed on Windows
+  # and nowhere else, CI could report only "expected [3 1,2,3], actual [0 ]" -
+  # which says a delivery did not happen and nothing whatever about why, on the
+  # one platform that cannot be reproduced locally. A test that discards the
+  # evidence of its own failure costs a whole round trip through CI to learn
+  # what one line would have said.
   (
     export CONF_TRANSPORT=relay
     # shellcheck disable=SC1091
     . "$HERE/conformance/drivers/powershell.sh"
     trap 'drv_teardown 2>/dev/null' EXIT
-    drv_bootstrap "$W/s" >/dev/null 2>&1 || { echo "BOOTSTRAP-FAILED"; exit 1; }
+    if ! drv_bootstrap "$W/s" > "$W/bootstrap.log" 2>&1; then
+      echo "BOOTSTRAP-FAILED"
+      exit 1
+    fi
     drv_step_file ships "$W/s/steps/ships"
-    for _ in 1 2 3; do
+    for i in 1 2 3; do
       ( cd "$W/s" && _drv_ps_env "$W/s" && ALLOW_ROOT=1 \
-          timeout 120 "$_P_SHELL" -NoProfile -File ./run.ps1 ./steps/ships.ps1 ) >/dev/null 2>&1
+          timeout 120 "$_P_SHELL" -NoProfile -File ./run.ps1 ./steps/ships.ps1 ) \
+        > "$W/run$i.log" 2>&1
     done
     # READ FROM THE RELAY, not from the state file. The counter advancing and
     # three messages arriving are different claims, and only the second is the
@@ -234,10 +278,18 @@ else
 try: d=json.load(sys.stdin)
 except Exception: print("0 -"); raise SystemExit
 print(len(d), ",".join(str(m["seq"]) for m in sorted(d, key=lambda x: x["seq"])))'
-  ) > "$W/out" 2>/dev/null
+  ) > "$W/out" 2>"$W/err"
   GOT="$(cat "$W/out" 2>/dev/null)"
-  assert_eq "three runs put three messages on the relay, with three distinct sequence numbers" \
-    "3 1,2,3" "$GOT"
+  if [ "$GOT" = "3 1,2,3" ]; then
+    t_ok "three runs put three messages on the relay, with three distinct sequence numbers"
+  else
+    t_no "three runs did not put three messages on the relay: got [$GOT], wanted [3 1,2,3]"
+    for f in bootstrap.log run1.log run2.log run3.log err; do
+      [ -s "$W/$f" ] || continue
+      printf '     --- %s\n' "$f"
+      tail -12 "$W/$f" | sed 's/^/     /'
+    done
+  fi
   rm -rf "$W"
 fi
 
