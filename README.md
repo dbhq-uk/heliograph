@@ -199,17 +199,22 @@ The relay server is its own repository,
 because it holds no keys and must be publicly, obviously incapable of reading
 anything it carries.
 
-## What it will not do
+## What the beam is, and what it costs
 
-Give you access you do not have. It does not tunnel, proxy or hold a
-connection open to a host you control, and there is nothing here to punch
-through a firewall with. A raw TCP transport was considered and **dropped**
-for exactly that reason: a persistent reverse connection is a C2 channel by
-any blue team's definition, and that sentence is a large part of why this
-class of tool is permitted in regulated estates.
+Two of the three shapes never hold a connection open. A **beacon** leaves a
+message where both sides can reach it; a **flare** knocks, waits and leaves.
+Neither needs anything to be reachable, ever - no inbound port, no endpoint, no
+tunnel - and between them they do the whole job.
 
-Every command runs on the far side because someone with legitimate access
-chose to run it.
+The **beam** does hold a line open, live and two-way, and that is a tunnel. A
+blue team will read a held-open channel as one, because it is one. So it is
+**off unless it is explicitly enabled on both ends**, it is sealed and signed,
+and the station refuses to establish one unless it was started to allow it.
+Where an estate forbids a reverse connection, the beacon and the flare are the
+answer and nothing is lost but latency.
+
+Every command still runs on the far side because someone with legitimate access
+chose to let it.
 
 ## Layout
 
