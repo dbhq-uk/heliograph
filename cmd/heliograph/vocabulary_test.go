@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,6 +51,13 @@ func TestTheOldPositioningIsGone(t *testing.T) {
 		// rather than silently reporting zero hits.
 		t.Fatalf("listing tracked files with git: %v", err)
 	}
+	if len(tracked) == 0 {
+		// `git ls-files -z` can exit 0 with empty output (wrong working
+		// directory, a repository with nothing staged yet). Without this
+		// guard the loop below would range over zero files and the test
+		// would pass having checked nothing.
+		t.Fatal("git ls-files returned no tracked files: this guard looked at nothing")
+	}
 
 	var found []string
 	for _, rel := range tracked {
@@ -79,6 +87,12 @@ func trackedFilesForVocabulary(root string) ([]string, error) {
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
+		// cmd.Output only captures stdout, so a plain wrap of err reports
+		// nothing but "exit status 128". The ExitError carries stderr,
+		// which is where git actually says what went wrong.
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+		}
 		return nil, err
 	}
 	var files []string

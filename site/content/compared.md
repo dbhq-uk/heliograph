@@ -82,6 +82,9 @@ this page should have told you so by now.
 
 Those give you access. If you can have access, take it. heliograph is for the
 estate where access is refused by policy rather than capability, and where a
-tunnel would be a breach rather than a convenience. It does not tunnel, proxy or
-hold a connection open, and there is nothing in it to punch through a firewall
-with: [what it will not do](/security#it-does-not-give-you-access-you-do-not-have).
+standing tunnel would be a breach rather than a convenience. Two of its three
+shapes, the beacon and the flare, never tunnel, proxy or hold a connection
+open, and there is nothing in either to punch through a firewall with. The
+third, the beam, is a live connection and does hold one open, deliberately and
+under its own gates - what each shape does and does not do is on [the security
+page](/security#it-does-not-give-you-access-you-do-not-have).

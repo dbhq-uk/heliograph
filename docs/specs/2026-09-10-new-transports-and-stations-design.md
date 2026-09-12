@@ -377,7 +377,7 @@ Two small ones that are close to free.
 
 `station/bash/pipelines/` ships GitHub Actions and Azure Pipelines. **GitLab CI
 is missing and GitLab is the git host of choice in a large part of the
-enterprise market**, so this is one YAML file against a pattern that already
+enterprise git market**, so this is one YAML file against a pattern that already
 exists, loop guard included.
 
 `station/bash/kubernetes/heliograph.yaml` is a Deployment. A CronJob beside it

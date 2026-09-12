@@ -63,13 +63,17 @@ Yes, and it is the only way this runs them: no SSH is involved anywhere in the
 loop. In the estates this is for, there is no SSH to give. The machine is
 behind a bastion you are not on, or in a client's estate where only their staff
 may log in, or the access is blocked by policy rather than capability:
-restricted, change-controlled, or reached only through people who can.
+restricted, change-controlled, or reached only through the people who can log
+in.
 
-heliograph does not get around any of that, and it is worth being plain that it
-does not try. It does not tunnel, proxy or hold a connection open, and there is
-nothing in it to punch through a firewall with. **Every command runs on the far
-side because somebody with legitimate access chose to run it.** What changes is
-that they run one command, once, and then stop being your terminal.
+heliograph does not get around any of that, and it is worth being plain about
+what it does and does not do instead. Two of its three shapes, the beacon and
+the flare, never tunnel, proxy or hold a connection open, and there is nothing
+in either to punch through a firewall with. The third, the beam, is a live
+connection and does hold one open - deliberately, off by default, and gated at
+both ends. **Every command still runs on the far side because somebody with
+legitimate access chose to run it.** What changes is that they run one
+command, once, and then stop being your terminal.
 
 This is also not Claude Code's Remote Control, which drives a session on your
 own machine from your phone. That is for a machine you can already reach.

@@ -62,7 +62,7 @@ holds the *connection itself*.
 - You have **no SSH access to production**, and you are not going to be given any.
 - The environment is **air-gapped**, or behind a bastion, a jump host or a VPN you are not on.
 - It is a **client-owned or customer-managed estate**. Only their staff can log in.
-- Access is blocked by **policy, not capability**: restricted, change-controlled, or reached only through people who can.
+- Access is blocked by **policy, not capability**: restricted, change-controlled, or reached only through the people who can log in.
 - You are on the fourth round of **"can you run this and paste the output"**, and what came back was a screenshot of half a terminal.
 - You are an **AI coding agent** driving an investigation, and you need the evidence rather than somebody's summary of it.
 
@@ -201,10 +201,15 @@ anything it carries.
 
 ## What the beam is, and what it costs
 
+The beam is designed and not yet built; what follows is what it will do when
+it lands.
+
 Two of the three shapes never hold a connection open. A **beacon** leaves a
-message where both sides can reach it; a **flare** knocks, waits and leaves.
-Neither needs anything to be reachable, ever - no inbound port, no endpoint, no
-tunnel - and between them they do the whole job.
+message where both sides can reach it, and needs nothing to be reachable,
+ever - no inbound port, no endpoint, no tunnel. A **flare** knocks, waits and
+leaves; what it does not do is hold the line open once the answer is back, and
+between the two of them an estate that will not have a held-open line at all
+still gets the whole job done.
 
 The **beam** does hold a line open, live and two-way, and that is a tunnel. A
 blue team will read a held-open channel as one, because it is one. So it is

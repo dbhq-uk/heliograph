@@ -20,7 +20,7 @@ classes, the S5 passengers - learns that anything changed.
   server or the signalling: the peer identity is authenticated by the Noise
   handshake, end to end, or the beam does not come up.
 - **No TURN.** When ICE cannot find a direct path - symmetric NAT, a firewall
-  that blocks it - the fallback is the **relayed beam** we already built. TURN
+  that blocks it - the fallback is the **relayed beam S4** provides. TURN
   and the relayed broker do the same job, so there is one relay, not two, and
   nothing to deploy, credential or pay bandwidth for that S4 does not already
   provide.

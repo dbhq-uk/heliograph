@@ -18,7 +18,7 @@ You push a step; the station runs it; the log comes back. The operator runs one 
 - No SSH access to production, and you are not going to be given any
 - Air-gapped, or behind a bastion, a jump host or a VPN you are not on
 - A client-owned estate where only their staff can log in
-- Blocked by policy rather than capability: restricted, change-controlled, or reached only through people who can
+- Blocked by policy rather than capability: restricted, change-controlled, or reached only through the people who can log in
 - The fourth round of "can you run this and paste the output", and what came back was a screenshot of half a terminal
 
 ## For an AI agent that cannot reach the machine
@@ -58,12 +58,19 @@ reads as clearly as a successful one and a round trip is never wasted.
 
 ## What it will not do
 
-Give you access you do not have. It does not tunnel, proxy or hold a connection
-open to a host you control, and there is nothing here to punch through a
-firewall with. A raw TCP transport was considered and dropped for exactly that
-reason: a persistent reverse connection is a C2 channel by any blue team's
-definition, and that sentence is a large part of why this class of tool is
-permitted in the estates it targets.
+Give you access you do not have. Two of its three shapes, the beacon and the
+flare, never tunnel, proxy or hold a connection open to a host you control,
+and there is nothing in either to punch through a firewall with. A raw TCP
+transport was considered and dropped for exactly that reason: an
+unauthenticated, always-on reverse connection is a C2 channel by any blue
+team's definition, and that sentence is a large part of why this class of tool
+is permitted in the estates it targets.
+
+The third shape, the beam, is a live connection and does hold a line open -
+deliberately, off by default, and under [its own
+controls](/security#the-beam-and-the-blast-radius-of-a-held-open-line). Where
+an estate forbids a reverse connection outright, the beacon and the flare still
+do the whole job without one.
 
 Every command runs on the far side because someone with legitimate access chose
 to run it.

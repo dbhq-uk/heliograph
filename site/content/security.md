@@ -2,7 +2,7 @@
 
 What heliograph refuses to do, what it gates, and what it cannot promise. This
 page is written to be read by somebody deciding whether to permit it in
-an estate you cannot log into.
+an estate nobody outside can log into.
 
 ```diagram gates
 Four gates, all failing closed, all in one place.

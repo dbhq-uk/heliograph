@@ -4,12 +4,13 @@
 // /page.md, and llms.txt at the root.
 //
 // The markdown mirror is not a nicety. Measured across all 29 pages, the same
-// page costs three to sixteen times more bytes as HTML than as markdown - about
-// eight times on the median page, six times across the whole site - so serving
-// chrome to an agent is a token tax on every read, and agents read these pages
-// far more often than people do. The figure used to say "roughly 31 times",
-// which nobody had measured; TestTheMirrorSavingIsTheOneTheCommentsClaim now
-// measures it on every build, so this sentence cannot drift again.
+// page costs under three to sixteen times more bytes as HTML than as
+// markdown - about eight times on the median page, six times across the whole
+// site - so serving chrome to an agent is a token tax on every read, and
+// agents read these pages far more often than people do. The figure used to
+// say "roughly 31 times", which nobody had measured;
+// TestTheMirrorSavingIsTheOneTheCommentsClaim now measures it on every build,
+// so this sentence cannot drift again.
 package main
 
 import (
@@ -42,6 +43,12 @@ const baseURL = "https://heliograph.dbhq.uk"
 // redirects keeps a published path alive after its page is renamed. Cloudflare
 // Pages reads _redirects; a reader who followed an old link gets the new page
 // rather than the 404 handler.
+//
+// GitHub Pages, which is what actually serves this site, does not read
+// _redirects at all - it is kept here anyway because it costs nothing and is
+// correct the day the host changes. The redirect GitHub Pages does serve is a
+// static stub written by .github/workflows/pages.yml after this build runs,
+// not generated from this map.
 var redirects = [][2]string{
 	{"/intercom", "/flare"},
 }
