@@ -691,7 +691,7 @@ the skill still gets taught pigeonhole and intercom.
 
 **Files:**
 - Rename: `skills/heliograph/references/pigeonhole.md` -> `beacon.md`, `skills/heliograph/references/intercom.md` -> `flare.md`
-- Modify: `skills/heliograph/SKILL.md`, `skills/heliograph/references/azure.md`, `skills/heliograph/references/transport.md`, `skills/heliograph/references/hosts.md`, `docs/seo/2026-09-09-keyword-research.md`
+- Modify: `skills/heliograph/SKILL.md`, `skills/heliograph/references/azure.md`, `skills/heliograph/references/transport.md`, `skills/heliograph/references/hosts.md`, `docs/seo/2026-09-09-keyword-research.md` (that last one moved out of this repository on 2026-09-12 - see Step 3)
 - Modify: `docs/specs/2026-09-03-intercom-design.md` (a one-line note only, see below)
 
 **Interfaces:**
@@ -739,6 +739,12 @@ shape words only, by the rule above.
 
 `docs/seo/2026-09-09-keyword-research.md` lists site page slugs including
 `intercom`; that slug is now `flare`. Update the list so it matches the site.
+
+> **Done, and then the file left this repository on 2026-09-12.** It carries no
+> `intercom` or `pigeonhole` anywhere, checked by grep before the move. It now
+> lives at `reports/heliograph/2026-09-09-keyword-research.md` in the private
+> `dbhq-uk/dbhq-seo` (heliograph-io/heliograph-cloud#76), so this part of Step 3
+> has nothing left to do here and the path above no longer resolves.
 
 - [ ] **Step 4: Supersede the dated intercom design rather than rewriting it**
 

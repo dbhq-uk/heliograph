@@ -992,12 +992,15 @@ const consentJS = `(function () {
 // says nothing to somebody who has never heard of either word.
 //
 // They also carry the words people actually search, measured rather than
-// guessed: docs/seo/2026-09-09-keyword-research.md. Nobody searches for the
-// problem in the words this site uses ("without SSH access", "audit log").
-// They search for the agent they already use ("claude code skills", "codex
-// cli mcp"), for "ssh alternative", and for "air gapped". So those are the
-// words in the titles, and "remote command execution" never is: to Google
-// that phrase means the vulnerability.
+// guessed. The rule that came out of the measurement, which is the part this
+// file needs: use the words a reader already has - the agent they use ("claude
+// code skills", "codex cli mcp"), "ssh alternative", "air gapped" - rather than
+// the words this project uses for the problem. And never "remote command
+// execution": to Google that phrase means the vulnerability.
+//
+// The measurement behind it is go-to-market work and lives in the private
+// dbhq-uk/dbhq-seo, at reports/heliograph/2026-09-09-keyword-research.md. It
+// was in this repository until 2026-09-12 and should not have been.
 var titles = map[string]string{
 	"index":       "heliograph - run commands on a server without SSH",
 	"install":     "Install heliograph - a single binary, and nothing on the far side",
