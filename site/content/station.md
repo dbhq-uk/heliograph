@@ -79,7 +79,7 @@ says what it would take.
 | the loop: poll, decide, dispatch, publish | `station.sh` | `station.ps1` |
 | the step runner. Owns the log, the timestamps and the delivery | `run.sh` | `run.ps1` |
 | the capture itself | `caplib.sh` | `caplib.psm1` |
-| one file per channel | `transports/git.sh`, `share.sh`, `blob.sh`, `relay.sh` | `transports/git.psm1`, `share.psm1` |
+| one file per channel | `transports/git.sh`, `share.sh`, `bundle.sh`, `blob.sh`, `relay.sh` | `transports/git.psm1`, `share.psm1` |
 | one file per question, and a template to start from | `steps/` | `steps/` |
 | helpers a step can use | `lib/` | `lib/` |
 | where captured logs land | `ops-logs/` | `ops-logs/` |

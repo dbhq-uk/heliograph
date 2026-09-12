@@ -42,7 +42,7 @@ dropped](/security). [What works with what](/matrix) has the whole grid.
 | **relay** | there is no git host, no storage, no share | works | works |
 | **file share** | both machines mount the same directory | works | works |
 | **object store** | S3-compatible storage is permitted where git is not | works | none yet |
-| **bundle** | nothing crosses the gap but a person | works | none yet |
+| **bundle** | nothing crosses the gap but a person | works | works |
 | **Azure Blob** | a VNet-local private endpoint is the only reachable thing | `drop.sh`, in the station payload, not the CLI | works |
 
 **Git, the file share and the relay are the three the CLI drives end to end

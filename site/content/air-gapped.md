@@ -1,8 +1,7 @@
 # Air-gapped
 
 Running heliograph on a machine with no network path at all, or nearly none.
-What works today, what is designed and not finished, and how to tell which kind
-of air gap you actually have.
+What works today, and how to tell which kind of air gap you actually have.
 
 ## Three things people mean by air-gapped
 
@@ -14,7 +13,7 @@ you, but not from everything. Which of these you have decides the transport:
 | an internal git host: GitLab, Gitea, Bitbucket Server, Azure DevOps Server | [git](/transports#git) | works, driven end to end in CI |
 | a directory both machines mount | [file share](/transports#file-share) | works, driven end to end in CI |
 | S3-compatible storage inside the estate | [object store](/transports#object-store) | control side only |
-| nothing. A person walks between the two machines | [bundle](/transports#bundle) | control side only |
+| nothing. A person walks between the two machines | [bundle](/transports#bundle) | **works, both halves**, and passes the same conformance suite as every other transport |
 
 The first two are the common case, and they are the whole answer for it. An
 internal git host is enough: the station is planted from the private transport
@@ -24,15 +23,22 @@ near side, which is what a bastion-only estate usually permits.
 
 ## A true air gap, today
 
-When nothing crosses but a person, heliograph still works. It stops being a loop
-and becomes a procedure, and the value is that the format, the gates and the log
-are identical to every other transport, so the [method](/method) survives the
-walk.
+When nothing crosses but a person, the **bundle** transport is the answer. It is
+the only one that needs no path between the two machines at all - not a git
+host, not a share, not a storage account nobody can route to. A person carries a
+file.
 
-**Plant the station by hand.** The station is plain text and stands on its own.
-Clone this repository on a machine that can, carry the clone across, and run the
-bootstrap from it. On a Windows box with no bash, `station/bootstrap.ps1` does
-the same job with only the PowerShell already installed:
+It stops being a loop and becomes a procedure. The value is that the request
+format, the four gates and the captured log are identical to every other
+transport, so the [method](/method) survives the walk - and the station does not
+have to be told it is reading from a stick.
+
+### Plant the station by hand
+
+The station is plain text and stands on its own. Clone this repository on a
+machine that can, carry the clone across, and run the bootstrap from it. On a
+Windows box with no bash, `station/bootstrap.ps1` does the same job with only
+the PowerShell already installed:
 
 ```bash
 git clone https://github.com/dbhq-uk/heliograph          # near side
@@ -40,42 +46,72 @@ git clone https://github.com/dbhq-uk/heliograph          # near side
 ./heliograph/station/bootstrap.sh ~/transport/payments    # far side
 ```
 
-That is the same route as [planting without the CLI](/bootstrap#without-the-cli):
-same payload, same layout.
+Same route as [planting without the CLI](/bootstrap#without-the-cli): same
+payload, same layout.
 
-**Run each step by hand, with delivery off.** `PUSH=0` captures and does not
-deliver, and the log lands under `ops-logs/`:
+### Then the round trip, one walk each way
+
+On the near side:
+
+```bash
+heliograph init air --transport bundle --dir /media/stick
+heliograph send net-probe            # writes /media/stick/request-<id>.hgb
+```
+
+Carry the medium across. On the far side:
 
 ```bash
 cd ~/transport/payments
-PUSH=0 ./run.sh net-probe
-ls ops-logs/
+TRANSPORT=bundle BUNDLE_DIR=/media/stick ./start.sh -- --once
 ```
 
-Every line still carries a UTC timestamp, the exit code still survives, and the
-gates still apply: a step that declares `action` still needs `CONFIRM=yes`.
-Carry `ops-logs/` back. It reads like every other captured log, and a hang is
-still a gap in the timestamp column.
-
-**What you give up.** The loop. Nobody is polling, so the operator runs each
-step themselves and `heliograph watch` has nothing to watch. A round trip costs
-a walk, which is the one thing this tool cannot make cheaper.
-
-## The bundle transport: designed for this, not finished
-
-`heliograph init --transport bundle` exists, and `heliograph send` writes a
-request file for somebody to carry:
+Carry it back. On the near side:
 
 ```bash
-heliograph init air --transport bundle --dir ~/bundles
-heliograph send net-probe            # writes ~/bundles/request-<id>.hgb
+heliograph status                    # reads the status the station wrote
+heliograph logs --last               # reads the log it carried back
 ```
 
-**The station cannot read it yet.** The bundle has a control side and no station
-side, which is what the [transports table](/transports) says. Until that lands,
-the procedure above is the honest air-gapped path, and a request file is a note
-to yourself about what to run. Do not plan around the bundle until this page
-says otherwise.
+`--once` because there is nothing to poll for: the medium will not change while
+the station watches it. Without it the station will sit there for ever behaving
+perfectly, which is indistinguishable from a station nobody is using - and the
+preflight says so before you walk away.
+
+### What is on the medium
+
+```
+request-<id>.hgb   the control side writes it
+status             the station writes it
+<step>-<UTC>.txt   the log, beside the status
+```
+
+Nothing else, and no credential of any kind: **the medium is the channel and
+there is nothing to authenticate to**. That is worth being plain about, because
+it cuts both ways - anyone who can write to that stick can queue a step, and it
+will run under the same four gates as anything else.
+
+### What you give up, and it is only two things
+
+**The loop.** A round trip costs a walk, which is the one thing this tool cannot
+make cheaper.
+
+**The cancel.** The bundle declares neither `live` nor `self`, honestly, because
+there is nothing to re-read: a cancel would have to be carried in by hand, by
+which time the step it was meant for has finished. A station on this transport
+cannot be stopped from the near side, and cannot update itself - it is changed
+by re-planting, which is another walk.
+
+Everything else is the same. Every line still carries a UTC timestamp, the exit
+code still survives, the footer still says whether it passed, and a hang is
+still a gap in the timestamp column.
+
+### Or without the CLI at all
+
+`PUSH=0 ./run.sh <step>` captures into `ops-logs/` and delivers nothing, and you
+carry that directory back. It works, and it is what to reach for when the near
+side has no `heliograph` binary either. The bundle is better when it is
+available: `heliograph logs --gaps` and `heliograph watch` understand what comes
+back, and a plain directory of files is something you have to read yourself.
 
 ## Kubernetes and containers behind an air gap
 
