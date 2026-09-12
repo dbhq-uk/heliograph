@@ -400,7 +400,7 @@ and before `## Does this sound familiar`, wrapped to match the file.
 
 - [ ] **Step 4: Regenerate and eyeball the pages**
 
-Run: `go run ./cmd/heliograph-site -out /tmp/site-check && grep -c beacon /tmp/site-check/matrix.html`
+Run: `go run ./cmd/heliograph-site site/content /tmp/site-check && grep -c beacon /tmp/site-check/matrix.html`
 Expected: a non-zero count, and no error from the generator.
 
 - [ ] **Step 5: Run the full suite**
@@ -498,7 +498,7 @@ comparing it with S4 can see what changed and why.
 
 - [ ] **Step 4: Regenerate and check both pages render**
 
-Run: `go run ./cmd/heliograph-site -out /tmp/site-check && grep -c "the blast radius of a held-open line" /tmp/site-check/security.html`
+Run: `go run ./cmd/heliograph-site site/content /tmp/site-check && grep -c "the blast radius of a held-open line" /tmp/site-check/security.html`
 Expected: `1`.
 
 - [ ] **Step 5: Commit**
@@ -676,6 +676,106 @@ Expected: PASS.
 ```bash
 git add -A
 git commit -m "docs: the old positioning is gone, and a guard keeps it gone"
+```
+
+---
+
+---
+
+### Task 7: the rest of the docs
+
+Tasks 1-6 covered the site's shape pages, the README and the security page. The
+retired vocabulary also lives in the **agent skill**, which ships to Claude
+Code and Codex users, and in a few repo-facing indexes. A reader who installs
+the skill still gets taught pigeonhole and intercom.
+
+**Files:**
+- Rename: `skills/heliograph/references/pigeonhole.md` -> `beacon.md`, `skills/heliograph/references/intercom.md` -> `flare.md`
+- Modify: `skills/heliograph/SKILL.md`, `skills/heliograph/references/azure.md`, `skills/heliograph/references/transport.md`, `skills/heliograph/references/hosts.md`, `docs/seo/2026-09-09-keyword-research.md`
+- Modify: `docs/specs/2026-09-03-intercom-design.md` (a one-line note only, see below)
+
+**Interfaces:**
+- Consumes: the vocabulary from Task 1.
+- Produces: no code.
+
+**The distinction that governs every edit in this task.** Rename a word only
+where it names **the shape**. Leave it untouched where it names any of:
+
+- a script or module: `pigeonhole.sh`, `intercom.sh`, `intercom.py`, `drop.sh`
+- an environment variable: `PIGEONHOLE_*`, `INTERCOM_*`, `HELIOGRAPH_*`
+- a terraform variable: `intercom_enabled`, `intercom_allowed_ip_addresses`
+- a path to a dated spec: `2026-09-03-intercom-design.md`
+
+- [ ] **Step 1: Rename the two reference files and fix every link to them**
+
+```bash
+git mv skills/heliograph/references/pigeonhole.md skills/heliograph/references/beacon.md
+git mv skills/heliograph/references/intercom.md skills/heliograph/references/flare.md
+```
+
+Then repoint every link. `skills/heliograph/SKILL.md` has four: two inline
+(around the transport guidance) and two in the references table at the bottom.
+`references/flare.md` links to `pigeonhole.md` in its opening paragraph.
+Search the whole `skills/` tree for `pigeonhole.md` and `intercom.md` and fix
+each hit.
+
+- [ ] **Step 2: Update the shape vocabulary inside the two renamed files**
+
+In `references/flare.md`: the H1 becomes `# flare - HTTP submit and poll`. The
+comparison table rows become `| beacon | neither reaches the other | ... |` and
+`| **flare** | **control node reaches the station** | ... |`. The prose
+references to "the pigeonhole" become "the beacon", and "intercom will not
+until something wants it" becomes "the flare will not until something wants
+it". Leave `./intercom.sh`, `intercom.py`, `HELIOGRAPH_ACCOUNT`,
+`intercom_enabled` and `intercom_allowed_ip_addresses` exactly as they are.
+
+In `references/beacon.md`: the same treatment. Shape words become beacon;
+`pigeonhole.sh`, `drop.sh` and the `PIGEONHOLE_*` variables stay.
+
+- [ ] **Step 3: Update the remaining references and the SEO note**
+
+`skills/heliograph/references/azure.md`, `transport.md` and `hosts.md`: rename
+shape words only, by the rule above.
+
+`docs/seo/2026-09-09-keyword-research.md` lists site page slugs including
+`intercom`; that slug is now `flare`. Update the list so it matches the site.
+
+- [ ] **Step 4: Supersede the dated intercom design rather than rewriting it**
+
+`docs/specs/2026-09-03-intercom-design.md` is a dated record of what was
+designed then, and its subject is named in its own filename. **Do not rename
+its vocabulary.** Add one line directly under its title:
+
+```markdown
+> **Superseded in part on 2026-09-11.** The shape this document calls the
+> *intercom* is now the **flare**; see
+> [the three shapes](2026-09-11-three-shapes-and-signalling-names-design.md).
+> The design below is unchanged and still describes what ships.
+```
+
+- [ ] **Step 5: Prove nothing shipped still teaches the old words**
+
+Run this and read every remaining hit, confirming each is a filename, an
+environment variable, a terraform variable, or the dated spec:
+
+```bash
+grep -rnE 'pigeonhole|intercom' skills/ site/content/ README.md SECURITY.md AGENTS.md CONTRIBUTING.md
+```
+
+Expected: every surviving hit is one of the four permitted kinds. No hit
+teaches a shape.
+
+- [ ] **Step 6: Run the full suite**
+
+Run: `go test ./...`
+Expected: PASS. `skill_coherence_test.go` reads the skill tree, so a broken
+link or a missing reference file fails here.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add -A
+git commit -m "docs(skill): the agent skill learns beacon and flare"
 ```
 
 ---
