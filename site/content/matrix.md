@@ -37,7 +37,7 @@ operator can read before anything happens.
 far side to have planted it, so the caller ships the thing to be run - and at
 that moment the mode header stops being a control and becomes *a claim the
 caller makes about its own file*. What is left is the function key and an IP
-allowlist. That is a real trade and [the intercom page](/intercom) makes it in
+allowlist. That is a real trade and [the intercom page](/flare) makes it in
 full; it is not a worse transport, it is a different security model.
 
 **A pigeonhole also needs nothing to be reachable, ever.** No inbound port, no

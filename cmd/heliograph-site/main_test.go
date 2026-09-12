@@ -219,6 +219,29 @@ func TestStructuredDataIsValidJSONOfTheRightType(t *testing.T) {
 	}
 }
 
+// The nav and the content directory must agree. A slug in order with no
+// markdown behind it renders an empty page, and a markdown file no slug names
+// is never published at all.
+func TestFlareReplacesIntercom(t *testing.T) {
+	for _, slug := range order {
+		if slug == "intercom" {
+			t.Error("the nav still lists intercom; the page is /flare now")
+		}
+	}
+	var found bool
+	for _, slug := range order {
+		if slug == "flare" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the nav does not list flare")
+	}
+	if _, err := os.Stat(filepath.Join("..", "..", "site", "content", "flare.md")); err != nil {
+		t.Fatalf("site/content/flare.md is missing: %v", err)
+	}
+}
+
 func contains(xs []string, s string) bool {
 	for _, x := range xs {
 		if x == s {
