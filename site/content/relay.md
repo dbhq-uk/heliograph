@@ -159,6 +159,12 @@ there is no plaintext fallback and no degraded mode.
 binary that does not match refuses to run. Without it the station prints a
 warning and carries on, which is weaker than this page used to claim. Set it.
 
+The number comes from `SHA256SUMS` on the release, and you do not have to take
+our word for it either: [provenance](/provenance) is the command that rebuilds
+`heliograph-seal` from the tag and arrives at the same hash. That is the whole
+answer to "you told me the far side was readable and this is a binary" - you
+cannot read it, and you can prove it is the source you did read.
+
 ### On the PowerShell station there is no binary and no checksum
 
 The [PowerShell station](/windows#the-relay-works-here-and-needs-nothing-installed)

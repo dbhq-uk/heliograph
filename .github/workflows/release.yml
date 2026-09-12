@@ -16,76 +16,101 @@ jobs:
   build:
     name: Cross-compile and publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # For keyless signing. A job-level block REPLACES the workflow-level one,
+      # so contents: write is repeated here rather than inherited.
+      id-token: write
     steps:
       - uses: actions/checkout@v7
 
+      # PINNED TO THE PATCH, and check-latest dropped with it. '1.27' with
+      # check-latest resolves to whatever 1.27.x exists on the morning the job
+      # runs, and a Go patch release changes the compiler, so it changes the
+      # bytes. The pin is go.mod's `go` directive; packaging/toolchain_test.go
+      # fails the build if this line and that one disagree.
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27'
-          check-latest: true
+          go-version: '1.27.1'
 
       - name: Tests must pass before anything is published
         # A release that was never tested is worse than no release: it carries
         # the authority of a version number.
         run: go test ./... -count=1
 
-      - name: Build
+      - name: Build every artefact, through the script the documentation gives out
+        # THE SAME FILE A STRANGER RUNS. The build loop used to be written out
+        # here, and the documented reproduce command was written somewhere
+        # else - so the two could differ by one flag, which is enough to make
+        # every published hash wrong with no error anywhere saying so.
+        #
+        # packaging/reproduce.sh owns the flags, the toolchain pin and the
+        # .mcpb bundles, and writes SHA256SUMS over the lot.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: packaging/reproduce.sh "$TAG" dist
+
+      - name: And it is reproducible, which is the claim
+        # Built again, in a different directory, from a copy with no .git in
+        # it - the two conditions that broke reproducibility when this was
+        # first measured. A release whose hashes cannot be reproduced must not
+        # be published carrying a promise that they can.
         env:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          mkdir -p dist
-          # CGO off, so the binary is static and runs on a machine with a
-          # different libc than the one that built it. That is the whole
-          # proposition: nothing to install.
-          export CGO_ENABLED=0
-          for target in \
-            linux/amd64 linux/arm64 \
-            darwin/amd64 darwin/arm64 \
-            windows/amd64 windows/arm64; do
-            os="${target%/*}"; arch="${target#*/}"
-            out="dist/heliograph-${os}-${arch}"
-            [ "$os" = windows ] && out="${out}.exe"
-            echo "building $out"
-            GOOS="$os" GOARCH="$arch" go build \
-              -trimpath \
-              -ldflags "-s -w -X main.version=${TAG}" \
-              -o "$out" ./cmd/heliograph
+          mkdir -p /tmp/again
+          tar -c --exclude=.git --exclude=dist . | tar -x -C /tmp/again
+          ( cd /tmp/again && packaging/reproduce.sh "$TAG" /tmp/again-dist >/dev/null )
+          if ! diff dist/SHA256SUMS /tmp/again-dist/SHA256SUMS; then
+            echo "::error::the second build of the same source produced different bytes. The published checksums would be unreproducible."
+            exit 1
+          fi
+          echo "two independent builds, identical SHA256SUMS"
 
-            # heliograph-seal, the ONE binary the far side is ever given.
-            #
-            # PUBLISHED BECAUSE THE PIN DEPENDS ON IT. transports/relay.sh
-            # refuses to start unless RELAY_SEAL_SHA256 matches, and the whole
-            # value of that check is that the operator gets the number from
-            # somewhere other than the machine holding the binary. Without an
-            # asset here, that instruction was one nobody could follow - the
-            # documentation said "the checksum published with the release" and
-            # there was no such thing.
-            #
-            # No version stamp: it has none to print, and a byte-identical
-            # binary across releases is a feature for something a station
-            # verifies by hash.
-            sealout="dist/heliograph-seal-${os}-${arch}"
-            [ "$os" = windows ] && sealout="${sealout}.exe"
-            echo "building $sealout"
-            GOOS="$os" GOARCH="$arch" go build \
-              -trimpath -ldflags "-s -w" \
-              -o "$sealout" ./cmd/heliograph-seal
-          done
-          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      # SIGNING, AND IT HAS NEVER RUN. Written here so the next release signs;
+      # nothing in this repository has produced a signature yet, and nothing
+      # claims one has until a tag has been through this job.
+      #
+      # KEYLESS, so there is no private key. cosign gets a short-lived
+      # certificate from Fulcio bound to this workflow's OIDC identity, uses it
+      # once, and the certificate expires in ten minutes; the binding is
+      # recorded in Rekor, the public transparency log. What a verifier checks
+      # is therefore an IDENTITY - "signed by the release workflow of
+      # dbhq-uk/heliograph" - rather than "signed by a key some person holds".
+      #
+      # That is the honest answer to "document the signing key's provenance":
+      # there is no key to have provenance. A long-lived key would need
+      # generating on a machine, storing somewhere, rotating, and its custody
+      # explaining, and every one of those is a thing to get wrong. The cost of
+      # keyless is that verifying reaches Sigstore over the network, so it is
+      # not an offline check; https://heliograph.dbhq.uk/provenance says so.
+      #
+      # ONE SIGNATURE OVER SHA256SUMS, not one per artefact. SHA256SUMS already
+      # binds every file, and `sha256sum -c` after verifying the signature is
+      # the same guarantee for a twelfth of the assets.
+      - name: Get cosign
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: sigstore/cosign-installer@v4
 
-      - name: Bundle for MCP clients
-        # One .mcpb per platform. The logic is in packaging/mcpb/build.sh so it
-        # can be run and tested outside CI, and because it embeds a heredoc -
-        # which, nested inside a YAML block scalar, takes the YAML indentation
-        # with it and fails with a shell syntax error that says nothing about
-        # bundles.
-        env:
-          TAG: ${{ github.ref_name }}
+      - name: Sign the checksums
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -euo pipefail
-          packaging/mcpb/build.sh "${TAG#v}"
-          cd dist && sha256sum *.mcpb >> SHA256SUMS && ls -la *.mcpb
+          cosign sign-blob --yes \
+            --output-signature dist/SHA256SUMS.sig \
+            --output-certificate dist/SHA256SUMS.pem \
+            dist/SHA256SUMS
+          # Verified here, before publishing, because a signature nobody has
+          # checked is a file. The identity asserted is this workflow at this
+          # tag, which is exactly what a reader is told to check for.
+          cosign verify-blob \
+            --signature dist/SHA256SUMS.sig \
+            --certificate dist/SHA256SUMS.pem \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            dist/SHA256SUMS
+          echo "SHA256SUMS signed and the signature verifies against this workflow's identity"
 
       - name: Publish
         if: startsWith(github.ref, 'refs/tags/')
@@ -207,8 +232,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27'
-          check-latest: true
+          go-version: '1.27.1'
 
       - name: Get the publisher
         # Pinned. `@latest` in a release job means the tool that publishes can

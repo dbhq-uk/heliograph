@@ -23,8 +23,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27'
-          check-latest: true
+          go-version: '1.27.1'
 
       - name: gofmt
         run: |
@@ -88,8 +87,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27'
-          check-latest: true
+          go-version: '1.27.1'
 
       # The station lives in this repository since the merge, so there is no
       # second checkout and nothing for the test to skip - but the non-skip
@@ -192,8 +190,44 @@ jobs:
             }
           done
 
+  reproducible:
+    name: The release binaries build the same twice
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+
+      # THE CLAIM, MEASURED ON EVERY PULL REQUEST.
+      #
+      # "The binary in the path is the binary you can read" is worth nothing
+      # asserted and everything demonstrated, and it breaks quietly: one flag,
+      # one floating toolchain, one path baked into a binary, and every hash
+      # this project publishes is a number nobody else can arrive at.
+      #
+      # THE SECOND BUILD IS FROM A COPY WITH NO .git AND A DIFFERENT PATH,
+      # because those are the two things that actually broke it when it was
+      # first measured on 2026-09-12. Same source in a git checkout and in a
+      # tarball of that checkout gave 475be520... and 7a1ac692... - Go stamps
+      # the commit in by default and omits it silently where there is no
+      # repository, so the person verifying from the release tarball is the one
+      # who would have found out.
+      - name: two builds, one set of hashes
+        run: |
+          set -euo pipefail
+          packaging/reproduce.sh v0.0.0-ci /tmp/one > /tmp/one.log
+          mkdir -p /tmp/elsewhere
+          tar -c --exclude=.git --exclude=dist . | tar -x -C /tmp/elsewhere
+          ( cd /tmp/elsewhere && packaging/reproduce.sh v0.0.0-ci /tmp/two > /tmp/two.log )
+          if ! diff /tmp/one/SHA256SUMS /tmp/two/SHA256SUMS; then
+            echo "::error::the same source built twice produced different bytes. Whatever the docs say a stranger can reproduce, they cannot."
+            exit 1
+          fi
+          cat /tmp/one/SHA256SUMS
+
   station-purity:
-    name: No Go crosses the gap
+    name: The far side ships as source, and every binary is on the list
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -216,10 +250,81 @@ jobs:
                    ! -path 'station/embed.go' ! -path 'station/embed_test.go')"
           if [ -n "$bad" ]; then
             echo "$bad"
-            echo "::error::Go under station/ beyond embed.go. The far side never gets a binary dependency."
+            echo "::error::Go source under station/ beyond embed.go and its test. A station payload is planted as source and read before it is run, so source is what it must be."
             exit 1
           fi
-          echo "station/ is clean"
+          echo "station/ carries no Go beyond embed.go and its test"
+
+      # AND THE PART THAT WAS MISSING, WHICH IS THE PART THAT MATTERED.
+      #
+      # The step above passed while heliograph-seal - a compiled Go binary -
+      # ran on the far side, because it is built from cmd/ and shipped as an
+      # artefact rather than existing as Go source under station/. The check
+      # was green and its message said "the far side never gets a binary
+      # dependency", which was not true. A future contributor would have
+      # trusted it: the loophole is a two-line diff, adding a directory to cmd/
+      # and a reference to it in a transport script, and nothing here would
+      # have said a word.
+      #
+      # So the list is the rule. A program under cmd/ whose name appears
+      # anywhere under station/ has to be in station/FAR-SIDE-BINARIES, and
+      # anything in that file that is no longer referenced has to come out - a
+      # list that is allowed to be stale is a list nobody can rely on.
+      #
+      # cmd/heliograph is exempt and must be: it is the control binary, and its
+      # name is the project's, so it appears in nearly every file under
+      # station/ without a single one of them running it.
+      #
+      # WHAT THIS DOES NOT CATCH, stated because a check that overstates itself
+      # is worse than no check: a station told to install a THIRD-PARTY binary
+      # (age, jq, socat) is not caught here. CONTRIBUTING.md refuses those under
+      # "A far-side dependency", and that one is enforced by review.
+      - name: every far-side binary is on the visible list
+        run: |
+          set -uo pipefail
+          list=station/FAR-SIDE-BINARIES
+          [ -f "$list" ] || { echo "::error::$list is missing. It is the policy, not a note about it."; exit 1; }
+          allowed="$(grep -vE '^\s*(#|$)' "$list" | awk '{print $1}' | sort -u)"
+          echo "on the list: $(echo "$allowed" | tr '\n' ' ')"
+          bad=0
+          referenced=""
+          for d in cmd/*/; do
+            name="$(basename "$d")"
+            [ "$name" = "heliograph" ] && continue
+            grep -rqF -- "$name" station/ || continue
+            referenced="$referenced $name"
+            if ! echo "$allowed" | grep -qxF -- "$name"; then
+              echo "::error::cmd/$name is referenced under station/ and is not in $list. Adding a binary to the far side is a deliberate edit to that list, with a reproducible build and a published checksum behind it - not a side effect of adding a directory to cmd/."
+              bad=1
+            fi
+          done
+          for name in $allowed; do
+            case " $referenced " in
+              *" $name "*) ;;
+              *) echo "::error::$list names $name, which nothing under station/ references. A stale allowlist is one nobody can rely on."; bad=1 ;;
+            esac
+          done
+          [ "$bad" = "0" ] || exit 1
+          echo "far-side binaries referenced under station/:$referenced"
+
+      # A compiled thing can also arrive by being committed. Nothing under
+      # station/ is anything but text today, and a blob appearing there would
+      # be a binary on the far side that never went near cmd/.
+      - name: nothing under station/ is a binary
+        run: |
+          set -uo pipefail
+          bad=0
+          while IFS= read -r f; do
+            [ -s "$f" ] || continue
+            case "$(file -b --mime-encoding "$f")" in
+              binary) echo "$f"; bad=1 ;;
+            esac
+          done < <(git ls-files station)
+          if [ "$bad" != "0" ]; then
+            echo "::error::a non-text file is committed under station/. The payload is planted as source so that an operator can read it before running it."
+            exit 1
+          fi
+          echo "every tracked file under station/ is text"
 
   site:
     name: The site builds
@@ -233,8 +338,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27'
-          check-latest: true
+          go-version: '1.27.1'
       - name: build
         run: go run ./cmd/heliograph-site
       - name: every page has all three renderings

@@ -185,6 +185,46 @@ that is not progress.
 
 | - | **a blocked port is diagnosed as a blocked port** (#66) - the read check ended every failure on *"Check the remote URL and the credential reported above"*, so an estate that drops outbound 22 sent the operator at the two things that were fine, and `443` appeared nowhere in the repository. Both stations now classify the NETWORK before they blame the credential: a timeout, a refusal, a name that will not resolve, an untrusted CA and a proxy 407 are five different estates with five different remedies, and the message names the host's SSH endpoint on 443 where it has one. `/transports` gains the two sections that need no code at all: SSH on 443 for GitHub and GitLab, and an https remote through an inspecting proxy - `http_proxy`, `no_proxy` and `GIT_SSL_CAINFO`, and why `http.sslVerify=false` is not the answer |
 
+| - | **the build is reproducible, and the far-side binary rule is now a policy instead of an exception** - `packaging/reproduce.sh` builds every released artefact and the release workflow calls that same file, so the command a stranger is given and the command that made the artefact are one thing. Two builds of the same source, at different paths, one with no `.git`, produce identical `SHA256SUMS`. `AGENTS.md`'s absolute "never a binary on the far side" is replaced by a per-transport policy with `station/FAR-SIDE-BINARIES` as the enforced list, because `heliograph-seal` had already escaped the letter of the old rule and the CI message still said the far side never gets a binary |
+
+### What reproducible builds found
+
+**The build was not reproducible, and nothing said so.** Measured on
+2026-09-12 before anything was changed: the same commit built in the git
+worktree and in a tarball of that worktree gave
+`475be5207e51b5406a684aabf5335fadd676f5a3473fd7b4481f477442fccebb` and
+`7a1ac6922a41e4596cd835e0802863471d79d44882275dcfc133d5804ab8f8ac`. Go stamps
+`vcs.revision`, `vcs.time` and `vcs.modified` into every binary by default and
+omits them **silently** where there is no repository, so the one person who
+would have found out is somebody verifying a download against the published
+hash - who would reasonably conclude the release was not built from the
+source. `-buildvcs=false` in one place fixes it; `-trimpath` alone never would
+have.
+
+**`go 1.27.1` in go.mod and `go-version: '1.27'` in four workflows is not a
+pin, it is two pins that happen to agree.** With `check-latest: true` the
+runner takes the newest 1.27.x that exists on the morning the job runs, and a
+Go patch release changes the compiler, so the day 1.27.2 ships the released
+binary stops matching anything anybody can rebuild - with every check still
+green. `packaging/toolchain_test.go` now fails the build when go.mod, the
+workflows and the two Dockerfiles disagree.
+
+**A check can enforce half a rule and report PASS while the rule is broken.**
+The station purity gate refused Go source under `station/` and printed "the far
+side never gets a binary dependency". `heliograph-seal` is a Go binary that
+runs on the far side and has done for weeks; it passes because it is built from
+`cmd/` rather than living under `station/`. The gate was green, its message was
+false, and the next contributor to add a far-side binary would have taken that
+message as permission. The list is now the rule, and the message says what is
+actually checked and what is not.
+
+**"Beacon and flare need no binary" is very nearly true and worth not
+rounding off.** The relay is a beacon and its bash station does need
+`heliograph-seal`. The accurate line, and the one the docs carry: git, share,
+bundle and object store need nothing compiled, the PowerShell station needs
+nothing compiled even for the relay, and an estate that permits no binary loses
+two shapes rather than the tool.
+
 ### What the blocked port found
 
 **A fixture can be hostile and still prove nothing.** The check that the host
