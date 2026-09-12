@@ -13,7 +13,7 @@ jobs:
     name: Go builds, vets and tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The site's tests build the real site, and the build refuses a
           # shallow clone (its sitemap dates pages from git history). This
@@ -21,7 +21,7 @@ jobs:
           # had been given full history.
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.27'
           check-latest: true
@@ -84,9 +84,9 @@ jobs:
     name: The CLI drives a real station
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.27'
           check-latest: true
@@ -196,7 +196,7 @@ jobs:
     name: No Go crosses the gap
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Everything under station/ ships to the far side, where "plain bash or
       # plain PowerShell, you can read it before you run it" is the entire
       # proposition.
@@ -225,13 +225,13 @@ jobs:
     name: The site builds
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The sitemap's lastmod is the last commit that touched each page.
           # A shallow clone would date every page today, so the build refuses
           # one; this is the remedy it names.
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.27'
           check-latest: true
@@ -266,11 +266,11 @@ jobs:
     name: House style
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # terraform is not on the runner by default, and the step that needs it
       # failed with "command not found" rather than anything about the config.
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.9.8"
           terraform_wrapper: false

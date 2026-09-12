@@ -236,7 +236,7 @@ jobs:
       # stub relay. Without a toolchain the driver skips the relay - correct on
       # a machine that has no Go, and exactly the wrong thing to let pass here.
       # Pinned to go.mod so the seal under test is built the way it ships.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -865,7 +865,7 @@ jobs:
     name: The manifest runs on a real cluster
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # station/bash/kubernetes/heliograph.yaml shipped for months with no
       # test, and no cluster had ever run it. This is what moves it from
@@ -895,7 +895,7 @@ jobs:
     name: launchd keeps a Mac control node alive
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # A Mac ships bash 3.2 - the last GPLv2 release, from 2007 - and the
       # station's preflight refuses it, correctly: it uses `declare -A` and
