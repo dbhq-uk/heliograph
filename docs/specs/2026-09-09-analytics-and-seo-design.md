@@ -87,6 +87,15 @@ and the raw responses are in `~/dbhq-uk/dbhq-seo/reports/heliograph/`. Its
 target-keyword table names which page owns each query, and that is what the
 titles and descriptions follow.
 
+> **The report moved on 2026-09-12 and that path is dead.** It is
+> `reports/heliograph/2026-09-09-keyword-research.md` in the private
+> `dbhq-uk/dbhq-seo`, beside the raw responses this paragraph already pointed
+> at. It is go-to-market work - volumes, difficulty scores, competitor SERPs and
+> a spend line - and it should not have been in a public repository. The titles
+> and descriptions it produced are unchanged and still live here. Left as
+> written rather than edited, because what this document decided, it decided
+> from a file that was in this repository at the time.
+
 ## Tests, and which ones were watched to fail
 
 All in `cmd/heliograph-site/main_test.go`, each broken deliberately once
