@@ -291,6 +291,106 @@ assert_contains "the -c fallback exists only behind the version check" \
                           | grep -B 20 -- '-c "http\.extraHeader' || true)"
 
 # =============================================================================
+#  A BLOCKED PORT IS NOT A REFUSED CREDENTIAL
+# =============================================================================
+# An estate that blocks outbound 22 is ordinary, and it is exactly the estate
+# this station is for. Both stations used to answer it by naming the credential
+# - the one thing that is fine - and neither said the word 443.
+#
+# ONE CASE END TO END, THE REST DIRECTLY. Reproducing seven estates through a
+# real git would cost more than it proves, but a classifier that nothing calls
+# passes every unit check ever written, so one of them goes through Test-Tp.
+( cd "$GITREPO" && git remote remove origin >/dev/null 2>&1
+  git remote add origin "$WORK/nowhere.git" ) >/dev/null 2>&1
+cat > "$WORK/fakeupload" <<'EOF'
+#!/bin/sh
+printf 'ssh: connect to host github.com port 22: Connection timed out\r\n' >&2
+printf 'fatal: Could not read from remote repository.\n' >&2
+exit 128
+EOF
+chmod +x "$WORK/fakeupload"
+( cd "$GITREPO" && git config remote.origin.uploadpack "$WORK/fakeupload" ) >/dev/null 2>&1
+tp 'if (Import-Tp) { if (Test-Tp) { "reached" } else { "refused" } }' \
+  TRANSPORT=git "REPO_ROOT=$(winpath "$GITREPO")"
+assert_contains "Test-Tp still refuses a station that cannot reach its remote" \
+  "refused" "$TP_OUT"
+assert_contains "and git's own words reach the operator, who never sees its stderr" \
+  "connect to host github.com port 22" "$TP_OUT"
+assert_contains "and the timeout is called the network" \
+  "That is the network and not the credential" "$TP_OUT"
+assert_contains "and the remedy names the endpoint that would work" \
+  "ssh -T -p 443 git@ssh.github.com" "$TP_OUT"
+( cd "$GITREPO" && git config --unset remote.origin.uploadpack ) >/dev/null 2>&1
+
+# The other estates, asked of the classifier directly. `Get-GitNetworkCause` is
+# exported for this.
+cause() {  # cause <git output> -> TP_OUT
+  tp "if (Import-Tp) { Get-GitNetworkCause @'
+$1
+'@ }" TRANSPORT=git "REPO_ROOT=$(winpath "$GITREPO")"
+}
+
+cause 'ssh: connect to host gitlab.com port 22: Connection timed out'
+assert_contains "GitLab gets GitLab's endpoint" "altssh.gitlab.com" "$TP_OUT"
+
+# A host that merely ENDS IN one of those names is somebody else's server, and
+# sending a station to it is a worse answer than the one being fixed.
+for lookalike in ourgitlab.com mygithub.com; do
+  cause "ssh: connect to host $lookalike port 22: Connection timed out"
+  assert_contains "a look-alike host is treated as unknown ($lookalike)" \
+    "Ask whether $lookalike answers SSH on 443" "$TP_OUT"
+  assert_eq "and no endpoint belonging to someone else is invented for it ($lookalike)" "" \
+    "$(printf '%s' "$TP_OUT" | grep -oE 'Hostname (ssh\.github\.com|altssh\.gitlab\.com)')"
+done
+
+cause "fatal: unable to access 'https://git.corp.example/x.git/': Failed to connect to git.corp.example port 443 after 12 ms: Connection refused"
+assert_contains "a refusal names the host and port that refused" \
+  "connection to git.corp.example port 443 was refused" "$TP_OUT"
+
+cause 'ssh: Could not resolve hostname bad.invalid: Name or service not known'
+assert_contains "a DNS failure is called DNS" "That is DNS and not the credential" "$TP_OUT"
+assert_contains "and it names the host, with the resolver this station has" \
+  "Resolve-DnsName bad.invalid" "$TP_OUT"
+
+cause "fatal: unable to access 'https://git.corp.example/x.git/': SSL certificate problem: unable to get local issuer certificate"
+assert_contains "an untrusted CA is called TLS, not the token" \
+  "TLS was refused before any credential was sent" "$TP_OUT"
+assert_contains "and the remedy is the estate's CA bundle" "GIT_SSL_CAINFO" "$TP_OUT"
+assert_contains "with no proxy set, the message says so" \
+  "No proxy variable is set here" "$TP_OUT"
+
+# WHETHER A PROXY IS SET IS PART OF THE DIAGNOSIS, and its password is not.
+TP_OUT=""
+tp "if (Import-Tp) { Get-GitNetworkCause 'SSL certificate problem: unable to get local issuer certificate' }" \
+  TRANSPORT=git "REPO_ROOT=$(winpath "$GITREPO")" \
+  'https_proxy=http://ci:hunter2@proxy.corp:8080'
+assert_contains "with one set, it is named" "A proxy IS set here" "$TP_OUT"
+assert_contains "and its address is reported" "proxy.corp:8080" "$TP_OUT"
+assert_eq "and its password never is" "" "$(printf '%s' "$TP_OUT" | grep -o hunter2)"
+
+# TEETH: a pattern that fires on everything replaces one wrong answer with
+# another. A refused key IS the credential.
+cause 'git@github.com: Permission denied (publickey).'
+assert_eq "a refused key is not miscalled a network failure" "" \
+  "$(printf '%s' "$TP_OUT" | grep -oE 'That is (the network|DNS|routing)')"
+
+# --- and the two stations say the same thing ---------------------------------
+# The operator moving between a Windows and a Unix station in the same estate is
+# reading about the same firewall. Compared as SETS, so a branch added to one
+# side and not the other fails here rather than being found by whoever is
+# standing in front of the machine that did not get it. Comments are stripped:
+# this has to compare what the stations SAY, and both files discuss these
+# strings in prose that is not printed to anybody.
+anchors() {
+  grep -v '^[[:space:]]*#' "$1" \
+    | grep -oE 'ssh\.github\.com|altssh\.gitlab\.com|GIT_SSL_CAINFO|http\.sslCAInfo|That is DNS and not the credential|That is the network and not the credential|That is routing and not the credential|TLS was refused before any credential was sent|The PROXY refused the tunnel|Ask whether' \
+    | sort -u
+}
+assert_eq "both stations name the same causes and the same remedies" \
+  "$(anchors "$(cd "$HERE/../station/bash/transports" && pwd)/git.sh")" \
+  "$(anchors "$PSDIR/transports/git.psm1")"
+
+# =============================================================================
 #  A CANCELLED RUN'S PARTIAL LOG
 # =============================================================================
 # `Send-TpStatus -Body <doc> [-AlsoFile <partial log>]`. The partial log is what

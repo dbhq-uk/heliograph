@@ -274,6 +274,124 @@ assert_eq "and the double full stop is gone" "" \
 # redraws the line over itself.
 assert_eq "no carriage return reaches the table" "" \
   "$(printf '%s' "$OUT" | tr -dc '\r')"
+# A NAME THAT DOES NOT RESOLVE IS NOT A CREDENTIAL PROBLEM, and this check used
+# to end on "Check the remote URL and the credential reported above" - half of
+# which is the wrong half.
+assert_contains "a DNS failure is called DNS" "That is DNS and not the credential" "$OUT"
+assert_contains "and it names the host it could not resolve" \
+  "getent hosts nonexistent.invalid" "$OUT"
+assert_eq "and it stops sending the operator at the credential" "" \
+  "$(printf '%s' "$OUT" | grep -o 'the credential reported above')"
+
+# --- a blocked port is diagnosed as a blocked port ---------------------------
+# An estate that blocks outbound 22 is ordinary, and it is exactly the estate
+# this tool is for. The operator saw the right URL and the right credential
+# named as the two things to check, and 443 was nowhere in the repository.
+#
+# `remote.origin.uploadpack` is the read-side twin of the `receivepack`
+# override used above: git runs it and the failure arrives through the real
+# transport, so these are the station's own words about git's own text rather
+# than a message injected into the middle of the check.
+fake_read() {  # fake_read <name> <stderr-line>... - ls-remote fails with these
+  local name="$1"; shift
+  make_repo "$TMP/$name"
+  {
+    printf '#!/bin/sh\n'
+    printf "cat >&2 <<'FAKEEOF'\n"
+    printf '%s\n' "$@"
+    printf 'FAKEEOF\nexit 128\n'
+  } > "$TMP/$name.upload"
+  chmod +x "$TMP/$name.upload"
+  ( cd "$TMP/$name" && git config remote.origin.uploadpack "$TMP/$name.upload" ) >/dev/null 2>&1
+  run_start "$TMP/$name" --check
+}
+
+fake_read blocked22 \
+  "$(printf 'ssh: connect to host github.com port 22: Connection timed out\r')" \
+  'fatal: Could not read from remote repository.'
+assert_eq "a blocked port still blocks the start" "1" "$RC"
+assert_contains "git's own line still survives into the table" \
+  "connect to host github.com port 22: Connection timed out" "$OUT"
+assert_contains "the timeout is called the network" \
+  "That is the network and not the credential" "$OUT"
+assert_contains "and the remedy names the endpoint that would work" \
+  "ssh.github.com" "$OUT"
+assert_contains "with the ssh config that reaches it" "Port 443" "$OUT"
+assert_contains "and a command to prove it by hand" \
+  "ssh -T -p 443 git@ssh.github.com" "$OUT"
+assert_eq "the credential is no longer blamed for a blocked port" "" \
+  "$(printf '%s' "$OUT" | grep -o 'the credential reported above')"
+
+fake_read blocked22gl \
+  'ssh: connect to host gitlab.com port 22: Connection timed out'
+assert_contains "GitLab gets GitLab's endpoint" "altssh.gitlab.com" "$OUT"
+
+# A host nobody here knows gets a question, not an answer.
+fake_read blocked22self \
+  'ssh: connect to host gitlab.corp.example port 22: Connection timed out'
+assert_contains "an unknown host is asked about rather than assumed" \
+  "Ask whether gitlab.corp.example answers SSH on 443" "$OUT"
+
+# AND THE MATCH IS EXACT, not a substring. This fixture is chosen to be the one
+# a `*gitlab.com` glob gets wrong: it ends in gitlab.com and is not GitLab. The
+# first version of this check used gitlab.corp.example, which no glob of that
+# shape matches either - so it passed with the bug in place and proved nothing.
+# Sending this operator to altssh.gitlab.com would point their station at
+# somebody else's server, which is a worse answer than the one being fixed.
+#
+# ONE FIXTURE PER PATTERN, because a single one proves only the pattern it
+# happens to hit: with the GitLab match loosened and only a GitLab look-alike
+# here, the GitHub half could go the same way unwatched.
+for lookalike in ourgitlab.com mygithub.com; do
+  fake_read "blocked22-$lookalike" \
+    "ssh: connect to host $lookalike port 22: Connection timed out"
+  assert_contains "a look-alike host is treated as unknown ($lookalike)" \
+    "Ask whether $lookalike answers SSH on 443" "$OUT"
+  assert_eq "and no endpoint belonging to someone else is invented for it ($lookalike)" "" \
+    "$(printf '%s' "$OUT" | grep -oE 'Hostname (ssh\.github\.com|altssh\.gitlab\.com)')"
+done
+
+# --- refused, and inspected: the two other shapes an estate produces ---------
+fake_read refused \
+  "fatal: unable to access 'https://git.corp.example/x.git/': Failed to connect to git.corp.example port 443 after 12 ms: Connection refused"
+assert_contains "a refusal names the host and port that refused" \
+  "connection to git.corp.example port 443 was refused" "$OUT"
+assert_eq "and does not blame the credential either" "" \
+  "$(printf '%s' "$OUT" | grep -o 'the credential reported above')"
+
+# A corporate proxy with its own CA is the ordinary way an https remote fails in
+# these estates, and it reads exactly like a bad token.
+fake_read tlsmitm \
+  "fatal: unable to access 'https://git.corp.example/x.git/': SSL certificate problem: unable to get local issuer certificate"
+assert_contains "an untrusted CA is called TLS, not the token" \
+  "TLS was refused before any credential was sent" "$OUT"
+assert_contains "and the remedy is the estate's CA bundle" "GIT_SSL_CAINFO" "$OUT"
+assert_contains "and it says not to turn verification off" \
+  "do not turn verification off" "$OUT"
+
+# WHETHER A PROXY IS SET IS PART OF THE DIAGNOSIS. "Check the proxy variables"
+# is not a remedy for someone who cannot see them from where they are standing,
+# and the answer differs depending on which way it goes.
+assert_contains "with no proxy set, the table says so" \
+  "No proxy variable is set here" "$OUT"
+RC=0
+OUT="$( cd "$TMP/tlsmitm" \
+        && https_proxy='http://ci:hunter2@proxy.corp:8080' ./start.sh --check 2>&1 )" || RC=$?
+assert_contains "with one set, it is named" "A proxy IS set here" "$OUT"
+assert_contains "and its address is reported" "proxy.corp:8080" "$OUT"
+assert_eq "and its password never is" "" "$(printf '%s' "$OUT" | grep -o hunter2)"
+
+# --- TEETH: the classifier must not swallow a real credential failure --------
+# A pattern that fires on everything would replace one wrong answer with
+# another. A refused key is the credential, and the message has to keep saying
+# so.
+fake_read publickey \
+  'git@github.com: Permission denied (publickey).' \
+  'fatal: Could not read from remote repository.'
+assert_contains "a refused key is still sent at the credential" \
+  "the credential reported above" "$OUT"
+assert_eq "and is not miscalled a network failure" "" \
+  "$(printf '%s' "$OUT" | grep -o 'That is the network')"
 
 # --- an unreachable https remote exercises the token branch ------------------
 make_repo "$TMP/https"
