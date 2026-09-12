@@ -138,6 +138,8 @@ A Go server. Both sides dial out over HTTPS. This is the only transport that req
 
 **Long-poll, not WebSocket.** Paseo uses WebSocket because its daemon runs where the user controls the network. A heliograph station runs behind a corporate proxy that may strip the upgrade header, and a transport that fails on those estates fails on exactly the estates this is for.
 
+> **The rationale was over-general, narrowed 2026-09-12.** A plain CONNECT-tunnelling proxy cannot strip an `Upgrade` header inside `wss`, because it never sees it. The proxy that can is a **TLS-intercepting** one, which terminates TLS and reads the handshake, and against which there is no client-side fix. The conclusion is unchanged and the reason is now narrower and stronger: the estates this exists for - change-controlled, bastion-only, nobody gets a route in - are the ones most likely to run a corporate root CA and a DPI box, so `wss` would work in most networks and fail silently in the ones that matter most. A long poll needs no intermediary to understand it. Left as written, with the correction here, because the decision this document took was the right one. Reference: heliograph-io/heliograph-cloud#36.
+
 ### Token scopes
 
 Two, because the station token sits on a machine you do not trust and cannot reach.

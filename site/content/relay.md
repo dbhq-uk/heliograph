@@ -218,8 +218,20 @@ anything with.
 
 ## Long-poll, not WebSocket
 
-A station runs behind a corporate proxy that may strip the upgrade header, and a
-transport that fails on those estates fails on exactly the estates this is for.
+"Proxies strip the upgrade header" is the usual reason given and it is
+over-general, so here is the narrower one. A proxy that only tunnels CONNECT
+never sees a `wss` handshake, because it is inside the TLS, and cannot strip
+what it cannot read. A proxy that **intercepts TLS** terminates the connection,
+reads the handshake, and can strip the upgrade - and there is no client-side
+fix for that. Only whoever runs the network can permit it.
+
+The estates this exists for are the ones most likely to run one. A corporate
+root CA and a deep-inspection appliance are ordinary where every change goes
+through a board and nobody gets a route in, so `wss` would work in most networks
+and fail in the ones that matter most, silently. A long poll is an ordinary HTTP
+request that happens to take a while: no intermediary needs to understand it,
+and there is no upgrade to strip.
+
 The long poll holds for 25 seconds server-side, so a client must wait longer
 than that or it times out its own successful poll.
 
