@@ -262,6 +262,7 @@ publish_status() {
     printf 'lane:     %s\n' "$LANE"
     printf 'host:     %s\n' "$(host_name)"
     printf 'utc:      %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'actions:  %s\n' "$ACTIONS"
     [ -n "$extra" ] && printf '%s\n' "$extra"
   } > "$tmp"
   drop_put "${PREFIX}status/${LANE}.txt" "$tmp" || true
@@ -343,6 +344,13 @@ trap 'cleanup_and_exit 130 INT' INT
 ACTION_ENV="${ACTION_ENV:-APPLY=1 CONFIRM=yes DESTROY=1 FORCE=1 WRITE=1}"
 ALLOW_ACTIONS="${PIGEONHOLE_ALLOW_ACTIONS:-0}"
 [ "${PIGEONHOLE_NO_ACTIONS:-0}" = "1" ] && ALLOW_ACTIONS=0
+# PUBLISHED, NOT INFERRED. This runner has said "actions : allowed" in its own
+# log since it existed, on a machine nobody reading the status can see. The far
+# side had to infer the same fact from whether an action had ever run here, and
+# that is wrong in both directions: this runner restarted without the variable
+# still has action logs in the drop, and one started with it may never have been
+# asked. Settled once here, published on every transition below.
+if [ "$ALLOW_ACTIONS" = "1" ]; then ACTIONS=allowed; else ACTIONS=refused; fi
 is_action_step() {
   local a
   [ "$("$HERE/run.sh" --mode "$1" 2>/dev/null | head -1)" = "action" ] && return 0
@@ -363,7 +371,7 @@ say "pigeonhole starting"
 say "  account : ${ACCOUNT}"
 say "  lane    : ${LANE}   (${PREFIX}requests/${LANE}.txt)"
 say "  poll    : ${POLL}s"
-say "  actions : $([ "$ALLOW_ACTIONS" = "1" ] && echo allowed || echo 'refused (the default)')"
+say "  actions : ${ACTIONS}$([ "$ALLOW_ACTIONS" = "1" ] || echo ' (the default)')"
 
 LAST_ID=""
 FIRST_POLL=1

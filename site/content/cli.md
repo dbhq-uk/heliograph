@@ -127,6 +127,31 @@ the CLI has already eaten your quotes, and the station splits that line the way
 a shell would, so an unquoted value would set the first word and try to *run*
 the rest.
 
+## status
+
+What the station is doing, from the document it publishes on every transition.
+
+One line on that page is not about the run. `actions:` says what the station
+will permit for the whole life of its process, which is settled by
+`--allow-actions` when the operator starts it:
+
+```
+actions:  allowed - this station runs a step declaring 'action', with CONFIRM=yes on the request
+actions:  refused - this station is read-only. The operator restarts it with --allow-actions
+actions:  not reported - this station is older than the field. That is not the same as read-only
+```
+
+Three answers, not two, and the third is the one worth reading carefully. A
+station planted before this field publishes nothing for it, and there is no way
+to ask from this side. Rendering that silence as read-only would say an estate
+is safe on the strength of a station that never said so, and the answer is
+never inferred from whether an action has run there before: a station restarted
+without the flag still has its old action logs, and one started with the flag
+may never have been asked. See [the station page](/station#the-action-mode-it-publishes).
+
+A mode this build does not recognise is shown verbatim and claimed for neither
+side, for the same reason an unknown state is not treated as finished.
+
 ## mcp
 
 Serves every command above as typed tools to any MCP-capable agent, over stdio.
