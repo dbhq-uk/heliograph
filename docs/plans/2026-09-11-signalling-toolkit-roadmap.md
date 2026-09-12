@@ -127,8 +127,9 @@ work rather than transcription.
   how does the station keep the last word once the line is live.
 - **NAT traversal without becoming a hole-punch product (S6).** A direct beam
   is exactly the thing the docs called a firewall hole-punch. S6 has to state
-  the trade in full, gate it hard, and keep TURN (a relayed fallback) as the
-  path when direct fails, so the estate that forbids the direct beam still has
+  the trade in full, gate it hard, and fall back to the relayed beam when
+  direct fails - not to TURN, which would be a second relay doing the job S4's
+  broker already does - so the estate that forbids the direct beam still has
   the relayed one.
 
 ## The rename is not just words

@@ -177,12 +177,14 @@ umbrella issue #85 and coordinated by
 
 | id | issue | spec | state |
 |---|---|---|---|
-| S1 | #86 | [three shapes and the signalling names](docs/specs/2026-09-11-three-shapes-and-signalling-names-design.md) | draft, ready to build |
-| S2 | #87 | [discrete transports completed](docs/specs/2026-09-11-discrete-transports-completed-design.md) (relay CLI selection, flare transport) | draft, ready to build |
-| S3 | #89 | [`heliograph shell`](docs/specs/2026-09-11-heliograph-shell-design.md) (REPL over flare, SSH front door) | draft, ready to build |
-| S4 | #90 | [the beam: the live `Channel` and the relayed beam](docs/specs/2026-09-11-beam-live-channel-design.md) | draft, ready to build |
-| S5 | #91 | [SSH and interactive over the beam](docs/specs/2026-09-11-ssh-and-interactive-over-the-beam-design.md) (PTY, `ssh` passthrough, gated TCP forward) | draft, ready to build |
-| S6 | #92 | [the direct beam](docs/specs/2026-09-11-direct-beam-p2p-design.md) (P2P: ICE, STUN, WebRTC data channel; relayed-beam fallback, no TURN) | draft, ready to build |
+| S1a | #86 | [three shapes and the signalling names](docs/specs/2026-09-11-three-shapes-and-signalling-names-design.md) - the docs half | **done in PR #94** |
+| S1b | #102 | the script and env-var rename (`pigeonhole.sh`/`intercom.sh`/`intercom.py` and `PIGEONHOLE_*`/`INTERCOM_*`), with aliases | to build |
+| S2 | #87 | [discrete transports completed](docs/specs/2026-09-11-discrete-transports-completed-design.md) (relay CLI selection, flare transport) | spec ready |
+| S3 | #89 | [`heliograph shell`](docs/specs/2026-09-11-heliograph-shell-design.md) (REPL over flare, SSH front door) | spec ready |
+| S4 | #90 | [the beam: the live `Channel` and the relayed beam](docs/specs/2026-09-11-beam-live-channel-design.md) | drafted, open questions |
+| S5 | #91 | [SSH and interactive over the beam](docs/specs/2026-09-11-ssh-and-interactive-over-the-beam-design.md) (PTY, `ssh` passthrough, gated TCP forward) | drafted, open questions |
+| S6 | #92 | [the direct beam](docs/specs/2026-09-11-direct-beam-p2p-design.md) (P2P: ICE, STUN, WebRTC data channel; relayed-beam fallback, no TURN) | drafted, open questions |
+| - | #103 | guard the claim, not just the word - a test needle for "does not tunnel" with an allowlist of pages that qualify it | follow-up |
 | - | #93 | reproducible builds for the beam binary, and seams a cloud layer can extend | decided; folded into S4 and S5 |
 
 **This reverses a stated anti-goal**: the beam is the reverse connection the
