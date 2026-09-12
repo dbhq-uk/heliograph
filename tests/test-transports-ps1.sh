@@ -290,4 +290,32 @@ assert_contains "the -c fallback exists only behind the version check" \
   "Test-GitEnvConfig" "$(grep -v '^[[:space:]]*#' "$PSDIR/transports/git.psm1" \
                           | grep -B 20 -- '-c "http\.extraHeader' || true)"
 
+# =============================================================================
+#  A CANCELLED RUN'S PARTIAL LOG
+# =============================================================================
+# `Send-TpStatus -Body <doc> [-AlsoFile <partial log>]`. The partial log is what
+# a CANCELLED run captured before it was killed: somebody stopped a step, and
+# that output is the evidence they stopped it for. It is the last thing the far
+# side will ever see of that run.
+#
+# All three PowerShell transports honour it today. The BASH blob and relay did
+# not, and had not since either was written - neither even named the parameter,
+# so nothing a reader saw said it was being ignored. It was a recorded defect
+# rather than a caught one.
+#
+# So the shape is pinned on this side before it can drift the same way. A
+# behaviour check per transport would only cover the ones somebody remembered.
+for tp in "$PSDIR"/transports/*.psm1; do
+  name="$(basename "$tp" .psm1)"
+  body="$(sed -n '/^function Send-TpStatus/,/^}/p' "$tp")"
+  assert_eq "$name: Send-TpStatus takes the cancelled run's partial log" "yes" \
+    "$(printf '%s' "$body" | grep -q '\$AlsoFile' && echo yes || echo no)"
+  # DECLARED IS NOT USED. A parameter that is accepted and never read is
+  # exactly the bash defect, and it satisfies every check that only greps the
+  # signature - so the body has to do something with it beyond the param block.
+  assert_eq "$name:   and does something with it, rather than only declaring it" "yes" \
+    "$(printf '%s' "$body" | grep -v '\[string\] \$AlsoFile' | grep -c '\$AlsoFile' \
+       | awk '{ print ($1 >= 2 ? "yes" : "no") }')"
+done
+
 t_summary

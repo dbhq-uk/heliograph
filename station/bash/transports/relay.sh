@@ -425,12 +425,31 @@ _relay_put() {
 }
 
 tp_put_status() {
-  local body="$1" tmp rc
+  local body="$1" _msg="$2" alsofile="${3:-}" tmp rc
   tmp="$(mktemp)" || return 1
   printf '%s' "$body" > "$tmp"
   _relay_put status "$tmp"; rc=$?
   rm -f "$tmp"
-  return "$rc"
+  [ "$rc" = "0" ] || return "$rc"
+
+  # THE THIRD ARGUMENT IS A CANCELLED RUN'S PARTIAL LOG, and this transport
+  # dropped it on the floor for as long as it has existed. It was not even
+  # named in the signature, so nothing read here said it was being ignored.
+  #
+  # git commits it alongside the status so the cancellation is not stranded
+  # behind a dirty tree. Here it is simply the last thing the far side will
+  # ever see of that run - somebody cancelled a step and the partial output is
+  # the evidence they cancelled it FOR - and losing it loses the only record
+  # there is.
+  #
+  # Sent as `log` rather than `progress`: the run is over. The kind is a signed
+  # field inside the envelope, so the control side can tell a completed log
+  # from a mid-run snapshot without trusting the relay to label it, and a
+  # reader has to be able to know this is the last one.
+  if [ -n "$alsofile" ] && [ -f "$alsofile" ]; then
+    _relay_put log "$alsofile" || return 1
+  fi
+  return 0
 }
 
 tp_put_progress() {

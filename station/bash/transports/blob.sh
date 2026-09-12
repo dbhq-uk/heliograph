@@ -184,13 +184,26 @@ tp_fetch_request_live() { return 1; }
 tp_fetch_self() { return 1; }
 
 tp_put_status() {
-  local body="$1" tmp
+  local body="$1" _msg="$2" alsofile="${3:-}" tmp rc
   tmp="$(mktemp)" || return 1
   printf '%s' "$body" > "$tmp"
   _blob_put "$(_lane status)" "$tmp"
-  local rc=$?
+  rc=$?
   rm -f "$tmp"
-  return "$rc"
+  [ "$rc" = "0" ] || return "$rc"
+
+  # THE THIRD ARGUMENT IS A CANCELLED RUN'S PARTIAL LOG, and this transport
+  # dropped it on the floor for as long as it has existed. It was not even
+  # named in the signature, so nothing read here said it was being ignored.
+  #
+  # Under the SAME name and lane a finished log goes to, so a reader listing
+  # logs finds it where they find every other one. A cancelled run's output is
+  # the evidence somebody cancelled it for, and it is the last thing the far
+  # side will ever see of that run.
+  if [ -n "$alsofile" ] && [ -f "$alsofile" ]; then
+    _blob_put "$(_lane "logs/$(basename -- "$alsofile")")" "$alsofile" || return 1
+  fi
+  return 0
 }
 
 tp_put_progress() {
