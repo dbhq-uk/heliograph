@@ -184,6 +184,31 @@ that is not progress.
 | - | **the bundle's station side** (#68) - `transports/bundle.sh`, so the one transport that makes *air-gapped* literally true now has a far side. A station started with `TRANSPORT=bundle BUNDLE_DIR=<mount>` reads the request the CLI wrote, runs it, and writes the status and the log back onto the medium for somebody to carry home. It declares `request status progress` and **not** `live` or `self`: a stick does not change while you watch it, and nothing publishes a payload to one. Conformance runs over it, and `/air-gapped`, `/transports`, `/station` and `/matrix` are corrected - all four said a station could not read a bundle |
 
 | - | **a blocked port is diagnosed as a blocked port** (#66) - the read check ended every failure on *"Check the remote URL and the credential reported above"*, so an estate that drops outbound 22 sent the operator at the two things that were fine, and `443` appeared nowhere in the repository. Both stations now classify the NETWORK before they blame the credential: a timeout, a refusal, a name that will not resolve, an untrusted CA and a proxy 407 are five different estates with five different remedies, and the message names the host's SSH endpoint on 443 where it has one. `/transports` gains the two sections that need no code at all: SSH on 443 for GitHub and GitLab, and an https remote through an inspecting proxy - `http_proxy`, `no_proxy` and `GIT_SSL_CAINFO`, and why `http.sslVerify=false` is not the answer |
+| - | **a station publishes whether it will run an action** (`heliograph-io/heliograph-cloud#27`) - **held for review, not merged**, because it adds a field to a wire format self-hosters read. `wire.Status` gains `actions:`, `allowed` or `refused`, written by all five status writers across the three shipped loops. Before it, `read-only` versus `action` was `--allow-actions` and nothing else: a flag read once at startup, on no request and in no document, so anything wanting the answer had to infer it from log history - which is wrong in both directions. **Three answers, not two.** A station that publishes nothing is not read-only, it is a station planted before the field, and `heliograph status` says `not reported` rather than choosing a side. See below for what it found |
+
+### What the action mode found
+
+**The field is easy; the third answer is the whole job.** `ActionsRefused`
+written the obvious way, as `!ActionsAllowed()`, passes a test over both
+published values and reports every station in the field today - all of them, on
+every estate - as read-only. That is not a cosmetic default. It is the column
+somebody reads to decide whether an estate is safe to point at, and the answer
+would be manufactured by this side rather than reported by the station. So
+there are two predicates and neither fires on silence, `ActionsReported` says
+which silence it is, and the CLI prints four different sentences with no shared
+default arm. It is the same argument `Undelivered` makes at
+`internal/wire/status.go:102-117`, and it had to be made again from scratch.
+
+**Rewording an MCP tool description costs a human.** Adding the field to
+`heliograph_status`'s description failed `TestGlamaSnapshotMatchesTheTools`:
+Glama scores the tool definitions and publishes that score against a release
+version, and there is no API to make a release. So the description was reverted
+and the field explains itself in the returned text, which is where a model
+reads it. Worth knowing before planning any change to a tool's wording.
+
+**`station.sh` has published no progress snapshot since steps were sent by
+path.** Found while adding the field to the progress writer, and recorded as a
+defect below rather than fixed here.
 
 ### What the blocked port found
 
@@ -467,6 +492,25 @@ holds the evidence, measurements and sources. Both are published as
 
 Stated on the site rather than hidden, so nobody plans around a promise.
 
+- **`station.sh` has published no progress snapshot since steps were sent by
+  path.** `station/bash/station.sh:717` globs `ops-logs/"${STEP}"-*.txt`, and
+  `STEP` is a path - it has to be, because a bare name is refused by the mode
+  gate. So the glob is `ops-logs/steps/slow.sh-*.txt`, it matches nothing, the
+  log is at `ops-logs/slow-<UTC>.txt` under the label `run.sh` gave it, and
+  `publish_progress` returns on its first line. Nothing errors and nothing is
+  logged: a five-second step with `PROGRESS_EVERY=1` produced exactly two
+  status commits, `running` and `idle`, measured on 2026-09-12. **The same bug
+  was already found and fixed at the other call site** - the diagnosis is in
+  full at `station/bash/station.sh:786-815`, which derives `_step_label` as the
+  basename without its extension - and line 717 was missed because delivery had
+  a visible symptom (`log: <none>`) and this has none. The twin does not have
+  it: `station.ps1` asks `Find-StepLog`, whose comment is "THE LABEL, NOT THE
+  STEP NAME", so PowerShell publishes progress and bash does not, which is the
+  one thing the twins may not do. Three lines, and they already exist twenty
+  lines below. NOT fixed here because it was found while adding `actions:` to
+  the same function, and that PR is held for review as a wire-format change -
+  bundling a station defect into it would leave the fix unmerged.
+  `heliograph-io/heliograph-cloud#88`
 - **A cancelled run's partial log does not ship on blob or relay.** The station
   passes it as `tp_put_status`'s third argument, which only git and the share
   honour

@@ -624,6 +624,22 @@ function Split-EnvLine {
 # RESERVED_ENV_PATTERN - read by tests/test-station-gate.sh. Keep on one line.
 $ReservedEnvPattern = '^(TRANSPORT|PUSH|REDACT|LOG_DIR|ALLOW_ROOT|ALLOW_ACTIONS|CAP_.*|RELAY_.*|SHARE_.*|PIGEONHOLE_.*|OBJSTORE_.*|BLOB_.*|BUNDLE_.*)$'
 
+# --- the action mode, published rather than inferred --------------------------
+# Whether this station will run a state-changing step is decided by
+# --allow-actions at startup and holds for the whole process. It is on no
+# request and it was in no published document, so the far side's only way to
+# answer "can this station make changes" was to infer it from the logs already
+# delivered - and that is wrong in both directions. A station restarted without
+# the flag still has action logs behind it, and one started with the flag may
+# never have been asked. Getting that answer wrong is not cosmetic: it is the
+# field somebody reads to decide whether an estate is safe to point at.
+#
+# A FUNCTION RATHER THAN A SCRIPT VARIABLE, because $AllowActions is set from
+# the environment before the argument loop and again inside it, and a value
+# captured at the wrong moment would report the environment's answer while the
+# gate at GATE 3 enforced the flag's. Read at publish time, there is one answer.
+function Get-ActionMode { if ($AllowActions) { 'allowed' } else { 'refused' } }
+
 # --- status, published so the far side can see what is happening --------------
 function Publish-Status {
     param(
@@ -643,6 +659,7 @@ function Publish-Status {
         # predates the vocabulary change. station.sh publishes the same key.
         "branch:   $Scope"
         "utc:      $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+        "actions:  $(Get-ActionMode)"
         "payload:  $Payload"
     )
     if ($Extra) { $lines += $Extra }
@@ -690,6 +707,10 @@ function Publish-Progress {
         "host:     $(Get-CapHostname)"
         "branch:   $Scope"
         "utc:      $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+        # Published here too, not only on transitions. A station mid-run is
+        # exactly when a fleet view is being looked at, and a column that
+        # empties for the duration of a long step is a column nobody trusts.
+        "actions:  $(Get-ActionMode)"
         "started:  $Started"
         "progress: $count lines"
         "log:      $LogPath"

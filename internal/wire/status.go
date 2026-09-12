@@ -27,6 +27,7 @@ type Status struct {
 	Progress string // "412 lines", while a step runs
 	Last     string // the last real line of the log. Usually the probe in flight
 	Reason   string // why, when the state is refused
+	Actions  string // allowed | refused; empty when the station does not publish it
 }
 
 // ParseStatus reads a status document.
@@ -72,6 +73,8 @@ func ParseStatus(b []byte) (Status, error) {
 			s.Last = v
 		case "reason":
 			s.Reason = v
+		case "actions":
+			s.Actions = v
 		}
 	}
 	return s, sc.Err()
@@ -118,6 +121,45 @@ func (s Status) Refused() bool { return s.State == "refused" }
 
 // Running is true while a step is in flight.
 func (s Status) Running() bool { return s.State == "running" }
+
+// --- the action mode ---------------------------------------------------------
+//
+// `actions:` is the one field here that is not about the run. Whether a station
+// will run a step that changes state is fixed when the process starts, by
+// `--allow-actions`, and it holds for the station's whole lifetime. Nothing on
+// the request carries it, so before this field the only way to answer "can this
+// station make changes" was to infer it from history, and history is wrong in
+// both directions: a station restarted without the flag still has action logs,
+// and one started with it may never have been asked.
+//
+// THREE ANSWERS, NOT TWO, and the third is the point. A boolean has to put
+// silence somewhere, and both places are a lie told to somebody deciding
+// whether an estate is safe to point at. Every station in the field today
+// publishes nothing, and there is no version to ask.
+//
+// So ActionsAllowed and ActionsRefused are BOTH false for a station that said
+// nothing, and both false for a value this build does not recognise.
+// ActionsReported says which of those two silences it is. Callers render the
+// raw Actions string when they want to show an unrecognised value verbatim.
+
+// ActionsAllowed is true only when the station said so in as many words.
+func (s Status) ActionsAllowed() bool { return s.Actions == "allowed" }
+
+// ActionsRefused is true only when the station said so in as many words.
+//
+// NOT `!ActionsAllowed()`. Written that way it reported every station that has
+// never heard of the field as read-only, which is the exact misrepresentation
+// the field was added to prevent.
+func (s Status) ActionsRefused() bool { return s.Actions == "refused" }
+
+// ActionsReported says whether the station answered the question at all, in a
+// value this build understands.
+//
+// A newer station may publish a mode this build has not heard of, just as it
+// may publish an unknown state. There is no safe guess: "allowed" overstates
+// it and "refused" understates it. Saying "not answered" sends the reader to
+// the station, which is where the answer is.
+func (s Status) ActionsReported() bool { return s.ActionsAllowed() || s.ActionsRefused() }
 
 // Alive is true when the station has published something that means "I am
 // here", whether or not a step is in flight.

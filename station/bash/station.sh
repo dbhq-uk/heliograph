@@ -343,6 +343,22 @@ fi
 # say so before the operator walks away rather than a day later in a status file.
 cap_refuse_root || { rm -f "$LOCK"; exit 5; }
 
+# --- the action mode, published rather than inferred -------------------------
+# Whether this station will run a state-changing step is decided by
+# --allow-actions at startup and holds for the whole process. It is on no
+# request and it was in no published document, so the far side's only way to
+# answer "can this station make changes" was to infer it from the logs already
+# in the repo - and that is wrong in both directions. A station restarted
+# without the flag still has action logs sitting there, and a station started
+# with it may never have been asked for one. Getting that answer wrong is not
+# cosmetic: it is the field somebody reads to decide whether an estate is safe
+# to point at.
+#
+# ARG PARSING IS OVER BY HERE, so this is settled once rather than re-derived at
+# every transition. --allow-actions and --no-actions are both handled above and
+# nothing changes it afterwards.
+if [ "$ALLOW_ACTIONS" = "1" ]; then ACTIONS=allowed; else ACTIONS=refused; fi
+
 # --- status, pushed so the far side can see what is happening ----------------
 # Two extra commits per run. Worth it: without the "running" one, a long step is
 # indistinguishable from a station that never woke up.
@@ -362,6 +378,7 @@ publish_status() {
     echo "host:     $(hostname -f 2>/dev/null || hostname)"
     echo "branch:   $BRANCH"
     echo "utc:      $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "actions:  $ACTIONS"
     [ -n "$PAYLOAD" ] && echo "payload:  $PAYLOAD"
     [ -n "$extra" ] && echo "$extra"
   } > "$STATUS"
@@ -399,6 +416,10 @@ publish_progress() {
     echo "host:     $(hostname -f 2>/dev/null || hostname)"
     echo "branch:   $BRANCH"
     echo "utc:      $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    # Published here too, not only on transitions. A station mid-run is exactly
+    # when a fleet view is being looked at, and a column that empties for the
+    # duration of a long step is a column nobody trusts.
+    echo "actions:  $ACTIONS"
     echo "started:  $started"
     echo "progress: ${lines} lines"
     echo "log:      $logfile"
