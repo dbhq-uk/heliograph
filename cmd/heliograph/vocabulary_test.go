@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,48 +28,67 @@ func TestTheOldPositioningIsGone(t *testing.T) {
 	needle := "regul" + "at"
 
 	root := repoRootForVocabulary(t)
+
+	// The set of files to check comes from `git ls-files` rather than
+	// filepath.Walk over the working tree. A hand-maintained SkipDir list
+	// (".git", "node_modules", and whatever else happened to be untracked
+	// in whoever's working tree wrote the list) is the same exemption
+	// discipline this test exists to enforce, just moved to the directory
+	// level and reactive: it grows one entry at a time, every time someone's
+	// local checkout has a gitignored directory the list doesn't yet name -
+	// .superpowers today, .serena or a future site/dist-alike tomorrow.
+	// `git ls-files` sidesteps the whole category: anything gitignored was
+	// never tracked, so it is absent from the list with no entry required,
+	// and anything force-added with `git add -f` stays visible because it
+	// genuinely is part of the repository now. The three-file exemption map
+	// above is the only carve-out this guard grants, and it stays a map of
+	// files, not a list of directories.
+	tracked, err := trackedFilesForVocabulary(root)
+	if err != nil {
+		// A guard that passes because it could not look is worse than no
+		// guard at all, so a failed git invocation fails the test loudly
+		// rather than silently reporting zero hits.
+		t.Fatalf("listing tracked files with git: %v", err)
+	}
+
 	var found []string
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	for _, rel := range tracked {
+		if vocabularyExempt[rel] {
+			continue
 		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-		if info.IsDir() {
-			// .git and node_modules are never the repository's own content.
-			// .superpowers and site/dist are gitignored too - local agent
-			// scratch space and generated site output - so a checkout that
-			// has run either still passes: this guard polices what the
-			// project ships, not a working tree's local byproducts.
-			switch {
-			case info.Name() == ".git", info.Name() == "node_modules", info.Name() == ".superpowers":
-				return filepath.SkipDir
-			case filepath.ToSlash(rel) == "site/dist":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if vocabularyExempt[filepath.ToSlash(rel)] {
-			return nil
-		}
-		body, readErr := os.ReadFile(path)
+		body, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if readErr != nil {
-			return nil // unreadable or binary, not our business
+			continue // unreadable or binary, not our business
 		}
 		if strings.Contains(strings.ToLower(string(body)), needle) {
-			found = append(found, filepath.ToSlash(rel))
+			found = append(found, rel)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walking the repository: %v", err)
 	}
 	if len(found) > 0 {
 		t.Errorf("the old positioning survives in %d file(s):\n  %s",
 			len(found), strings.Join(found, "\n  "))
 	}
+}
+
+// trackedFilesForVocabulary returns every file git tracks in root, as
+// slash-separated paths relative to root. `git ls-files -z` is used over the
+// newline-separated form because a tracked path can itself contain a
+// newline; NUL cannot appear in a path on any platform git supports.
+func trackedFilesForVocabulary(root string) ([]string, error) {
+	cmd := exec.Command("git", "ls-files", "-z")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, entry := range strings.Split(string(out), "\x00") {
+		if entry == "" {
+			continue
+		}
+		files = append(files, filepath.ToSlash(entry))
+	}
+	return files, nil
 }
 
 // repoRootForVocabulary walks up until it finds go.mod, so the test does not
