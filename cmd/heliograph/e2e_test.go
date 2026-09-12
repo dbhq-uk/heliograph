@@ -41,6 +41,27 @@ func stationDir(t *testing.T) string {
 	return dir
 }
 
+// NO BACKGROUND GIT, and this is a flake fix rather than a tidiness one.
+//
+// `git commit` and `git push` run `git gc --auto`, which DETACHES. It is still
+// writing into .git when the test returns, and t.TempDir's cleanup then fails:
+//
+//	TempDir RemoveAll cleanup: unlinkat .../work/.git: directory not empty
+//
+// That fails the test AFTER every assertion in it has passed, which is the
+// worst shape a flake can have - the failure names a directory rather than
+// anything the test was checking. Seen on CI in TestGapsFindsARealStall; it can
+// hit any test in this package, because they all commit into a temporary repo.
+//
+// Set in the ENVIRONMENT rather than as repo config, so it reaches the repos
+// bootstrap.sh and station.sh create for themselves - which are the ones doing
+// the pushing - and every git the CLI runs as a child.
+var noBackgroundGit = []string{
+	"GIT_CONFIG_COUNT=2",
+	"GIT_CONFIG_KEY_0=gc.auto", "GIT_CONFIG_VALUE_0=0",
+	"GIT_CONFIG_KEY_1=maintenance.auto", "GIT_CONFIG_VALUE_1=false",
+}
+
 func sh(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(args[0], args[1:]...)
@@ -49,6 +70,7 @@ func sh(t *testing.T, dir string, args ...string) string {
 		"GIT_AUTHOR_NAME=ci", "GIT_AUTHOR_EMAIL=ci@example.invalid",
 		"GIT_COMMITTER_NAME=ci", "GIT_COMMITTER_EMAIL=ci@example.invalid",
 	)
+	cmd.Env = append(cmd.Env, noBackgroundGit...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%v: %v\n%s", args, err, out)
@@ -91,7 +113,7 @@ func TestCLIDrivesAStockStation(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = base
-		cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+cfg)
+		cmd.Env = append(append(os.Environ(), "XDG_CONFIG_HOME="+cfg), noBackgroundGit...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("heliograph %v: %v\n%s", args, err, out)
@@ -174,7 +196,7 @@ func TestGapsFindsARealStall(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = base
-		cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+cfg)
+		cmd.Env = append(append(os.Environ(), "XDG_CONFIG_HOME="+cfg), noBackgroundGit...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("heliograph %v: %v\n%s", args, err, out)
@@ -241,7 +263,7 @@ func TestCLIDrivesAShareStation(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = base
-		cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+cfg)
+		cmd.Env = append(append(os.Environ(), "XDG_CONFIG_HOME="+cfg), noBackgroundGit...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("heliograph %v: %v\n%s", args, err, out)

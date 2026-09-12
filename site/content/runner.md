@@ -209,10 +209,10 @@ because every run is a fresh process that loads them again - only the loop
 itself needs one, and it exits **75**, which a scheduled task treats as
 *restart me*.
 
-Transports: `git.psm1` and `share.psm1`. There is **no relay transport** for
-PowerShell - not because it needs a native binary, which turned out to be
-wrong, but because it is not built. See
-[the design](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-11-powershell-relay-design.md).
+Transports: `git.psm1`, `share.psm1` and `relay.psm1`. The relay works here
+with **no binary at all** - the bash station shells out to `heliograph-seal`,
+and this one does the seal in managed C# that ships as source in the payload.
+See [transports](/transports#which-of-them-the-powershell-station-has).
 
 It is permitted only on one condition, which is the condition the whole
 argument turns on: a second implementation of the capture is allowed **only

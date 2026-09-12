@@ -1,0 +1,263 @@
+using System;
+using System.Security.Cryptography;
+using Chaos.NaCl.Internal.Ed25519Ref10;
+
+namespace Chaos.NaCl
+{
+    /// <summary>
+    /// A class to generate ed25519 keys (public and private) as well
+    /// as generate ed25519 signatures and verify said signatures
+    /// </summary>
+    public static class Ed25519
+    {
+        /// <summary>
+        /// Public key size in bytes
+        /// </summary>
+        public static readonly int PublicKeySizeInBytes = 32;
+        /// <summary>
+        /// Ed25519 signature size in bytes
+        /// </summary>
+        public static readonly int SignatureSizeInBytes = 64;
+        /// <summary>
+        /// Expanded private key size (size used in signature creation operations) in bytes
+        /// </summary>
+        public static readonly int ExpandedPrivateKeySizeInBytes = 32 * 2;
+        /// <summary>
+        /// Actual size of private key in bytes
+        /// </summary>
+        public static readonly int PrivateKeySeedSizeInBytes = 32;
+        /// <summary>
+        /// Size of key in key exchange operations
+        /// </summary>
+        public static readonly int SharedKeySizeInBytes = 32;
+
+        // ---------------------------------------------------------------
+        // GeneratePrivateKeySeed REMOVED WHEN THIS WAS VENDORED.
+        //
+        // It was the ONLY preprocessor conditional in the vendored tree, and
+        // its `#else` branch calls RandomNumberGenerator.GetBytes(int) - a
+        // .NET 6 overload. `Add-Type` compiles with NO symbols defined, so
+        // Windows PowerShell 5.1 took that branch and the whole module failed
+        // to load with "the best overloaded method match ... has some invalid
+        // arguments".
+        //
+        // Deleting it is the fix, not defining NET462. A symbol defined only
+        // in our build check makes the check compile something other than what
+        // Add-Type compiles - which is exactly what happened: the net48 build
+        // passed while the real 5.1 refused the file.
+        //
+        // Nothing here calls it. lib/seal.psm1's New-SealIdentity generates
+        // its own 64 bytes through RandomNumberGenerator.Create().
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// Verify an ed25519 signature given a message to verify and a public key
+        /// </summary>
+        /// <param name="signature">Signature to verify</param>
+        /// <param name="message">Original message</param>
+        /// <param name="publicKey">Public key for signature verification</param>
+        /// <returns>True if signature is valid, false otherwise</returns>
+        /// <exception cref="ArgumentException">Throws if signature or public key sizes are invalid</exception>
+        public static bool Verify(ArraySegment<byte> signature, ArraySegment<byte> message, ArraySegment<byte> publicKey)
+        {
+            if (signature.Count != SignatureSizeInBytes)
+                throw new ArgumentException(string.Format("Signature size must be {0}", SignatureSizeInBytes), "signature.Count");
+            if (publicKey.Count != PublicKeySizeInBytes)
+                throw new ArgumentException(string.Format("Public key size must be {0}", PublicKeySizeInBytes), "publicKey.Count");
+            return Ed25519Operations.crypto_sign_verify(signature.Array, signature.Offset, message.Array, message.Offset, message.Count, publicKey.Array, publicKey.Offset);
+        }
+
+        /// <summary>
+        /// Verify an ed25519 signature given a message to verify and a public key
+        /// </summary>
+        /// <param name="signature">Signature to verify</param>
+        /// <param name="message">Original message</param>
+        /// <param name="publicKey">Public key for signature verification</param>
+        /// <returns>True if signature is valid, false otherwise</returns>
+        /// <exception cref="ArgumentException">Throws if signature or public key sizes are invalid</exception>
+        public static bool Verify(byte[] signature, byte[] message, byte[] publicKey)
+        {
+            return Verify(signature, message, message.Length, publicKey);
+        }
+
+        /// <summary>
+        /// Verify an ed25519 signature given a message to verify and a public key
+        /// </summary>
+        /// <param name="signature">Signature to verify</param>
+        /// <param name="message">Original message</param>
+        /// <param name="messageLength">Length of message in bytes 
+        /// (in case the message byte array contains more data that the message; 
+        /// start index of message is assumed to be 0)</param>
+        /// <param name="publicKey">Public key for signature verification</param>
+        /// <returns>True if signature is valid, false otherwise</returns>
+        /// <exception cref="ArgumentNullException">Throws if signature, message, or public key arguments are null</exception>
+        /// <exception cref="ArgumentException">Throws if signature or public key sizes are invalid</exception>
+        public static bool Verify(byte[] signature, byte[] message, int messageLength, byte[] publicKey)
+        {
+            if (signature == null)
+                throw new ArgumentNullException("signature");
+            if (message == null)
+                throw new ArgumentNullException("message");
+            if (publicKey == null)
+                throw new ArgumentNullException("publicKey");
+            if (signature.Length != SignatureSizeInBytes)
+                throw new ArgumentException(string.Format("Signature size must be {0}", SignatureSizeInBytes), "signature.Length");
+            if (publicKey.Length != PublicKeySizeInBytes)
+                throw new ArgumentException(string.Format("Public key size must be {0}", PublicKeySizeInBytes), "publicKey.Length");
+            return Ed25519Operations.crypto_sign_verify(signature, 0, message, 0, messageLength, publicKey, 0);
+        }
+
+        /// <summary>
+        /// Create an ed25519 signature for the given message based on the given expanded private key
+        /// </summary>
+        /// <param name="signature">Output byte ArraySegment for the signature</param>
+        /// <param name="message">Message to generate a signature for</param>
+        /// <param name="expandedPrivateKey">Expanded private key (expanded from original private key via <seealso cref="ExpandedPrivateKeyFromSeed(byte[])"/>)</param>
+        /// <exception cref="ArgumentNullException">Throws if signature.Array, expandedPrivateKey.Array, or message.Array are null</exception>
+        /// <exception cref="ArgumentException">Throws if signature array size is incorrect or if the expanded private key is the wrong length</exception>
+        public static void Sign(ArraySegment<byte> signature, ArraySegment<byte> message, ArraySegment<byte> expandedPrivateKey)
+        {
+            if (signature.Array == null)
+                throw new ArgumentNullException("signature.Array");
+            if (signature.Count != SignatureSizeInBytes)
+                throw new ArgumentException("signature.Count");
+            if (expandedPrivateKey.Array == null)
+                throw new ArgumentNullException("expandedPrivateKey.Array");
+            if (expandedPrivateKey.Count != ExpandedPrivateKeySizeInBytes)
+                throw new ArgumentException("expandedPrivateKey.Count");
+            if (message.Array == null)
+                throw new ArgumentNullException("message.Array");
+            Ed25519Operations.crypto_sign2(signature.Array, signature.Offset, message.Array, message.Offset, message.Count, expandedPrivateKey.Array, expandedPrivateKey.Offset);
+        }
+
+        /// <summary>
+        /// Create an ed25519 signature for the given message based on the given expanded private key
+        /// </summary>
+        /// <param name="message">Message to generate a signature for</param>
+        /// <param name="expandedPrivateKey">Expanded private key (expanded from original private key via <seealso cref="ExpandedPrivateKeyFromSeed(byte[])"/>)</param>
+        /// <exception cref="ArgumentNullException">Throws if signature.Array, expandedPrivateKey.Array, or message.Array are null</exception>
+        /// <exception cref="ArgumentException">Throws if signature array size is incorrect or if the expanded private key is the wrong length</exception>
+        /// <returns>Signature for the given message</returns>
+        public static byte[] Sign(byte[] message, byte[] expandedPrivateKey)
+        {
+            var signature = new byte[SignatureSizeInBytes];
+            Sign(new ArraySegment<byte>(signature), new ArraySegment<byte>(message), new ArraySegment<byte>(expandedPrivateKey));
+            return signature;
+        }
+
+        /// <summary>
+        /// Create an ed25519 signature for the given message based on the given expanded private key
+        /// </summary>
+        /// <param name="message">Message to generate a signature for</param>
+        /// <param name="expandedPrivateKey">Expanded private key (expanded from original private key via <seealso cref="ExpandedPrivateKeyFromSeed(byte[])"/>)</param>
+        /// <param name="messageLength">Length of message in message byte array (start index is assumed to be 0)</param>
+        /// <exception cref="ArgumentNullException">Throws if signature.Array, expandedPrivateKey.Array, or message.Array are null</exception>
+        /// <exception cref="ArgumentException">Throws if signature array size is incorrect or if the expanded private key is the wrong length</exception>
+        /// <returns>Signature for the given message</returns>
+        public static byte[] Sign(byte[] message, int messageLength, byte[] expandedPrivateKey)
+        {
+            var signature = new byte[SignatureSizeInBytes];
+            Sign(new ArraySegment<byte>(signature), new ArraySegment<byte>(message, 0, messageLength), new ArraySegment<byte>(expandedPrivateKey));
+            return signature;
+        }
+
+        /// <summary>
+        /// Generate the public key for the given private key seed that was generated via
+        /// GeneratePrivateKeySeed (removed when vendored - see the note above)
+        /// </summary>
+        /// <param name="privateKeySeed"></param>
+        /// <returns></returns>
+        public static byte[] PublicKeyFromSeed(byte[] privateKeySeed)
+        {
+            byte[] privateKey;
+            byte[] publicKey;
+            KeyPairFromSeed(out publicKey, out privateKey, privateKeySeed);
+            CryptoBytes.Wipe(privateKey);
+            return publicKey;
+        }
+
+        /// <summary>
+        /// Expands a private key from the initial private key seed for use in 
+        /// signature generation function such as <seealso cref="Sign(byte[], byte[])"/>.
+        /// </summary>
+        /// <param name="privateKeySeed">The private key initially generated by GeneratePrivateKeySeed (removed when vendored - see the note above)</param>
+        /// <returns>A byte array that represents the expanded private key for the given seed</returns>
+        public static byte[] ExpandedPrivateKeyFromSeed(byte[] privateKeySeed)
+        {
+            byte[] privateKey;
+            byte[] publicKey;
+            KeyPairFromSeed(out publicKey, out privateKey, privateKeySeed);
+            CryptoBytes.Wipe(publicKey);
+            return privateKey;
+        }
+
+        /// <summary>
+        /// Generate both public and expanded private keys for the given private key seed
+        /// </summary>
+        /// <param name="publicKey">Output byte array for public key</param>
+        /// <param name="expandedPrivateKey">Output byte array for expanded private key</param>
+        /// <param name="privateKeySeed">Private key seed generated via GeneratePrivateKeySeed (removed when vendored - see the note above)</param>
+        /// <exception cref="ArgumentNullException">Throws if privateKeySeed is null</exception>
+        /// <exception cref="ArgumentException">Throws if private key length is the wrong length</exception>
+        public static void KeyPairFromSeed(out byte[] publicKey, out byte[] expandedPrivateKey, byte[] privateKeySeed)
+        {
+            if (privateKeySeed == null)
+                throw new ArgumentNullException("privateKeySeed");
+            if (privateKeySeed.Length != PrivateKeySeedSizeInBytes)
+                throw new ArgumentException("privateKeySeed");
+            var pk = new byte[PublicKeySizeInBytes];
+            var sk = new byte[ExpandedPrivateKeySizeInBytes];
+            Ed25519Operations.crypto_sign_keypair(pk, 0, sk, 0, privateKeySeed, 0);
+            publicKey = pk;
+            expandedPrivateKey = sk;
+        }
+
+        /// <summary>
+        /// Generate both public and expanded private keys for the given private key seed
+        /// </summary>
+        /// <param name="publicKey">Output byte array for public key</param>
+        /// <param name="expandedPrivateKey">Output byte array for expanded private key</param>
+        /// <param name="privateKeySeed">Private key seed generated via GeneratePrivateKeySeed (removed when vendored - see the note above)</param>
+        /// <exception cref="ArgumentNullException">Throws if publicKey.Array, expandedPrivateKey.Array, or privateKeySeed.Array are null</exception>
+        /// <exception cref="ArgumentException">Throws if public key array is the wrong size, if the expanded private key array is the wrong size, or if the private key is the wrong size</exception>
+        public static void KeyPairFromSeed(ArraySegment<byte> publicKey, ArraySegment<byte> expandedPrivateKey, ArraySegment<byte> privateKeySeed)
+        {
+            if (publicKey.Array == null)
+                throw new ArgumentNullException("publicKey.Array");
+            if (expandedPrivateKey.Array == null)
+                throw new ArgumentNullException("expandedPrivateKey.Array");
+            if (privateKeySeed.Array == null)
+                throw new ArgumentNullException("privateKeySeed.Array");
+            if (publicKey.Count != PublicKeySizeInBytes)
+                throw new ArgumentException("publicKey.Count");
+            if (expandedPrivateKey.Count != ExpandedPrivateKeySizeInBytes)
+                throw new ArgumentException("expandedPrivateKey.Count");
+            if (privateKeySeed.Count != PrivateKeySeedSizeInBytes)
+                throw new ArgumentException("privateKeySeed.Count");
+            Ed25519Operations.crypto_sign_keypair(
+                publicKey.Array, publicKey.Offset,
+                expandedPrivateKey.Array, expandedPrivateKey.Offset,
+                privateKeySeed.Array, privateKeySeed.Offset);
+        }
+
+        // ---------------------------------------------------------------
+        // KeyExchange REMOVED WHEN THIS WAS VENDORED, and this note is why.
+        //
+        // Upstream's Ed25519.KeyExchange and MontgomeryCurve25519.KeyExchange
+        // both return NaCl's crypto_box_beforenm - the raw X25519 secret run
+        // through HSalsa20 - and NOT the raw RFC 7748 secret the seal derives
+        // its key from. Against RFC 7748 6.1 the public key matches and the
+        // secret does not, so enrolment succeeds and every message then fails
+        // to open; or, if both ends used this function, it would work while
+        // silently speaking a protocol that is not the one Go speaks.
+        //
+        // It is deleted rather than left unused. An unused wrong function in
+        // the payload is one autocomplete away from being the used one, and
+        // there is no test that can catch a call nobody has written yet.
+        //
+        // The raw one is MontgomeryOperations.scalarmult, in
+        // Internal/Ed25519Ref10/scalarmult.cs, and it is what lib/seal.psm1
+        // calls. It clamps the scalar internally.
+        // ---------------------------------------------------------------
+    }
+}

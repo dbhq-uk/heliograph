@@ -126,8 +126,16 @@ The whole suite now runs once per transport:
 | **share** | a directory, and the log is read back from the share rather than the working tree |
 | **relay** | a stub relay in memory, two keypairs, and the log is **unsealed with the control side's identity** - so a log sealed for somebody else, or signed by nobody, is not counted as delivered |
 
-The PowerShell station ships **git and share**. It has no relay yet, and the
-driver says so by name rather than claiming a channel that does not exist.
+The PowerShell station ships **git, share and relay**, and runs the suite over
+all three. The relay run is the one that earns its place: the station side has
+no binary and seals with `lib/seal.psm1`, while the control side of the harness
+opens the delivery with Go. A byte of divergence between the two implementations
+of the seal returns nothing, and p9 fails - which is the only way that
+divergence is ever visible.
+
+Where there is no Go toolchain or no `python3` to run the stub, the driver
+**skips the relay by name** rather than claiming a channel it could not read
+back.
 
 The relay stub is a queue with an HTTP interface and the relay's token rules,
 which is the entire contract the station side depends on. It is deliberately

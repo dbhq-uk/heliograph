@@ -39,8 +39,8 @@ The twin carries the same request document, the same published status, the same
 four gates and the same exit codes. A control side reads one document and
 cannot tell which of them wrote it, and a test asserts exactly that.
 
-What it does **not** have is recorded on [Windows](/windows): no relay
-transport, and a self-update that needs a restart.
+What it does **not** have is recorded on [Windows](/windows): a self-update that
+needs a restart, and Constrained Language Mode stops it entirely.
 
 ## What it depends on
 
@@ -58,17 +58,24 @@ The only Go permitted is `station/embed.go`, which lets the CLI carry the
 payload, and its test - neither ships anywhere.
 
 There is exactly one exception, argued for explicitly rather than smuggled in:
-the relay transport needs `heliograph-seal`, because its construction is
-X25519, HKDF-SHA256, ChaCha20-Poly1305 and Ed25519, and hand-assembling those
-in shell across openssl versions is where crypto bugs live and where they are
-silent. Every other transport is pure text.
+the **bash** relay transport needs `heliograph-seal`, because its construction
+is X25519, HKDF-SHA256, ChaCha20-Poly1305 and Ed25519, and hand-assembling
+those in shell across openssl versions is where crypto bugs live and where they
+are silent. Every other bash transport is pure text.
 
-The PowerShell station has **no relay either**, but not for that reason - and
-the reason it was given for a while turned out to be wrong. All four primitives
-are available in about 200 KB of managed C#, verified against the standards'
-own vectors, so no native binary is needed there at all. It is simply not
-built. [The design](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-11-powershell-relay-design.md)
-says what it would take.
+**The PowerShell relay needs no binary at all**, and that is the better answer
+rather than a lucky one. An estate that will not let you install a native
+binary is precisely the estate this payload exists for, so the seal ships as
+**managed C# source** under `lib/seal/` and is compiled by `Add-Type` at
+startup: X25519, Ed25519 and Poly1305 from a vendored Chaos.NaCl - djb's ref10,
+MIT - with ChaCha20, the RFC 8439 framing and HKDF written beside them. Still
+plain text an operator can read before running it, which is the property the
+no-binary rule is actually protecting.
+
+`Add-Type` needs FullLanguage, so Constrained Language Mode rules the relay
+out. That costs nothing extra: CLM already stops the whole station, because the
+capture is mostly .NET calls, and `start.ps1` checks for it before anything
+else.
 
 ## The files
 

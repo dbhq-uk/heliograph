@@ -310,12 +310,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Every .ps1 in the station parses
+      # .psm1 AS WELL AS .ps1, and the modules are where nearly all of it lives:
+      # caplib.psm1, every transport, the cancel, the seal. `-Filter *.ps1` does
+      # NOT match them - measured, 14 .ps1 and 8 .psm1, and the eight had never
+      # been parsed by anything in CI. They all parse today, which is the only
+      # reason widening this is a one-line change rather than a day.
+      - name: Every .ps1 and .psm1 in the station parses
         shell: pwsh
         run: |
-          $files = Get-ChildItem -Path station,tests,skills -Filter *.ps1 -Recurse -File
+          $files = @(Get-ChildItem -Path station,tests,skills -Include *.ps1,*.psm1 -Recurse -File)
           if ($files.Count -eq 0) {
-            Write-Output "::error::no .ps1 files found, so this job checked nothing"
+            Write-Output "::error::no PowerShell files found, so this job checked nothing"
+            exit 1
+          }
+          # A FLOOR, because -Include silently matching nothing is exactly the
+          # failure this job is for. The count only goes up.
+          if ($files.Count -lt 20) {
+            Write-Output "::error::only $($files.Count) PowerShell files found; the pattern has stopped matching"
             exit 1
           }
           $bad = 0
@@ -356,6 +367,79 @@ jobs:
           if grep -q 'SKIPPING every PowerShell assertion' /tmp/test-powershell.out; then
             echo "::error::tests/test-powershell.sh found no PowerShell interpreter and skipped its ps_step half."
             exit 1
+          fi
+
+      # THE SEAL, ON LINUX, WHICH IS THE POINT OF CHOOSING MANAGED CODE.
+      #
+      # The relay's crypto could have been Windows CNG. It is not, so all four
+      # primitives are checkable on an ordinary runner against the RFCs' own
+      # vectors, and the whole construction against Go's own bytes - hours
+      # before anybody waits on a Windows job.
+      #
+      # The dotnet SDK is here for the C# 5 / net48 build. That is the one
+      # thing a Linux runner cannot infer: pwsh 7 compiles this tree with
+      # Roslyn against .NET 10 and would accept a Span<T> that Windows
+      # PowerShell 5.1's CodeDOM compiler refuses.
+      # Go, for the CONTROL side of the relay harness only. The station side
+      # is the thing under test and has no binary; heliograph-seal is what
+      # makes the keys and reads the delivery back.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0'
+
+      - name: The seal agrees with Go, and compiles as C# 5
+        run: |
+          set +e
+          ./tests/test-seal-ps1.sh 2>&1 | tee /tmp/seal.out
+          rc="${PIPESTATUS[0]}"
+          set -e
+          [ "$rc" -eq 0 ] || { echo "::error::tests/test-seal-ps1.sh failed (exit $rc)"; exit 1; }
+          # NOTHING MAY SKIP HERE. Both halves are the reason the job exists,
+          # and each one skips silently when its tool is absent - which on a
+          # runner is never a legitimate reason.
+          if grep -q '^SKIP' /tmp/seal.out; then
+            echo "::error::the seal skipped something instead of running it:"
+            grep '^SKIP' /tmp/seal.out
+            exit 1
+          fi
+          # Named, not counted. These four are the assertions that would still
+          # leave dozens of passes behind if they quietly stopped running.
+          #
+          # COPIED FROM THE TEST'S OWN OUTPUT, not paraphrased. The first
+          # version of this list looked for `opens Go`, and the line says
+          # `it opens what Go sealed` - so the job failed with "the seal did
+          # not assert" on a run in which all 26 assertions had passed. A guard
+          # that quotes a string nothing prints is a guard that only ever
+          # fails.
+          for want in \
+            'compiles as C# 5 against net48' \
+            'opens what Go sealed' \
+            'produces what Go would have sealed, byte for byte' \
+            'refuses a message forwarded to a third party' \
+            'three distinct sequence numbers'; do
+            grep -qF "$want" /tmp/seal.out || {
+              echo "::error::the seal did not assert: $want"; exit 1; }
+          done
+
+      - name: Conformance over the relay, with no binary on the station side
+        run: |
+          set +e
+          CONF_TRANSPORT=relay timeout 900 ./tests/conformance/conformance.sh \
+            tests/conformance/drivers/powershell.sh 2>&1 | tee /tmp/relay-conf.out
+          rc="${PIPESTATUS[0]}"
+          set -e
+          [ "$rc" -eq 0 ] || { echo "::error::relay conformance failed"; exit 1; }
+          # p9 IS THE ONE THAT MATTERS: the station sealed with lib/seal.psm1
+          # and the control side opened it with Go. Nothing else compares the
+          # two implementations end to end.
+          grep -qE '^ok +p9:' /tmp/relay-conf.out || {
+            echo "::error::the PowerShell station did not deliver over the relay"; exit 1; }
+          if grep -q '^SKIP' /tmp/relay-conf.out; then
+            echo "::error::relay conformance skipped something:"; grep '^SKIP' /tmp/relay-conf.out; exit 1
           fi
 
   # The parts that ONLY exist on Windows: station.ps1's registry lookup for
@@ -783,6 +867,43 @@ jobs:
             # succeeded and one that lied look the same.
             CONF_PS_SHELL="$ps" timeout 900 ./tests/test-transports-ps1.sh 2>&1 | tee "/tmp/tp-$ps.out"
             [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the transports failed under $ps"; rc=1; }
+            # THE SEAL, AND THIS IS THE ONLY PLACE THE REAL QUESTION IS ASKED.
+            #
+            # lib/seal/ is C# compiled by Add-Type at run time. On Windows
+            # PowerShell 5.1 that is the .NET Framework CodeDOM compiler, which
+            # is C# 5 and has no Span<T>; on pwsh 7 it is Roslyn against .NET
+            # 10, which accepts nearly anything. So a modern construct creeping
+            # into that tree passes every Linux runner and every pwsh run, and
+            # fails at Add-Type on the exact estate this payload exists for.
+            #
+            # tests/test-seal-ps1.sh also builds the tree as net48/LangVersion 5
+            # where a dotnet SDK exists, which is what makes the same question
+            # answerable before the push. This is the measurement rather than
+            # the proxy.
+            CONF_PS_SHELL="$ps" timeout 900 ./tests/test-seal-ps1.sh 2>&1 | tee "/tmp/seal-$ps.out"
+            [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::the seal failed under $ps"; rc=1; }
+            # The vectors are the whole point of that file, so a run that
+            # skipped them is a run that proved nothing about the seal.
+            grep -qF "produces what Go would have sealed, byte for byte" "/tmp/seal-$ps.out" || {
+              echo "::error::$ps did not compare the seal against Go's own bytes"; rc=1; }
+            grep -qF "three distinct sequence numbers" "/tmp/seal-$ps.out" || {
+              echo "::error::$ps did not exercise a REPEATED delivery over the relay"; rc=1; }
+            bad="$(grep '^SKIP' "/tmp/seal-$ps.out" | grep -v 'no dotnet SDK' || true)"
+            [ -z "$bad" ] || { echo "::error::the seal skipped something it may not under $ps:"; echo "$bad"; rc=1; }
+            # AND CONFORMANCE OVER THE RELAY, on this edition. The station side
+            # has no binary at all; the control side of the harness opens the
+            # delivery with Go. A byte of divergence between the two seals
+            # returns nothing and p9 fails, which is the only way that
+            # divergence is ever visible.
+            if command -v go >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+              CONF_PS_SHELL="$ps" CONF_TRANSPORT=relay timeout 900 ./tests/conformance/conformance.sh \
+                tests/conformance/drivers/powershell.sh 2>&1 | tee "/tmp/relay-$ps.out"
+              [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "::error::relay conformance failed under $ps"; rc=1; }
+              grep -qE "^ok +p9:" "/tmp/relay-$ps.out" || {
+                echo "::error::$ps did not deliver over the relay"; rc=1; }
+            else
+              echo "::error::no go or python3 on this runner, so the relay was NOT exercised under $ps"; rc=1
+            fi
             # A SKIP HERE IS ALLOWED ONLY FOR THE LINK CASES, which need a
             # privilege or Developer Mode to construct. Everything else must
             # run: a transport check that quietly skipped would report a

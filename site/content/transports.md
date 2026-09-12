@@ -80,23 +80,32 @@ not as though you could reach for it this afternoon.
 
 The table above is the **bash** station. The [PowerShell
 twin](/windows#the-powershell-station-for-a-box-with-no-bash), for an estate
-with no bash at all, ships **git and share** and nothing else.
+with no bash at all, ships **git, share and relay**.
 
-**It has no relay yet**, and the reason this page gave for a long time was
-wrong, so it is worth correcting rather than quietly rewording. The claim was
-that the relay needs `heliograph-seal` - a native Go binary - and that such a
-binary is a harder ask than the one those estates already refused.
+**The relay works there with no binary of any kind**, which is the part worth
+knowing. The bash station shells out to `heliograph-seal`, a native Go binary,
+because a shell cannot do AEAD. This page said for a long time that the
+PowerShell station therefore could not have a relay at all - and that reasoning
+was wrong, so it is corrected here rather than quietly reworded.
 
-The second half is true. The first was never checked. All four primitives the
-seal uses (X25519, HKDF-SHA256, ChaCha20-Poly1305, Ed25519) are available in
-roughly **200 KB of portable managed C#**, and each was verified against its
-own standard's test vectors. No native binary is needed.
+An estate that will not let you install a native binary is exactly the estate
+this payload exists for, so the seal is built in **managed C#** that ships as
+source inside the payload: X25519, Ed25519 and Poly1305 from a vendored
+[Chaos.NaCl](https://github.com/NetSparkleUpdater/Chaos.NaCl) (djb's ref10,
+MIT), with ChaCha20, the RFC 8439 framing and HKDF-SHA256 alongside it. Around
+330 KB of C# you can read before you run it. Nothing to install, nothing to
+checksum.
 
-What is left is ordinary work rather than an obstacle: cross-implementation
-test vectors, so the two seals provably agree, and a decision about whether the
-payload carries that code as source or as an assembly.
-[The design](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-11-powershell-relay-design.md)
-sets both out.
+Two implementations of a crypto format that have never been compared are two
+formats, so they are compared: `internal/seal` emits golden vectors from fixed
+keys, and the PowerShell side must reproduce them **byte for byte** at every
+stage - canonical metadata, shared secret, derived key, signature and sealed
+message - as well as open what Go sealed and refuse six tampered variants. Each
+primitive is separately checked against its own standard's vectors, because a
+round trip is satisfied by two implementations that agree with each other and
+with nothing else. CI then runs the whole conformance suite over the relay on
+both PowerShell editions, with the control side reading the delivery back
+through Go.
 
 Both implementations read and write the **same layout** on whichever channel
 they share, so a control side cannot tell them apart - and a test asserts that

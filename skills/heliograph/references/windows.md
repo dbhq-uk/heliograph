@@ -424,11 +424,15 @@ moment it runs, so a process started immediately after can survive.
 
 ### Limits, stated rather than implied
 
-- **Transports are git and share only.** No relay - and NOT because it needs a
-  native binary, which is what this said until it was measured. All four
-  primitives are available in ~200 KB of managed C#, verified against the RFC
-  vectors. It is simply not built. See
-  `docs/specs/2026-09-11-powershell-relay-design.md`.
+- **Transports are git, share and relay.** The relay needs **no binary here**,
+  unlike the bash station's, which shells out to `heliograph-seal`. The seal is
+  managed C# shipped as source under `lib/seal/` and compiled by `Add-Type`:
+  X25519, Ed25519 and Poly1305 from a vendored Chaos.NaCl (djb's ref10, MIT),
+  with ChaCha20, the RFC 8439 framing and HKDF beside them. It is held to the Go
+  side's golden vectors byte for byte, not merely round-tripped.
+  **`Add-Type` needs FullLanguage**, so Constrained Language Mode rules the
+  relay out - along with the rest of the station, which `start.ps1` already
+  refuses to start under.
 - **A self-update needs a restart.** `run.ps1`, `caplib.psm1` and the steps come
   forward with no restart - every run is a fresh process. `station.ps1` itself
   cannot be replaced while running (PowerShell has no `exec`, and a respawn is

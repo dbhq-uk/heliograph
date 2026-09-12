@@ -27,7 +27,7 @@ three bootstraps.
 | bundle | **works end to end**, proved by a CLI round trip across a directory that stands in for the medium. No `live` and no `self`, because a stick does not change while you watch it |
 | object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
-| PowerShell station | **complete and proven**. Polls, runs, delivers and publishes over git and share, with all four gates. Every conformance property, on 5.1 and on 7. No relay transport (needs `heliograph-seal`, which is Go) |
+| PowerShell station | **complete and proven**. Polls, runs, delivers and publishes over git, share **and relay**, with all four gates. Every conformance property, on 5.1 and on 7, over all three. **The relay needs no binary**: the seal is managed C# shipped as source, held to the Go side's golden vectors byte for byte |
 | site | 29 pages, near and far side, plus `/matrix` (every transport, station and controller, from one source in Go) and `/roadmap`. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
 
 ## Landed 2026-09-08
@@ -176,6 +176,7 @@ that is not progress.
 | PR | |
 |---|---|
 | #96 | **the PowerShell payload can survive a logout, and carry its own configuration** - `station/powershell/service.ps1`. A scheduled task rather than a service, registered against `start.ps1` so the preflight runs on every start. `--flavour powershell` had planted no way to survive a logout at all. The hard part is not the task: a task inherits nothing, so the transport's variables and the credential go into `.station-env-ps` - `KEY=value`, read and never executed, values verbatim, a newline refused rather than stripped, ACL set to this account only, deleted on uninstall. `install` refuses when a detached loop could not deliver, because nobody sees that failure until hours later |
+| - | **the PowerShell relay** (#77) - `transports/relay.psm1` and `lib/seal.psm1`, so the payload built for estates that permit no binary can use the one transport that needed one. The bash relay shells out to `heliograph-seal`; this one does the whole construction in managed C# that ships as **source** inside the payload and is compiled by `Add-Type` at startup. X25519, Ed25519 and Poly1305 from a vendored Chaos.NaCl (djb's ref10, MIT, 60 files); ChaCha20, the RFC 8439 framing and HKDF-SHA256 written here. Conformance passes over the relay on both editions: **36 passed, 0 failed, 0 skipped** |
 | - | **the bundle's station side** (#68) - `transports/bundle.sh`, so the one transport that makes *air-gapped* literally true now has a far side. A station started with `TRANSPORT=bundle BUNDLE_DIR=<mount>` reads the request the CLI wrote, runs it, and writes the status and the log back onto the medium for somebody to carry home. It declares `request status progress` and **not** `live` or `self`: a stick does not change while you watch it, and nothing publishes a payload to one. Conformance runs over it, and `/air-gapped`, `/transports`, `/station` and `/matrix` are corrected - all four said a station could not read a bundle |
 
 ### What the bundle found
@@ -221,6 +222,53 @@ Language Mode plainly cannot throw while loading a config file first.
 
 Also corrected: the preflight still warned that *"this payload ships no service
 installer"*, printed by the very script the installer registers.
+### What the relay found
+
+**`NaCl.Core` cannot be used, and neither can BouncyCastle.** The merged design
+recommended the first; it is `Span<T>`, `stackalloc` and `System.Buffers` in
+every file, and `Span<T>` does not exist on .NET Framework - which is what
+Windows PowerShell 5.1's `Add-Type` compiles against, at C# 5, through the
+CodeDOM compiler. BouncyCastle was measured too and is worse for the same
+reason it was rejected before: its `ChaCha20Poly1305` closure reaches ~6,000
+lines and pulls in `BigInteger` through `Arrays.cs`, for an AEAD. So ChaCha20
+and the framing are ours, over the vendored poly1305-donna - the 130-bit
+arithmetic, which is the part with a subtle failure mode, is not.
+
+**`Ed25519.KeyExchange` is deleted from the vendored source** rather than left
+unused. It returns `crypto_box_beforenm`, not the raw RFC 7748 secret. An
+unused wrong function is one autocomplete away from being the used one, and no
+test catches a call nobody has written yet - so a test asserts the method is
+absent, and `MontgomeryCurve25519` is not vendored at all.
+
+**Nothing rests on a round trip.** `internal/seal` emits golden vectors from
+fixed keys - six cases and six refusals, every stage pinned - and the
+PowerShell side reproduces them byte for byte and opens Go's own bytes. Each
+primitive is separately checked against RFC 7748 §6.1, RFC 8032 §7.1, RFC 8439
+§2.3.2/2.4.2/2.5.2/2.8.2 and RFC 5869 TC1. One field-order swap in
+`Meta.canonical` fails 30 assertions on the PowerShell side and 4 on the Go
+side.
+
+**`tests/test-seal-ps1.sh` builds the tree as net48 with LangVersion 5.** That
+is the one thing a Linux runner cannot otherwise infer: pwsh 7 compiles this
+with Roslyn against .NET 10 and would accept a construct that 5.1 refuses at
+`Add-Type`, on the exact estate the payload exists for.
+
+Three things fell out that had nothing to do with the relay:
+
+- **The conformance suite's p8 wait has never run.** `grep -c ' | ' f || echo 0`
+  prints `0` AND exits 1 on a file with no matches, so the value was the two
+  lines `"0\n0"`, `[` refused it, and a non-zero condition ends a `while`. The
+  loop exited on its first turn, every time, on every transport and both
+  drivers. The property still passed because the `sleep 1` after it is usually
+  enough - which is what made it invisible, and it is the same shape as the
+  race the wait was written to fix
+- **CI has never parse-checked a `.psm1`.** The job globs `*.ps1`, which does
+  not match them: 14 files checked, 8 skipped, and the eight are `caplib.psm1`,
+  every transport, the cancel and now the seal - where nearly all the logic
+  lives. They all parse today, which is the only reason widening it was one line
+- **The service installer's CI wait had p8's shape too**, and is fixed in #96:
+  it waited for the status file to EXIST, and the loop publishes `running`
+  before it starts the step
 
 ## The signalling toolkit (in design)
 
@@ -256,15 +304,14 @@ outranks a capability that does not exist.**
 
 | | | |
 |---|---|---|
-| 1 | **The PowerShell relay transport** (#77) | **The reason this was deferred does not hold.** It was "the seal needs a native binary". All four primitives are available in **managed C#, 200 KB**, and were verified here against the standards' own vectors: X25519 and Ed25519 from `Chaos.NaCl` (djb's ref10, MIT), ChaCha20-Poly1305 from `NaCl.Core`, HKDF in 25 lines over `HMACSHA256`. No P/Invoke and no CNG, so it runs on Linux too and the seal is testable on an ordinary runner. [The design](docs/specs/2026-09-11-powershell-relay-design.md) recommends vendoring the source, and **test vectors before any porting**. Do not write the curve arithmetic |
-| 2 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
-| 3 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
-| 4 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
-| 5 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
-| 6 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
-| 7 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
-| 8 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
-| 9 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
+| 1 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
+| 2 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
+| 3 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
+| 4 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
+| 5 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
+| 6 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
+| 7 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
+| 8 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
 
 Items 1 to 8 come from a survey of every transport, host and control node
 anyone has proposed, with the ones ruled out and why:

@@ -137,10 +137,11 @@ Because the station token sits on a machine you do not trust and cannot reach.
 | station | read requests, write status and logs, for one estate |
 | control | write requests, read logs, for one estate |
 
-## Why this one transport needs a binary
+## Why the bash station needs a binary, and the PowerShell one does not
 
-`heliograph-seal`, and it is the single exception to *nothing is installed on
-the far side*. It is argued for explicitly rather than smuggled in.
+`heliograph-seal` is the single exception to *nothing is installed on the far
+side*, and it applies to the **bash** station only. It is argued for explicitly
+rather than smuggled in.
 
 `openssl enc` refuses AEAD ciphers outright. A shell implementation would have
 to hand-assemble encrypt-then-MAC and key agreement across openssl 1.1.1 and
@@ -148,7 +149,7 @@ to hand-assemble encrypt-then-MAC and key agreement across openssl 1.1.1 and
 silent.
 
 So `heliograph-seal` does the sealing and **no networking at all**. `curl` stays
-in the shell, where its behaviour can be read and debugged. Every other
+in the shell, where its behaviour can be read and debugged. Every other bash
 transport stays pure bash and always will.
 
 The binary must be present and executable or the station refuses to start:
@@ -157,6 +158,27 @@ there is no plaintext fallback and no degraded mode.
 **The checksum is only enforced if you set one.** With `RELAY_SEAL_SHA256`, a
 binary that does not match refuses to run. Without it the station prints a
 warning and carries on, which is weaker than this page used to claim. Set it.
+
+### On the PowerShell station there is no binary and no checksum
+
+The [PowerShell station](/windows#the-relay-works-here-and-needs-nothing-installed)
+does the same construction in **managed C# that ships as source** inside the
+payload, compiled by `Add-Type` when the transport loads. `RELAY_SEAL` and
+`RELAY_SEAL_SHA256` do not apply there; everything else on this page does.
+
+That is not a shortcut around the argument above. It is the same reasoning
+reaching a different answer, because the constraint is different: a shell
+cannot do AEAD, and .NET can be given the code to. An estate that refuses a
+native binary is exactly the estate that payload exists for, so a relay that
+needed one would not have been a relay for them at all.
+
+The two seals are **compared rather than assumed to agree**. `internal/seal`
+emits golden vectors from fixed keys, and the PowerShell side has to reproduce
+them byte for byte at every stage - canonical metadata, shared secret, derived
+key, signature, sealed message - as well as open what Go sealed and refuse six
+tampered variants. Each primitive is separately checked against its own
+standard's vectors, because a round trip is satisfied by two implementations
+that agree with each other and with nothing else.
 
 ## Configuring a station
 
@@ -168,10 +190,11 @@ RELAY_STATION=sql01
 RELAY_TOKEN=<the station-scoped token>
 RELAY_IDENTITY=/path/to/station.key      # this station's key
 RELAY_PEER=/path/to/control.pub          # the control side's public identity
-RELAY_SEAL_SHA256=<checksum from the release>
+RELAY_SEAL_SHA256=<checksum from the release>   # bash station only
 ```
 
-`RELAY_SEAL_SHA256` is optional and should not be - see above.
+`RELAY_SEAL_SHA256` is optional and should not be - see above. On the
+PowerShell station it does not exist, because neither does the binary.
 
 A request may **not** set `TRANSPORT`, `PUSH`, `REDACT` or `LOG_DIR`. See
 [security](/security).
