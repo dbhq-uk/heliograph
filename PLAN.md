@@ -166,6 +166,28 @@ that file is bounded by the clock now, and the condition requires a `progress:`
 key AND the step's own output, because each alone is satisfiable by something
 that is not progress.
 
+## The signalling toolkit (in design)
+
+A program that adds the third shape - the **beam**, a held-open live channel -
+renames the shapes onto one medium (**beacon** / **flare** / **beam**, from
+pigeonhole / intercom / the new open line), and drops the "regulated estate"
+framing throughout. Six designs, each its own spec and PR, coordinated by
+[`docs/plans/2026-09-11-signalling-toolkit-roadmap.md`](docs/plans/2026-09-11-signalling-toolkit-roadmap.md).
+
+| id | spec | state |
+|---|---|---|
+| S1 | [three shapes and the signalling names](docs/specs/2026-09-11-three-shapes-and-signalling-names-design.md) | draft, ready to build |
+| S2 | [discrete transports completed](docs/specs/2026-09-11-discrete-transports-completed-design.md) (relay CLI selection, flare transport) | draft, ready to build |
+| S3 | [`heliograph shell`](docs/specs/2026-09-11-heliograph-shell-design.md) (REPL over flare, SSH front door) | draft, ready to build |
+| S4 | [the beam: the live `Channel` and the relayed beam](docs/specs/2026-09-11-beam-live-channel-design.md) | draft, ready to build |
+| S5 | [SSH and interactive over the beam](docs/specs/2026-09-11-ssh-and-interactive-over-the-beam-design.md) (PTY, `ssh` passthrough, gated TCP forward) | draft, ready to build |
+| S6 | [the direct beam](docs/specs/2026-09-11-direct-beam-p2p-design.md) (P2P: ICE, STUN, WebRTC data channel; relayed-beam fallback, no TURN) | draft, ready to build |
+
+**This reverses a stated anti-goal**: the beam is the reverse connection the
+raw-TCP transport was dropped for being. S1 rewrites the "what it will not do"
+prose into an honest characterisation rather than pretending the line did not
+move. Decided by the owner with the C2 trade-off on the table.
+
 ## Next, in order
 
 Every item is an issue, so a priority can be linked to rather than remembered.
