@@ -176,12 +176,24 @@ else
 
   VEC_OUT="$( timeout 600 "$PS_BIN" -NoProfile -File "$HERE/seal-vectors.ps1" 2>&1 )"
   VEC_RC=$?
-  printf '%s\n' "$VEC_OUT" | grep -E '^(FAIL|     )' | head -20 | sed 's/^/     /'
 
   if [ "$VEC_RC" = "0" ]; then
+    printf '%s\n' "$VEC_OUT" | grep -E '^(FAIL|     )' | head -20 | sed 's/^/     /'
     t_ok "$(printf '%s' "$VEC_OUT" | sed -n 's/^seal-vectors.ps1: //p')"
   else
-    t_no "the PowerShell seal disagrees with the RFCs or with Go"
+    # THE WHOLE TAIL, NOT THE LINES THAT LOOK LIKE ASSERTIONS.
+    #
+    # This printed only lines starting with `FAIL` or five spaces, which is the
+    # shape a failed CHECK has. A script that dies before its first Check - a
+    # missing type, a parse error, a module that will not import - produces a
+    # PowerShell exception, matches neither, and was shown as nothing at all.
+    #
+    # That happened twice: once when Add-Type refused the vendored source, and
+    # again when a type literal for a .NET 5 class killed the script on 5.1.
+    # Both times CI reported seven failed assertions and not one word of why,
+    # on the only platform that cannot be reproduced here.
+    t_no "the PowerShell seal disagrees with the RFCs or with Go, or did not run at all (exit $VEC_RC)"
+    printf '%s\n' "$VEC_OUT" | tail -30 | sed 's/^/     /'
   fi
 
   # A COUNT, so a vector file that silently stopped being read cannot pass. The

@@ -127,7 +127,13 @@ Check 'RFC 5869 TC1   HKDF-SHA256 OKM' '3cb25f25faacd57a90434f64d0362f2a2d2d0a90
 # editions deliberately: crypto that differs by interpreter version means the
 # edition tested least is the one running in production. This asks whether the
 # path we always take agrees with the platform's, wherever the platform has one.
-if ([System.Security.Cryptography.ChaCha20Poly1305] -as [type]) {
+# THE STRING FORM, NOT A TYPE LITERAL. `[Some.Missing.Type] -as [type]` THROWS
+# "Unable to find type" rather than returning $null - the literal is resolved
+# before -as ever runs. On Windows PowerShell 5.1, where neither of these types
+# exists, that killed this whole script before it printed a line, and every
+# assertion downstream failed with no explanation. `Initialize-Seal` already
+# uses the string form for exactly this reason.
+if ('System.Security.Cryptography.ChaCha20Poly1305' -as [type]) {
     $netCt = New-Object byte[] $pt.Length
     $netTag = New-Object byte[] 16
     $aead = [System.Security.Cryptography.ChaCha20Poly1305]::new($aeadKey)
@@ -139,7 +145,7 @@ if ([System.Security.Cryptography.ChaCha20Poly1305] -as [type]) {
 } else {
     'note   no .NET ChaCha20-Poly1305 on this edition, so the cross-check was not run (5.1 is expected)'
 }
-if ([System.Security.Cryptography.HKDF] -as [type]) {
+if ('System.Security.Cryptography.HKDF' -as [type]) {
     Check 'ours == .NET HKDF-SHA256' `
       (ToHex ([System.Security.Cryptography.HKDF]::DeriveKey(
             [System.Security.Cryptography.HashAlgorithmName]::SHA256,
