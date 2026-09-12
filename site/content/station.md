@@ -128,12 +128,30 @@ Details of each: [the runner](/runner), [writing a step](/steps),
 | `cancelled` | signalled mid-run. The partial log is kept |
 | `stopped` | the loop ended, by `stop: yes` or by Ctrl-C |
 
+Every status also carries `host:` and `payload:`. The payload is a digest of
+`station.sh`, `run.sh` and `caplib.sh` - what a step's behaviour actually rests
+on. `HEAD` cannot answer "which payload is running", because every status
+commit and every log advances it, so two stations on identical payloads report
+different revisions within a minute. Branches carry independent copies and
+self-update pulls only its own, so drift between stations is real, and worth
+seeing rather than discovering when a step behaves differently on one machine.
+
+The steps themselves are deliberately **not** in the digest: they are supposed
+to differ per branch, and including them would make it change for the ordinary
+reason and stop meaning anything.
+
+`undelivered` matters more than it looks. Without it, "the log exists and
+cannot be shipped" and "the step is still running" are the same silence from
+your side, and only one of them is worth waiting on.
+
 ## The action mode it publishes
 
 Every status also carries `actions:`, which is `allowed` or `refused`. It is
 not about the run. It says what this station will permit for the whole life of
 the process, and it is settled by `--allow-actions` at startup:
 
+| | |
+|---|---|
 | `actions: allowed` | started with `--allow-actions`. A step declaring `action` runs, still needing `CONFIRM=yes` on the request |
 | `actions: refused` | the default. A step declaring `action` is refused, and the refusal names the flag |
 
@@ -150,22 +168,6 @@ your side. `heliograph status` says `not reported` for that case, which is a
 third answer and not a polite way of saying refused. Treating silence as
 read-only would tell somebody an estate is safe on the strength of a station
 that never said so.
-
-Every status also carries `host:` and `payload:`. The payload is a digest of
-`station.sh`, `run.sh` and `caplib.sh` - what a step's behaviour actually rests
-on. `HEAD` cannot answer "which payload is running", because every status
-commit and every log advances it, so two stations on identical payloads report
-different revisions within a minute. Branches carry independent copies and
-self-update pulls only its own, so drift between stations is real, and worth
-seeing rather than discovering when a step behaves differently on one machine.
-
-The steps themselves are deliberately **not** in the digest: they are supposed
-to differ per branch, and including them would make it change for the ordinary
-reason and stop meaning anything.
-
-`undelivered` matters more than it looks. Without it, "the log exists and
-cannot be shipped" and "the step is still running" are the same silence from
-your side, and only one of them is worth waiting on.
 
 ## Two properties everything else rests on
 
