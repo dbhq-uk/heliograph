@@ -4,8 +4,8 @@
 // /page.md, and llms.txt at the root.
 //
 // The markdown mirror is not a nicety. Measured across all 29 pages, the same
-// page costs three to twenty-one times more bytes as HTML than as markdown -
-// about seven times on the median page, six times across the whole site - so serving
+// page costs two and a half to twenty times more bytes as HTML than as markdown -
+// about seven times on the median page, five times across the whole site - so serving
 // chrome to an agent is a token tax on every read, and agents read these pages
 // far more often than people do. The figure used to say "roughly 31 times",
 // which nobody had measured; TestTheMirrorSavingIsTheOneTheCommentsClaim now
