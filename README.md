@@ -27,6 +27,35 @@ station    picks it up within seconds, runs it
 you        heliograph logs --last --gaps ◀────────────
 ```
 
+## The three ways across
+
+heliograph carries a request to a machine you cannot log into, and brings the
+log back. There are three ways across the gap, and they differ in one thing:
+**what stays held, and for how long.**
+
+**Beacon.** You cannot reach the machine and it cannot reach you - but you can
+both reach one agreed place. You leave the request there and walk away. Later
+the machine passes by, picks it up, runs it, and leaves the log for you to
+collect. Nobody is ever connected; a *message* waits in the middle. It is the
+safest of the three, because the code being run is already on the far side and
+can be read before anything happens - and the slowest, because you wait for the
+next visit.
+
+**Flare.** You can reach the machine's door directly. You knock, hand over the
+request, wait on the step while it runs, and take the log away in the same
+visit. Nothing waits in the middle and no line stays open. Faster, because
+there is no pickup to wait for. The trade: you bring the code with you, so the
+machine trusts *the door* rather than vetting the code in advance.
+
+**Beam.** You and the machine bring up a connection and hold it open. Either
+side can speak at any moment and the other hears it at once, until you hang up.
+A real session, not a message or a knock - and the most exposed, because while
+the line is open anything can travel down it. You turn it on deliberately and
+close it when you are done.
+
+In one line: a beacon holds a *message*, a flare is a *single exchange*, a beam
+holds the *connection itself*.
+
 ## Does this sound familiar
 
 - You have **no SSH access to production**, and you are not going to be given any.

@@ -3,7 +3,7 @@
 // Three renderings of one source: HTML at /page, the markdown mirror at
 // /page.md, and llms.txt at the root.
 //
-// The markdown mirror is not a nicety. Measured across all 27 pages, the same
+// The markdown mirror is not a nicety. Measured across all 29 pages, the same
 // page costs three to sixteen times more bytes as HTML than as markdown - about
 // eight times on the median page, six times across the whole site - so serving
 // chrome to an agent is a token tax on every read, and agents read these pages

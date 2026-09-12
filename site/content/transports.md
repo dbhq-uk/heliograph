@@ -1,5 +1,34 @@
 # Transports
 
+## The three ways across
+
+heliograph carries a request to a machine you cannot log into, and brings the
+log back. There are three ways across the gap, and they differ in one thing:
+**what stays held, and for how long.**
+
+**Beacon.** You cannot reach the machine and it cannot reach you - but you can
+both reach one agreed place. You leave the request there and walk away. Later
+the machine passes by, picks it up, runs it, and leaves the log for you to
+collect. Nobody is ever connected; a *message* waits in the middle. It is the
+safest of the three, because the code being run is already on the far side and
+can be read before anything happens - and the slowest, because you wait for the
+next visit.
+
+**Flare.** You can reach the machine's door directly. You knock, hand over the
+request, wait on the step while it runs, and take the log away in the same
+visit. Nothing waits in the middle and no line stays open. Faster, because
+there is no pickup to wait for. The trade: you bring the code with you, so the
+machine trusts *the door* rather than vetting the code in advance.
+
+**Beam.** You and the machine bring up a connection and hold it open. Either
+side can speak at any moment and the other hears it at once, until you hang up.
+A real session, not a message or a knock - and the most exposed, because while
+the line is open anything can travel down it. You turn it on deliberately and
+close it when you are done.
+
+In one line: a beacon holds a *message*, a flare is a *single exchange*, a beam
+holds the *connection itself*.
+
 A transport is the channel a request goes out on and a log comes back through.
 The loop is identical whichever you pick: same request format, same gates, same
 log. That is deliberate, and it is what lets you change transport without
@@ -19,12 +48,13 @@ side, so a container can start cleanly on a host with no network at all.
 a log; the station side picks the request up and sends the log back. One half on
 its own moves nothing, so the status column below names both.
 
-**Every transport is one of two shapes**, and it decides more about an estate's
-answer than anything else here: a **pigeonhole** is a dead letter drop that
-needs nothing to be reachable, and an **intercom** talks to the station
-directly. All six below are pigeonholes.
-[What works with what](/matrix) sets the two out side by side, along with every
-station and controller and which combinations actually run.
+**Every transport is one of three shapes**, and it decides more about an
+estate's answer than anything else here: a **beacon** is a signal left where
+both can see it and collected later, a **flare** is fired straight at a
+station you can reach, and a **beam** is a live line held open in both
+directions. All six below are beacons.
+[What works with what](/matrix) sets the three out side by side, along with
+every station and controller and which combinations actually run.
 
 | transport | reach for it when | control side | station side |
 |---|---|---|---|

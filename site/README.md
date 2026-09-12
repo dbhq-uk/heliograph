@@ -14,7 +14,7 @@ agent does, and it has no reader on a documentation site. It stays where it is.
 
 ## Why markdown mirrors
 
-Measured across all 27 pages, the same page costs three to sixteen times more
+Measured across all 29 pages, the same page costs three to sixteen times more
 bytes as HTML than as markdown - about eight times on the median page, six
 times over the whole site - so chrome is a token tax on every agent that reads
 the site. Every page is available at its own URL plus `.md`. A test measures
