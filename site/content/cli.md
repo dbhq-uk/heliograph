@@ -187,6 +187,12 @@ relay. It is not this estate's local name, and conflating them would mean
 renaming an estate here silently re-pointed it at a route that does not exist.
 `--scope` is the station.
 
+`--dir` is the relay's base URL. `heliograph-relay.dbhq.uk` above is the relay
+DBHQ hosts: it is free to use, it has no sign-up page, and the estate id and
+both tokens are issued by hand. What to ask for, the limits and the notice you
+get if it changes are on
+[the relay page](/relay#the-hosted-relay-and-how-to-ask-for-a-token).
+
 `init` generates the control identity if you do not supply one, beside the
 estate at mode 600, and prints its fingerprint. The **token** comes from
 `HELIOGRAPH_RELAY_TOKEN` and is never written to the estate file, exactly as

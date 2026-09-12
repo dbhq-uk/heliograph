@@ -9,7 +9,7 @@ HTTPS and meet at a server neither of them trusts.
 | | |
 |---|---|
 | station side | complete. Fetches requests, publishes status and progress, delivers the finished log |
-| relay server | [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay), **deployed at `heliograph-relay.dbhq.uk`** |
+| relay server | [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay), **deployed at `heliograph-relay.dbhq.uk`**. Free to use, and you have to [ask for a token](#the-hosted-relay-and-how-to-ask-for-a-token) |
 | control side | `heliograph init --transport relay`, and a round trip in CI drives all three halves |
 
 **It works end to end, over the deployed relay.** On 2026-09-09 a sealed
@@ -24,7 +24,61 @@ asks the **deployed** relay whether it still answers this credential - that is
 what catches the TLS, the custom domain, the routing and the token going wrong
 independently of this repository, which they can and which is silent.
 
+## The hosted relay, and how to ask for a token
+
+`heliograph-relay.dbhq.uk` is a relay DBHQ runs, built from the source in
+[dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay). Every
+block on this page that names it needs an estate on it first, and **there is no
+sign-up page**. Provisioning is a person editing an environment variable, so
+somebody issues you the two tokens by hand.
+
+Ask at the address in
+[`SECURITY.md`](https://github.com/dbhq-uk/heliograph/blob/main/SECURITY.md) -
+it is a one-person company and that is the mailbox - saying which estate id you
+would like. What comes back is the estate id, a control token and a station
+token. Nothing else is created anywhere: an estate on this relay is three
+strings in a configuration value, which is also why it can be given away.
+
+### Free, with limits, and not a promise for ever
+
+Free today. No card, no account, and nothing to buy. What it is **not** is
+permanent, and this page will not imply otherwise.
+
+The limits are the server's own constants rather than a plan, so they are the
+same on the hosted relay and on a container you run yourself:
+
+| | |
+|---|---|
+| a message | 8 MiB. A larger one is refused with `413` |
+| a queue | 256 messages, per station per direction. A full one is refused with `429`, rather than dropping what is already in it |
+| retention | seven days, and a message is deleted the moment it is collected |
+| a poll | held open for 25 seconds |
+
+**No SLA, no support commitment, and no backup.** A relay is a queue, not a
+store - see [below](#a-relay-is-a-queue-not-a-store) - so anything you need to
+keep, the control node keeps.
+
+**If it changes, thirty days' notice.** If the limits change, if it starts
+costing something, or if it stops, everybody holding a token gets an email at
+the address they asked from at least thirty days beforehand, and
+`heliograph-relay.dbhq.uk` keeps answering for the whole of that period. Hand
+provisioning is what makes that promise keepable: the mailbox that issued a
+token is the record of who holds one.
+
+That notice matters more than it looks, because a station holds `RELAY_URL` in
+an environment variable on a machine in somebody else's estate. There is no
+channel to push a new endpoint down; changing one costs a round trip through
+the operator, and a change-controlled estate takes longer than an email does.
+
+**If thirty days is not enough for what you are putting on it, run your own.**
+It is one container and no keys, [below](#running-your-own), and the two sides
+cannot tell the difference.
+
 ## Setting one up
+
+The estate id and the two tokens come from whoever runs the relay. On the
+hosted one that is [the section above](#the-hosted-relay-and-how-to-ask-for-a-token);
+on your own it is whatever you put in `HELIOGRAPH_RELAY_ESTATES`.
 
 ```bash
 heliograph init payments --transport relay \

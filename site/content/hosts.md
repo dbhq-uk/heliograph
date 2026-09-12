@@ -178,6 +178,11 @@ RELAY_IDENTITY=/home/ops/.heliograph-identity
 RELAY_PEER=/home/ops/.heliograph-peer
 ```
 
+`RELAY_URL` above is the relay DBHQ hosts, and `RELAY_TOKEN` is the
+station-scoped token for one estate on it. Both are issued by hand and free:
+[how to ask, and the terms](/relay#the-hosted-relay-and-how-to-ask-for-a-token).
+A relay you run yourself takes the same five variables.
+
 `./service.sh install` reads it, tells you which variables that transport wants
 if it is missing, and says so if the file is readable by anyone else. systemd
 gets an `EnvironmentFile`; launchd and the `setsid` fallback source it before
