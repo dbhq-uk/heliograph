@@ -19,6 +19,23 @@ side, so a container can start cleanly on a host with no network at all.
 a log; the station side picks the request up and sends the log back. One half on
 its own moves nothing, so the status column below names both.
 
+### Two shapes, and the shape decides more than the speed
+
+Every transport is one of two, and this settles more about an estate's answer
+than anything else on the page.
+
+| | |
+|---|---|
+| **pigeonhole** | A dead letter drop. You cannot reach the far side, the far side cannot reach you, and **both can reach one agreed place**. Both sides dial out; neither ever accepts a connection |
+| **intercom** | You can reach the station's endpoint directly, so there is no drop in the middle. Unusual, because the whole tool exists for when you cannot |
+
+**All six below are pigeonholes.** The difference that matters is not latency
+but where the gates sit: on a pigeonhole the station decides whether to run a
+step it already has, while on an [intercom](/intercom) the script travels with
+the request and `heliograph-mode` becomes a claim rather than a control. A
+pigeonhole also needs nothing to be reachable, ever, which is why [raw TCP was
+dropped](/security). [What works with what](/matrix) has the whole grid.
+
 | transport | reach for it when | control side | station side |
 |---|---|---|---|
 | **git** | the far side can reach a git host | works | works |
@@ -37,6 +54,32 @@ further; what each still needs is in
 [the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
 This page describes each one as designed, so that the design can be reviewed -
 not as though you could reach for it this afternoon.
+
+### Which of them the PowerShell station has
+
+The table above is the **bash** station. The [PowerShell
+twin](/windows#the-powershell-station-for-a-box-with-no-bash), for an estate
+with no bash at all, ships **git and share** and nothing else.
+
+**It has no relay yet**, and the reason this page gave for a long time was
+wrong, so it is worth correcting rather than quietly rewording. The claim was
+that the relay needs `heliograph-seal` - a native Go binary - and that such a
+binary is a harder ask than the one those estates already refused.
+
+The second half is true. The first was never checked. All four primitives the
+seal uses (X25519, HKDF-SHA256, ChaCha20-Poly1305, Ed25519) are available in
+roughly **200 KB of portable managed C#**, and each was verified against its
+own standard's test vectors. No native binary is needed.
+
+What is left is ordinary work rather than an obstacle: cross-implementation
+test vectors, so the two seals provably agree, and a decision about whether the
+payload carries that code as source or as an assembly.
+[The design](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-11-powershell-relay-design.md)
+sets both out.
+
+Both implementations read and write the **same layout** on whichever channel
+they share, so a control side cannot tell them apart - and a test asserts that
+by comparing the documents they publish.
 
 ### Selecting one on the station
 

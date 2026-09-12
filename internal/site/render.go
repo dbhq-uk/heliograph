@@ -7,10 +7,10 @@
 //
 // It emits three renderings of one source, which is the 2026 consensus for
 // developer documentation: HTML for people, a `.md` mirror at the same path for
-// agents, and `llms.txt` at the root. Measured across all 27 pages, the same
-// page costs three to twenty-one times more bytes as HTML than as markdown,
-// about eight times on the median page, so serving chrome to an agent is a
-// token tax on every read.
+// agents, and `llms.txt` at the root. Measured across all 29 pages, the same
+// page costs three to twenty-one times more bytes as HTML than as markdown, about
+// seven times on the median page, so serving chrome to an agent is a token tax
+// on every read.
 package site
 
 import (
@@ -170,6 +170,19 @@ func RenderBody(md string) string {
 				}
 				fmt.Fprintf(&out, "<figure class=\"dgw\">%s<figcaption>%s</figcaption></figure>\n",
 					svg, inline(caption))
+				continue
+			}
+			// ```matrix is the same idea as ```diagram: a name in the
+			// markdown, the thing itself in Go. The data belongs in one
+			// place that a test can check, not typed into a page where it
+			// drifts from the page next to it.
+			if info := strings.TrimSpace(strings.TrimPrefix(l, "```")); !inCode &&
+				info == "matrix" {
+				for i+1 < len(lines) && !reFence.MatchString(lines[i+1]) {
+					i++
+				}
+				i++ // the closing fence
+				out.WriteString(Matrix() + "\n")
 				continue
 			}
 			if inCode {

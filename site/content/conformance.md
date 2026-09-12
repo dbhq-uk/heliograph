@@ -181,22 +181,30 @@ should keep running the bash station: one implementation is better than two
 wherever there is a choice.
 
 `station/powershell/run.ps1` is the runner, carrying gates 1, 2 and 4 - the same
-three `run.sh` carries, with the same exit codes. Gate 3 lives in the loop,
-which is a later PR, and nothing here silently stands in for it.
+three `run.sh` carries, with the same exit codes. `station/powershell/station.ps1`
+is the loop, and it carries gate 3: the station must have been *started* with
+`--allow-actions`. That gate cannot live in a runner, because a runner invoked
+by hand has no station behind it to ask.
 
 `station/powershell/lib/cancel.psm1` is the cancel, `start.ps1` the preflight,
-and `transports/{git,share}.psm1` the delivery.
+and `transports/{git,share}.psm1` both halves of the channel - fetching a
+request and publishing a status, as well as delivering the log.
 
-Together they pass **every property**, over both transports the implementation
-ships. Only 8 skips, and only on Windows where Git-Bash has no `setsid` - the
-Job Object covers the station's own cancel, but the suite needs a process group
-to start the fixture in.
+Together they pass **all ten properties**, over both transports the
+implementation ships, on Windows PowerShell 5.1 and on 7, with **no skips at
+all**.
+
+That was not always true, and the way it stopped being true is the point. p8,
+the cancel, was permitted to skip on Windows while Git-Bash had no `setsid` and
+the Job Object did not exist. Both stopped being so, and the permission
+outlived its reason - which is how a property drops out unnoticed, because an
+exemption reads as deliberate for ever after. It is gone, and the suite now
+demands an answer to every property on every edition.
 
 The suite checks **which** properties skipped, not how many. A count was the
 first version and it was wrong on Windows; loosening it to "two or three" would
 have accepted a third skip anywhere, including a capture property quietly
-dropping out. So the skippable ones are named, and every capture property the
-implementation claims must be *answered*.
+dropping out.
 
 ### A cancel has to take the whole tree
 

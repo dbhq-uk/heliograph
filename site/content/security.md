@@ -49,11 +49,22 @@ checked by the runner.
 `station/status` within one poll, so the far side learns in seconds rather than
 waiting out a round trip - which is what makes a safe default affordable.
 
-**4. Nothing runs as root.** Refused, not warned about, unless `ALLOW_ROOT=1`.
+**4. Nothing runs as a privileged account.** Refused, not warned about, unless
+`ALLOW_ROOT=1`. That is root on Unix and Administrator or SYSTEM on Windows;
+the variable keeps one name, because an operator who has read this page should
+not have to learn a second spelling to switch it off.
 
-All four live in the loop rather than in each transport, so they cannot drift
-per channel. The CLI publishes requests and reads logs; it gets no path around
-any of them.
+None of the four lives in a transport, so they cannot drift per channel. Three
+of them - 1, 2 and 4 - live in the **runner**, which is what makes
+`./run.sh <step>` by hand as gated as a request. Gate 3 lives in the **loop**,
+because it is a property of how the station was *started*, and a runner invoked
+by hand has no station behind it to ask. The CLI publishes requests and reads
+logs; it gets no path around any of them.
+
+**Both implementations carry all four.** The bash station and the [PowerShell
+twin](/windows#the-powershell-station-for-a-box-with-no-bash) gate identically,
+with the same exit codes, and the conformance suite tests the gates on both -
+including that they fail *closed*, which is the only direction that matters.
 
 ### The account is the blast radius
 

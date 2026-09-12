@@ -16,6 +16,7 @@ decisions and, more usefully, what they cost.
 | [`2026-09-08-one-repo-many-stations-design.md`](2026-09-08-one-repo-many-stations-design.md) | one repository, many stations: the branch is already the channel, and the blast-radius rule that bounds it |
 
 | [`2026-09-09-site-affordances-design.md`](2026-09-09-site-affordances-design.md) | what a reader does once they arrive: copy buttons, the markdown mirror where a person can reach it, and what paseo.sh had that this did not |
+| [`2026-09-10-new-transports-and-stations-design.md`](2026-09-10-new-transports-and-stations-design.md) | every transport, host and control node proposed so far, each with a verdict and the reason - and the bandwidth gate that rules out the exotic ones |
 
 The master design and the relay spec were written in `heliograph-skill` and
 moved here when the two-repo split was decided. Their git history lives in that

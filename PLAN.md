@@ -26,7 +26,7 @@ polls, runs, delivers and publishes, and it is planted by all three bootstraps.
 | bundle, object store | control side only; **no station side at all** |
 | bash station | in use; the loop, the gates, the capture |
 | PowerShell station | **complete and proven**. Polls, runs, delivers and publishes over git and share, with all four gates. Every conformance property, on 5.1 and on 7. No relay transport (needs `heliograph-seal`, which is Go) |
-| site | 26 pages, near and far side. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
+| site | 29 pages, near and far side, plus `/matrix` (every transport, station and controller, from one source in Go) and `/roadmap`. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
 
 ## Landed 2026-09-08
 
@@ -82,7 +82,7 @@ polls, runs, delivers and publishes, and it is planted by all three bootstraps.
 | - | **the PowerShell station, finished** (Track B, PRs 13-14 merged into one). `station.ps1` - the loop, gate 3, the receive half of both transports, the bootstrap that plants it, and the documentation. Split no further on purpose: every earlier PR was split so that each piece could be *proved*, and once the loop exists the remaining pieces are provable end to end together. See below for what it found |
 | - | **`/dbhq` loses the browser-tools table, and the word "regulated" leaves the repository** - the two hosted tools are no longer listed, and the company line now says senior engineering delivery across multiple industries. The claim that this class of tool "is permitted in regulated estates" was an overclaim - nobody in a regulated sector has certified it - and it appeared in the README, `/index`, `/security`, `/relay`, `/claude-code` and the design spec. Each one is rewritten to make the same argument without asserting somebody else's approval: the TCP paragraph now ends "nothing here is worth having if a blue team has to call it one", and the relay threat model argues from the estate that would not give you SSH rather than from "regulated customers, who are the customers". The audience list drops "regulated" for "somebody else's sign-off" |
 | - | **verve run over every markdown file in the repository, and the prose passed** - 27 site pages, the README, AGENTS.md, CONTRIBUTING.md, SECURITY.md, PLAN.md, and every file under `docs/`. No em dashes, no curly quotes, no AI vocabulary, no throat-clearing openers, no filler phrases, no meta-commentary. The forty-eight adverb hits are all doing semantic work ("literally true rather than nearly true", "what they really break", "publicly, obviously incapable"), and the "not X, it is Y" constructions each correct a misreading, which is the case the rule keeps. Recorded so nobody runs it again expecting a yield. Three real edits: `in order to` in the relay spec, "a feature, not an accident" in the B1 plan (a stock construction, now says what the feature is for), and `references/` listed twice in one CONTRIBUTING sentence. Plus seven prose lines rewrapped to the 80 columns their own file keeps, in `/index`, `/conformance`, `/containers`, `/transports`, PLAN.md and `dev-setup.md`. The soft-wrapped specs and plans are left alone: that is their convention, not drift |
-| - | **the mirror saving remeasured, forced by the line above** - removing the browser-tools table made `/dbhq` the shortest page on the site, which pushed its HTML-to-markdown ratio from 14.9 to 20.4 and failed `TestTheMirrorSavingIsTheOneTheCommentsClaim`. It is now three to twenty-one times, still about eight on the median page and six across the whole site. The ceiling is the shortest page rather than a mid-length one, because chrome is a fixed cost that short pages cannot dilute. Changed in the four files that quote the figure, and in the test |
+| - | **the mirror saving remeasured, forced by the line above** - removing the browser-tools table made `/dbhq` the shortest page on the site, which pushed its HTML-to-markdown ratio to 20.5 and failed `TestTheMirrorSavingIsTheOneTheCommentsClaim`. Remeasured again after merging main, which added `/matrix` and `/roadmap`: over 29 pages it is 2.8 to 20.5, about seven on the median page and 5.8 across the whole site. The ceiling is the shortest page rather than a mid-length one, because chrome is a fixed cost that short pages cannot dilute - `/dbhq` is an outlier, and the next page down is `/pipelines` at 14.8. The bounds keep the slack main added in #84 and move only the ceiling, 18 to 23 |
 | #76 | **content gap 5, and two H2s that are questions** (#70) - `/method` answers "run a command on a remote machine" the way that SERP is written: the `ssh`, `Invoke-Command`, PsExec and cloud-agent answers first, then the case where each has been refused. One question-form H2 each on `/claude-code` and `/mcp`, and nowhere else |
 
 **The MCP registry lists heliograph** as of 2026-09-11, at
@@ -171,13 +171,31 @@ that is not progress.
 
 ## Next, in order
 
-1. **The bundle's station side.** `/air-gapped` now says plainly that the
-   bundle cannot be read by a station, and the CLI says the same. That page is
-   the first thing to update when it lands
-2. **The PowerShell relay transport.** Deferred deliberately: it needs
-   `heliograph-seal`, which is a Go binary, and a station that must ship a
-   binary is a different bootstrap question on exactly the estates that will
-   not let you install Git for Windows
+Every item is an issue, so a priority can be linked to rather than remembered.
+The ranking rule this repository keeps proving: **a claim that is not true
+outranks a capability that does not exist.**
+
+| | | |
+|---|---|---|
+| 1 | **A service installer for the PowerShell payload** | `service.ps1` ships in the *bash* payload, registers the task against the launcher, and refuses to install without `start.sh` beside it - so `--flavour powershell` plants no way to survive a logout at all. [The service page](site/content/service.md) documents the scheduled task to register by hand, built from the settings `service.ps1` itself uses, and that is a workaround rather than an answer. It must carry the transport's variables into the task, and set a restart policy, because a PowerShell station asks for a restart by **exiting 75** |
+| 2 | **The bundle's station side** (#68) | `/air-gapped` says plainly that the bundle cannot be read by a station, and the CLI says the same. It is the only transport that makes *air-gapped* literally true, and that page is the first thing to update when it lands |
+| 3 | **The PowerShell relay transport** (#77) | **The reason this was deferred does not hold.** It was "the seal needs a native binary". All four primitives are available in **managed C#, 200 KB**, and were verified here against the standards' own vectors: X25519 and Ed25519 from `Chaos.NaCl` (djb's ref10, MIT), ChaCha20-Poly1305 from `NaCl.Core`, HKDF in 25 lines over `HMACSHA256`. No P/Invoke and no CNG, so it runs on Linux too and the seal is testable on an ordinary runner. [The design](docs/specs/2026-09-11-powershell-relay-design.md) recommends vendoring the source, and **test vectors before any porting**. Do not write the curve arithmetic |
+| 4 | **The blocked-port diagnosis** (#66) | A defect rather than a feature, and hours rather than days. A station behind a firewall that drops 22 is told to check its URL and its credential, which are both fine - the same class of red herring already fixed once on the write check, in the one message an operator who cannot debug will read |
+| 5 | **The near side without the CLI** (#62) | Near-free: it documents something that already works, and by this repository's own experience writing a component's page is how its defects get found |
+| 6 | **Prove GCS through the object store** (#57) | One CI job. Either a supported store gets documented or a reason gets recorded, and both beat the current silence |
+| 7 | **The artifact repository transport** (#56) | **The most valuable item on the list** and the only one measured in days, which is the sole reason it sits below three cheaper things. Largest population of any candidate, `blob.sh` is the template, and it unblocks #61 |
+| 8 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
+| 9 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
+| 10 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
+| 11 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
+
+Items 3 to 10 come from a survey of every transport, host and control node
+anyone has proposed, with the ones ruled out and why:
+[`docs/specs/2026-09-10-new-transports-and-stations-design.md`](docs/specs/2026-09-10-new-transports-and-stations-design.md)
+holds the verdicts and
+[`docs/research/2026-09-10-transports-hosts-and-control-nodes.md`](docs/research/2026-09-10-transports-hosts-and-control-nodes.md)
+holds the evidence, measurements and sources. Both are published as
+[`/roadmap`](site/content/roadmap.md).
 
 ## Known defects, recorded rather than fixed
 
