@@ -115,6 +115,43 @@ Check 'RFC 5869 TC1   HKDF-SHA256 OKM' '3cb25f25faacd57a90434f64d0362f2a2d2d0a90
             (FromHex 'f0f1f2f3f4f5f6f7f8f9'), 42)))
 
 # =============================================================================
+#  1b. AND AGAINST .NET'S OWN, WHERE .NET HAS ONE
+# =============================================================================
+# ChaCha20-Poly1305 and HKDF are the two primitives written HERE rather than
+# vendored, because .NET Framework has neither. .NET 5 and later have both - so
+# on PowerShell 7 there is a second, independent, Microsoft-maintained
+# implementation sitting right there, and not comparing against it would be
+# leaving the cheapest possible check on the table.
+#
+# It is a CROSS-CHECK, not a fallback. The station uses one code path on both
+# editions deliberately: crypto that differs by interpreter version means the
+# edition tested least is the one running in production. This asks whether the
+# path we always take agrees with the platform's, wherever the platform has one.
+if ([System.Security.Cryptography.ChaCha20Poly1305] -as [type]) {
+    $netCt = New-Object byte[] $pt.Length
+    $netTag = New-Object byte[] 16
+    $aead = [System.Security.Cryptography.ChaCha20Poly1305]::new($aeadKey)
+    try {
+        $aead.Encrypt($aeadNonce, $pt, $netCt, $netTag, $aad)
+        Check 'ours == .NET ChaCha20-Poly1305' ((ToHex $netCt) + (ToHex $netTag)) `
+          (ToHex ([Heliograph.Seal.ChaCha20Poly1305]::Encrypt($aeadKey, $aeadNonce, $pt, $aad)))
+    } finally { $aead.Dispose() }
+} else {
+    'note   no .NET ChaCha20-Poly1305 on this edition, so the cross-check was not run (5.1 is expected)'
+}
+if ([System.Security.Cryptography.HKDF] -as [type]) {
+    Check 'ours == .NET HKDF-SHA256' `
+      (ToHex ([System.Security.Cryptography.HKDF]::DeriveKey(
+            [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+            (FromHex ('0b' * 22)), 42,
+            (FromHex '000102030405060708090a0b0c'), (FromHex 'f0f1f2f3f4f5f6f7f8f9')))) `
+      (ToHex ([Heliograph.Seal.Hkdf]::DeriveKey((FromHex ('0b' * 22)),
+            (FromHex '000102030405060708090a0b0c'), (FromHex 'f0f1f2f3f4f5f6f7f8f9'), 42)))
+} else {
+    'note   no .NET HKDF on this edition, so the cross-check was not run (5.1 is expected)'
+}
+
+# =============================================================================
 #  2. THE WHOLE CONSTRUCTION, AGAINST GO'S BYTES
 # =============================================================================
 $vf = Join-Path $root 'tests/fixtures/seal-vectors.json'
