@@ -4,12 +4,23 @@
 **Status:** draft, for review
 **Part of:** [the signalling toolkit](../plans/2026-09-11-signalling-toolkit-roadmap.md) (S4)
 
+> **The carrier order was inverted on 2026-09-12, and this document is corrected
+> rather than annotated, because it is a draft that has not been built from.**
+> As written it made `wss`-over-relay the first and only `Channel`. It reached
+> that by comparing WebSocket against gRPC and HTTP/2 streaming, which are not
+> the alternative: the alternative is the long poll the relay already uses and
+> has already proved through these networks. Against that baseline `wss` is
+> strictly less robust, so the **long-poll-framed carrier is carrier one** and
+> `wss` is a per-estate optimisation with silent fallback. The reasoning is in
+> "The carrier" below and is recorded there so it does not get re-argued.
+> Reference: heliograph-io/heliograph-cloud#36.
+
 The beam is the third shape: a live, two-way connection held open between the
 control node and the station, until it is torn down. It is the reverse
 connection the raw-TCP transport was dropped for being, and this spec builds it
 deliberately, off by default, sealed, signed, and honest about what it is. It
 delivers the abstraction (`Channel`), the first carrier (the relayed beam, over
-the relay server), and the station side that holds the line.
+the relay server, long-poll-framed), and the station side that holds the line.
 
 The direct beam - line of sight, peer to peer - is S6, and is another `Channel`
 under the same abstraction. What rides the beam - a plain interactive shell, a
@@ -28,13 +39,16 @@ beam classes     step beam (gated per line) | raw beam (opaque stream)
   │
 Noise            end-to-end handshake + AEAD frames, carrier-blind
   │
-Channel          a duplex byte stream:  wss-over-relay | direct (S6)
+Channel          a duplex byte stream:  long-poll-framed over the relay
+                                        | wss, negotiated | direct (S6)
 ```
 
 - **`Channel`** is the carrier: a duplex byte stream, `Open`/`Send`/`Recv`/
-  `Close`, and nothing about what the bytes mean. WebSocket-over-relay is the
-  first implementation; the S6 direct beam is a second; the interface is what
-  lets both exist without touching the layers above.
+  `Close`, and nothing about what the bytes mean. The long-poll-framed carrier
+  over the relay is the first implementation; `wss` over the same relay is a
+  second, negotiated per estate; the S6 direct beam is a third. The interface is
+  what lets all three exist without touching the layers above, and it is what
+  makes `wss` an optimisation rather than a rewrite.
 - **Noise** rides on top of any `Channel`. Because the end-to-end security is a
   layer above the carrier, the broker moves ciphertext and never holds a key -
   the same claim the relay makes for discrete messages, now for a stream.
@@ -59,35 +73,95 @@ The CLI selects a beam estate the way it selects a transport; `internal/estate`
 gains the beam, carrying the broker URL, the estate and station ids, and the
 two identities the Noise handshake authenticates against.
 
-## The carrier: WebSocket over the relay, first
+## The carrier: the long poll first, `wss` as an optimisation
 
 The relayed beam extends the deployed relay server rather than standing up new
-infrastructure:
+infrastructure. Both carriers below are the same broker, the same estate and
+station ids, and the same Noise frames; only the shape on the wire differs.
 
-- Each side opens a **`wss` connection to the broker over 443**. Both dial out;
-  nothing accepts inbound, so the property that makes a beacon permissible - no
-  inbound path - holds for the beam too.
-- The broker pairs the two connections for an estate/station and **copies
-  Noise-ciphertext frames between them**. It sees routing metadata and frame
-  sizes, never plaintext, never a key.
-- WebSocket is chosen for reliability through exactly the networks heliograph
-  targets: outbound-only proxies that pass `wss` on 443 but frequently break
-  gRPC/HTTP-2 streaming. "Cleaner protocol" loses to "actually connects" here.
-- Keepalive, idle timeout and reconnection are the broker's, with the same
-  ping/pong WebSocket already defines. An idle beam is torn down, not held for
-  free.
+```
+   carrier 1   long-poll-framed    proven through these networks already.
+                                   Higher latency. Always available
+   carrier 2   wss                 negotiated per estate. Probe once,
+                                   remember the answer, fall back silently
+   carrier 3   direct (S6)         later, and gated separately
+```
 
-A separate streaming carrier can be added later as another `Channel` with no
-change above it; it is not built here, because `wss`-over-relay is the reliable
-one and the direct beam (S6) is the more valuable second carrier.
+**Carrier one is a long poll, framed.** Each side sends Noise-ciphertext frames
+as ordinary HTTP requests and collects the other side's with a held-open GET,
+exactly as the discrete relay transport already does. Both dial out; nothing
+accepts inbound, so the property that makes a beacon permissible - no inbound
+path - holds for the beam too. The broker pairs the two sides for an
+estate/station and copies frames between them, seeing routing metadata and
+frame sizes, never plaintext and never a key.
+
+**Why this order, which is the correction.** An earlier revision of this spec
+made `wss` the first and only carrier, on the grounds that it is reliable
+"through exactly the networks heliograph targets: outbound-only proxies that
+pass `wss` on 443 but frequently break gRPC/HTTP-2 streaming". That sentence is
+true and it compares `wss` against the wrong alternative. gRPC and HTTP/2
+streaming were never the alternative. **The alternative is the long poll the
+relay already uses and has already proved through these networks**, and against
+that baseline `wss` is strictly less robust:
+
+| the path | can an intermediary see the `Upgrade` header? | so `wss` |
+|---|---|---|
+| `ws://` on port 80 | yes, in cleartext | is routinely stripped |
+| `wss://` through a CONNECT-tunnelling proxy | no, it is inside TLS | works fine |
+| `wss://` through a TLS-intercepting proxy | yes, the proxy terminates TLS and reads the handshake | may be stripped, **and there is no client-side fix** |
+
+A long poll is an ordinary HTTP request that happens to take a while. No
+intermediary has to understand it, there is no protocol upgrade to strip, and
+nothing has to be configured on the proxy. It is the most boring thing on the
+wire, which is exactly why it survives.
+
+**And the estates heliograph exists for are the ones most likely to run TLS
+interception.** A corporate root CA and a DPI box are standard in a
+change-controlled, bastion-only estate with no route in. So `wss` works in most
+networks and
+fails in the ones that matter most, silently, with no remedy the client side
+can apply - only the network administrator can permit it. A carrier that fails
+there fails on exactly the estates this exists for.
+
+**Carrier two is `wss`, negotiated per estate.** Probe once, remember the
+answer, and **fall back silently** to carrier one on failure. It is an
+optimisation on latency, not a capability: nothing above the `Channel` may
+behave differently depending on which carrier is under it, and no feature may
+be gated on the upgrade succeeding. Keepalive, idle timeout and reconnection
+are the broker's; an idle beam is torn down, not held for free.
+
+**What this costs.** Poll-interval latency in the worst estates and nothing in
+the best ones. A step beam tolerates that and a PTY does not: a step beam is
+discrete framed requests, so extra latency is a slower shell rather than a
+broken one, while a raw beam PTY over a long poll would be unusable. That is a
+further argument for the step beam being the default and the raw beam being
+exceptional, which is what is already designed below.
+
+**What it buys.** The beam ships on infrastructure already proved end to end
+against the deployed relay, rather than on a carrier whose viability in the
+target market is an open question. Measuring how often `wss` survives in real
+estates is still worth doing, because it sizes how often the optimisation
+applies, but it **no longer blocks the beam**: carrier one does not depend on
+the answer.
+
+One operational note for whenever `wss` does ship: Cloudflare requires
+WebSockets to be enabled under Network -> WebSockets, or `Upgrade` headers are
+not forwarded and the handshake fails with "101 not received".
+
+The direct beam (S6) is a third `Channel` with no change above it, and is the
+more valuable next carrier once carrier one is proved.
 
 ## The station side needs a Go component
 
 The feasibility flag, stated plainly because it moves a line the project has
-held. **A bash station cannot hold a beam.** Noise and a `wss` connection are
-not things `curl` and coreutils do; the relay already conceded this for
-discrete messages, which is why `heliograph-seal` is a Go binary and why the
-PowerShell relay transport is deferred on the same ground.
+held. **A bash station cannot hold a beam.** The blocker is **Noise**, not the
+carrier: `curl` and coreutils do a long poll perfectly well - the bash relay
+transport already does exactly that - but they do not do a Noise handshake and
+AEAD framing, and neither do they do a `wss` connection. The relay already
+conceded the crypto half for discrete messages, which is why `heliograph-seal`
+is a Go binary and why the PowerShell relay transport was deferred on the same
+ground. Making the long poll carrier one narrows the reason but does not remove
+it.
 
 So the beam station side is a **Go component on the far side** - the same
 trade as the relay's seal helper, one step further. This means:
@@ -97,7 +171,8 @@ trade as the relay's seal helper, one step further. This means:
   without a beam, and the docs say so where the beam is introduced.
 - The component is the existing static binary or a small sibling, planted the
   way the station payload is, and it is the thing that speaks Noise and holds
-  the `wss`. The bash loop is unchanged for the beacon and the flare.
+  the carrier, whichever one was negotiated. The bash loop is unchanged for the
+  beacon and the flare.
 - This is consistent with S1's honesty: the beam is the most capable shape and
   also the most demanding, and where it cannot be met the other two shapes are
   the answer.
@@ -190,8 +265,13 @@ governance concerns, never to move a gap-crossing capability behind one.
 
 ## Done when
 
-- A `Channel` opens a `wss`-over-relay beam, completes a Noise handshake, and
-  fails closed if the peer identity does not verify.
+- A `Channel` opens a **long-poll-framed** beam over the relay, completes a
+  Noise handshake, and fails closed if the peer identity does not verify. This
+  is carrier one and it is what the beam ships on.
+- `wss` is negotiated per estate, **falls back silently** to the long poll when
+  the upgrade does not survive, and nothing above the `Channel` behaves
+  differently for either - proved by running the beam's own tests over both
+  carriers rather than by inspection.
 - A step beam runs a read-only line and refuses an action line on a station
   started with `--allow-beam` but not `--allow-actions`.
 - A raw beam refuses to establish without `--allow-raw-beam`, and carries an

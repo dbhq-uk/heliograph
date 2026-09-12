@@ -15,7 +15,7 @@ classes, the S5 passengers - learns that anything changed.
 
 - A **WebRTC data channel over ICE**, using **STUN** for candidate discovery.
   ICE finds a working path through NAT the way any WebRTC peer does.
-- **Noise rides the data channel**, exactly as it rides the `wss` carrier in
+- **Noise rides the data channel**, exactly as it rides the relayed carrier in
   S4. DTLS protects the hop, but the E2E security does not trust it, the STUN
   server or the signalling: the peer identity is authenticated by the Noise
   handshake, end to end, or the beam does not come up.
