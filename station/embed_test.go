@@ -145,6 +145,12 @@ func TestEmbeddedPayloadCarriesWhatAStationNeeds(t *testing.T) {
 			"bash/run.sh", "bash/station.sh", "bash/start.sh", "bash/caplib.sh",
 			"bash/gitignore", "bash/gitattributes",
 			"bash/ops-logs/.gitkeep", "bash/steps/_template.sh",
+			// Every transport, by name. A pattern change that dropped one
+			// leaves a payload that plants cleanly and refuses the only
+			// channel that estate permits, on a machine nobody can reach.
+			"bash/transports/git.sh", "bash/transports/share.sh",
+			"bash/transports/bundle.sh", "bash/transports/relay.sh",
+			"bash/transports/blob.sh", "bash/transports/objstore.sh",
 		}},
 		{"powershell", station.PowerShell, []string{
 			"powershell/run.ps1", "powershell/station.ps1", "powershell/start.ps1",
