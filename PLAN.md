@@ -12,8 +12,10 @@ for the 19-PR breakdown. This file says where we are and what is next.
 
 ## Where we are
 
-Git, the file share, the relay and the bundle work end to end, each with its own
-round trip in CI. The site documents the far side. **The PowerShell station is
+Every transport now has both halves. Git, the file share, the relay and the
+bundle are proved by a round trip in CI; the object store's signer is proved
+against the Go implementation's own vectors, because there is no account to
+round-trip against. The site documents the far side. **The PowerShell station is
 complete**: it polls, runs, delivers and publishes, and it is planted by all
 three bootstraps.
 
@@ -25,7 +27,7 @@ three bootstraps.
 | every host but a pipeline | carries a transport. Azure Blob works outright everywhere; the relay and the file share need a volume the templates do not mount |
 | file share | **works end to end**, proved by a CLI round trip in CI |
 | bundle | **works end to end**, proved by a CLI round trip across a directory that stands in for the medium. No `live` and no `self`, because a stick does not change while you watch it |
-| object store | control side only; **no station side at all** |
+| object store | **works end to end**. The station signs SigV4 in bash over openssl and curl - no AWS CLI, no binary - and the signer is held to golden vectors from the Go side, every stage pinned |
 | bash station | in use; the loop, the gates, the capture |
 | PowerShell station | **complete and proven**. Polls, runs, delivers and publishes over git, share **and relay**, with all four gates. Every conformance property, on 5.1 and on 7, over all three. **The relay needs no binary**: the seal is managed C# shipped as source, held to the Go side's golden vectors byte for byte |
 | site | 29 pages, near and far side, plus `/matrix` (every transport, station and controller, from one source in Go) and `/roadmap`. **Measured and indexed from 2026-09-09**: GA4 on the dbhq.uk stream behind consent, sitemap with `lastmod` submitted to Search Console |
@@ -175,6 +177,8 @@ that is not progress.
 
 | PR | |
 |---|---|
+| - | **the object store gets a station side** - `transports/objstore.sh`, the last transport that was control-side-only. It signs **SigV4 in bash**, over `openssl` and `curl`: no AWS CLI, no python, no binary. The layout is the control side's, including the `.partial.txt` suffix that makes `heliograph logs` hide an in-flight snapshot rather than list it beside finished runs |
+| - | **a cancelled run's partial log now ships on blob and relay** - `tp_put_status`'s third argument. git, share and bundle honoured it; blob and relay had never NAMED the parameter, so nothing a reader saw in those functions said it was being dropped. It was a recorded defect rather than a caught one |
 | #96 | **the PowerShell payload can survive a logout, and carry its own configuration** - `station/powershell/service.ps1`. A scheduled task rather than a service, registered against `start.ps1` so the preflight runs on every start. `--flavour powershell` had planted no way to survive a logout at all. The hard part is not the task: a task inherits nothing, so the transport's variables and the credential go into `.station-env-ps` - `KEY=value`, read and never executed, values verbatim, a newline refused rather than stripped, ACL set to this account only, deleted on uninstall. `install` refuses when a detached loop could not deliver, because nobody sees that failure until hours later |
 | - | **the PowerShell relay** (#77) - `transports/relay.psm1` and `lib/seal.psm1`, so the payload built for estates that permit no binary can use the one transport that needed one. The bash relay shells out to `heliograph-seal`; this one does the whole construction in managed C# that ships as **source** inside the payload and is compiled by `Add-Type` at startup. X25519, Ed25519 and Poly1305 from a vendored Chaos.NaCl (djb's ref10, MIT, 60 files); ChaCha20, the RFC 8439 framing and HKDF-SHA256 written here. Conformance passes over the relay on both editions: **36 passed, 0 failed, 0 skipped** |
 | - | **the bundle's station side** (#68) - `transports/bundle.sh`, so the one transport that makes *air-gapped* literally true now has a far side. A station started with `TRANSPORT=bundle BUNDLE_DIR=<mount>` reads the request the CLI wrote, runs it, and writes the status and the log back onto the medium for somebody to carry home. It declares `request status progress` and **not** `live` or `self`: a stick does not change while you watch it, and nothing publishes a payload to one. Conformance runs over it, and `/air-gapped`, `/transports`, `/station` and `/matrix` are corrected - all four said a station could not read a bundle |
@@ -222,6 +226,37 @@ Language Mode plainly cannot throw while loading a config file first.
 
 Also corrected: the preflight still warned that *"this payload ships no service
 installer"*, printed by the very script the installer registers.
+### What the object store found
+
+**A wrong signature is a 403 that names nothing**, deliberately: saying which
+part disagreed would be an oracle. So a wrong secret, a wrong region, a clock
+fifteen minutes out and a malformed canonical request are one symptom. There is
+no S3 account to round-trip against, so the signer is held to
+`tests/fixtures/sigv4-vectors.json` - emitted by `internal/transport/sigv4.go`,
+pinning the canonical request, its hash, the string to sign, all four derived
+keys and the signature. A disagreement says which stage.
+
+Three bash traps, each of which read as a signer fault and was not:
+
+- **`$( )` strips the trailing newline.** The canonical form needs a BLANK LINE
+  between the header block and the signed-header list, and the block's own
+  trailing newline is eaten by the substitution that builds it. Every signature
+  was wrong
+- **A decoded path can contain a space.** `read -r a b` split the
+  `path-needing-escapes` case in half and called the remainder a query string.
+  That case exists *because* the path has a space in it
+- **A body's trailing newline vanished the same way**, so the payload hash
+  differed on the one vector with a body
+
+The signer also had to grow `Content-Type`, because the Go client sends
+`text/plain; charset=utf-8` on every write and it is a SIGNED header. Two
+clients writing objects of different types into one bucket is a difference a
+reader can see.
+
+Verified by mutation: lowercasing a header name, dropping the path escaping,
+corrupting any of the four key-derivation stages, and changing the credential
+scope are each caught.
+
 ### What the relay found
 
 **`NaCl.Core` cannot be used, and neither can BouncyCastle.** The merged design

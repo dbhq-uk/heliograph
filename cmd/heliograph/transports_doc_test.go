@@ -90,11 +90,12 @@ func TestEveryStationTransportIsOnThePage(t *testing.T) {
 	// The page is prose, so it names transports the way a reader would: "Azure
 	// Blob" rather than "blob". Match on the word a human would write.
 	spelling := map[string]string{
-		"git":    "git",
-		"blob":   "Azure Blob",
-		"relay":  "relay",
-		"share":  "file share",
-		"bundle": "bundle",
+		"git":      "git",
+		"blob":     "Azure Blob",
+		"relay":    "relay",
+		"share":    "file share",
+		"bundle":   "bundle",
+		"objstore": "object store",
 	}
 	for _, f := range shipped {
 		name := strings.TrimSuffix(filepath.Base(f), ".sh")

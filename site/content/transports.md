@@ -62,7 +62,7 @@ every station and controller and which combinations actually run.
 | **git** | the far side can reach a git host | works | works |
 | **relay** | there is no git host, no storage, no share | works | works |
 | **file share** | both machines mount the same directory | works | works |
-| **object store** | S3-compatible storage is permitted where git is not | works | none yet |
+| **object store** | S3-compatible storage is permitted where git is not | works | works |
 | **bundle** | nothing crosses the gap but a person | works | works |
 | **Azure Blob** | a VNet-local private endpoint is the only reachable thing | `drop.sh`, in the station payload, not the CLI | works |
 
@@ -414,16 +414,42 @@ no regions but reject a request without one.
 Azure Blob is **not** S3-compatible. The station reaches it through its own
 beacon path instead.
 
+### On the station
+
+`TRANSPORT=objstore`, with `OBJSTORE_ENDPOINT`, `OBJSTORE_BUCKET`,
+`OBJSTORE_LANE`, `OBJSTORE_REGION`, `OBJSTORE_KEY_ID` and `OBJSTORE_SECRET`.
+`OBJSTORE_PREFIX` is optional, for a bucket shared with something else.
+
+**It signs with SigV4, in bash, over `openssl` and `curl`.** No AWS CLI, no
+python, and no binary - the two tools it needs are already required by other
+transports. An `http://` endpoint is refused unless `OBJSTORE_ALLOW_HTTP=1`
+says so in as many words, because the body of a write is a captured log.
+
+That signer is the reason this is the longest transport in the payload, and it
+is held to golden vectors emitted by the Go implementation rather than to a
+round trip. The reason is worth knowing before you debug one: **a wrong
+signature is a 403 that names nothing.** Every S3-compatible store refuses that
+way deliberately, since saying which part disagreed would be an oracle - so a
+wrong secret, a wrong region, a clock more than fifteen minutes out and a
+malformed canonical request all look identical from the station. The vectors
+pin every intermediate stage, so a disagreement says which one.
+
 ### The layout
 
 ```
-<prefix>requests/<lane>.txt
-<prefix>status/<lane>.txt
-<prefix>logs/<name>.txt
+<prefix>requests/<lane>.txt        the control side writes it
+<prefix>status/<lane>.txt          the station writes it
+<prefix>logs/<name>.txt            the station writes them
+<prefix>logs/<name>.partial.txt    progress, and the CLI hides these
 ```
 
 The same `key: value` documents that cross every other transport, which is why
 a log that came back this way reads identically to one that came back over git.
+
+The `.partial.txt` suffix is load-bearing. `heliograph logs` skips anything
+carrying it, so a snapshot of a run still going is never listed beside finished
+ones and read as the whole answer. A station publishing progress under the
+final name would make every in-flight run look complete.
 
 ### Scoping the credential
 

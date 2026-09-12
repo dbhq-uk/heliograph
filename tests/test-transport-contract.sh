@@ -201,6 +201,84 @@ assert_contains "relay: and it seals the log FILE" "relay-log.txt" "$seal_log"
 assert_eq "relay: and POSTs the sealed envelope" "1" \
   "$([ -n "$(grep -- '-X POST' "$RELAY_CALLS" 2>/dev/null)" ] && echo 1 || echo 0)"
 
+# =============================================================================
+#  A CANCELLED RUN'S PARTIAL LOG, which two transports dropped on the floor
+# =============================================================================
+# `tp_put_status <body> <msg> [partial-log]`. The third argument is what a
+# CANCELLED run captured before it was killed - somebody stopped a step, and
+# that output is the evidence they stopped it for. It is the last thing the far
+# side will ever see of that run.
+#
+# git, share and bundle honoured it. blob and relay did not, and had not since
+# either was written: neither even NAMED the parameter, so nothing a reader saw
+# in those functions said it was being ignored. It was recorded as a known
+# defect rather than found by a test, which is the gap this section closes.
+#
+# THE SHAPE CHECK IS GENERIC, so the next transport cannot repeat it. A
+# behaviour check per transport would only ever cover the transports somebody
+# remembered to add.
+for tp in "$TOOLKIT"/transports/*.sh; do
+  name="$(basename "$tp" .sh)"
+  body="$(sed -n '/^tp_put_status()/,/^}/p' "$tp")"
+  assert_eq "$name: tp_put_status reads its third argument, the cancelled run's partial log" \
+    "yes" "$(printf '%s' "$body" | grep -qE '\$\{?3' && echo yes || echo no)"
+done
+
+# --- blob: it reaches the store -----------------------------------------------
+printf 'the partial log\n' > "$FAKE/cancelled-20260908T120000Z.txt"
+: > "$BLOB_CALLS"
+(
+  export PATH="$FAKE:$PATH" FAKE_CALLS="$BLOB_CALLS"
+  export PIGEONHOLE_ACCOUNT=acct PIGEONHOLE_LANE=lane1 PIGEONHOLE_SAS='sv=x&sig=y'
+  # shellcheck disable=SC2034
+  REPO_ROOT="$TOOLKIT"
+  # shellcheck disable=SC1091
+  . "$TOOLKIT/caplib.sh"
+  # shellcheck disable=SC1091
+  . "$TOOLKIT/transports/blob.sh"
+  tp_init >/dev/null 2>&1
+  tp_put_status 'state: cancelled' 'msg' "$FAKE/cancelled-20260908T120000Z.txt"
+) >/dev/null 2>&1
+blob_partial="$(grep -- '-X PUT' "$BLOB_CALLS" 2>/dev/null | grep -- 'cancelled-20260908T120000Z' | tail -1)"
+assert_eq "blob: a cancelled run's partial log is actually uploaded" \
+  "1" "$([ -n "$blob_partial" ] && echo 1 || echo 0)"
+# UNDER logs/, where a reader looks. Publishing it anywhere else is publishing
+# it nowhere: the control side lists one prefix.
+assert_contains "blob:   under logs/, where every other log is" \
+  "logs/cancelled-20260908T120000Z.txt" "$blob_partial"
+# AND THE STATUS STILL WENT. A partial log that displaced the status would
+# leave the far side reading `running` for ever on a run that was cancelled.
+assert_eq "blob:   and the status went too, rather than being displaced by it" "1" \
+  "$([ -n "$(grep -- '-X PUT' "$BLOB_CALLS" 2>/dev/null | grep -c 'status')" ] && echo 1 || echo 0)"
+
+# --- relay: it is sealed and sent ---------------------------------------------
+printf 'the partial log\n' > "$FAKE/relay-cancelled.txt"
+: > "$SEAL_CALLS"; : > "$RELAY_CALLS"
+(
+  export PATH="$FAKE:$PATH" FAKE_CALLS="$RELAY_CALLS" SEAL_CALLS="$SEAL_CALLS"
+  export RELAY_URL=https://relay.invalid RELAY_ESTATE=e1 RELAY_STATION=s1 \
+         RELAY_TOKEN=tok RELAY_IDENTITY="$FAKE/id" RELAY_PEER="$FAKE/peer" \
+         RELAY_SEAL="$FAKE/seal" RELAY_STATE="$FAKE/relay2.state"
+  # shellcheck disable=SC2034
+  REPO_ROOT="$TOOLKIT"
+  # shellcheck disable=SC1091
+  . "$TOOLKIT/caplib.sh"
+  # shellcheck disable=SC1091
+  . "$TOOLKIT/transports/relay.sh"
+  tp_init >/dev/null 2>&1
+  tp_put_status 'state: cancelled' 'msg' "$FAKE/relay-cancelled.txt"
+) >/dev/null 2>&1
+seal_partial="$(grep -- 'relay-cancelled.txt' "$SEAL_CALLS" 2>/dev/null | tail -1)"
+assert_eq "relay: a cancelled run's partial log is actually sealed and sent" \
+  "1" "$([ -n "$seal_partial" ] && echo 1 || echo 0)"
+# `log` AND NOT `progress`. The run is over, and the kind is a SIGNED field, so
+# it is how the control side knows it has the last of it without trusting the
+# relay's labelling.
+assert_contains "relay:   as kind log, because the run is over and the reader has to know that" \
+  "--kind log" "$seal_partial"
+assert_eq "relay:   and it took its own sequence number, or the receiver drops it as a replay" "2" \
+  "$(grep -c -- '--kind' "$SEAL_CALLS" 2>/dev/null)"
+
 # --- the two verbs only start.sh calls ----------------------------------------
 # tp_preflight and tp_sync are optional, so they are not in REQUIRED, and they
 # are not tied to a declared capability, so they are not in OPTIONAL either.
