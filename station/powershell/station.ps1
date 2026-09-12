@@ -82,43 +82,12 @@ Import-Module (Join-Path $RepoRoot 'lib/cancel.psm1') -Force -Global
 $SelfPath = $MyInvocation.MyCommand.Path
 
 # --- the configuration a detached start has no other way to get ---------------
-# A SCHEDULED TASK INHERITS NOTHING from the shell that registered it. Without
-# this, a service-managed station starts with no TRANSPORT, no SHARE_DIR and no
-# credential - so it polls happily, captures a perfect log, and cannot deliver
-# it. The far side waits for hours and nothing reports a fault.
-#
-# service.ps1 writes the file. The bash payload solves the same problem with
-# `.station-env`, which is a bash file it sources; this one is `KEY=value`, one
-# per line, READ AND NEVER EXECUTED. Configuration must not be code - this file
-# lives in a directory the far side can write to on some transports.
-#
-# THE ENVIRONMENT WINS. A variable already set is left alone, so running the
-# station by hand overrides whatever the service was installed with, and the
-# operator debugging it does not have to find and edit a dotfile first. A task
-# starts with a clean environment, so there the file always applies.
-#
-# The value is taken VERBATIM after the first `=`. No quoting, no unescaping,
-# nothing to get wrong - a token containing a quote, a space or a backslash
-# survives, which is the only property this format needs.
-$EnvFile = Join-Path $RepoRoot '.station-env-ps'
-if (Test-Path -LiteralPath $EnvFile -PathType Leaf) {
-    try {
-        foreach ($line in [System.IO.File]::ReadAllLines($EnvFile)) {
-            if (-not $line -or $line.StartsWith('#')) { continue }
-            $eq = $line.IndexOf('=')
-            if ($eq -lt 1) { continue }
-            $name = $line.Substring(0, $eq)
-            if ([System.Environment]::GetEnvironmentVariable($name)) { continue }
-            [System.Environment]::SetEnvironmentVariable($name, $line.Substring($eq + 1))
-        }
-    } catch {
-        # NOT FATAL, AND SAID. A station that cannot read its own configuration
-        # will fail the preflight a moment later with a better message than
-        # anything this line could produce - but silence here would make that
-        # message look like a transport fault.
-        [Console]::Error.WriteLine("station: could not read $EnvFile : $($_.Exception.Message)")
-    }
-}
+# See lib/stationenv.psm1. Read here as well as in start.ps1, because the loop
+# is startable on its own - `.\station.ps1` by hand, and the scheduled task's
+# own restart after a self-update exit both reach this file without passing
+# through the preflight.
+Import-Module (Join-Path $RepoRoot 'lib/stationenv.psm1') -Force -Global
+$null = Import-CapStationEnv -Root $RepoRoot
 
 function Get-FileDigest {
     param([string[]] $Paths)

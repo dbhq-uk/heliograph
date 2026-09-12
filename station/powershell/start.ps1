@@ -34,6 +34,24 @@ Set-StrictMode -Version 2.0
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# --- BEFORE ANY CHECK READS AN ENVIRONMENT VARIABLE ---------------------------
+# A scheduled task inherits nothing, so `.station-env-ps` is where TRANSPORT,
+# ALLOW_ROOT and the credential come from. Load it first or the table below
+# describes a machine nobody is going to run on: CI installed a task with
+# `TRANSPORT=share ALLOW_ROOT=1` in that file and the preflight refused it twice
+# over, for being an Administrator running the `git` transport. Both readings
+# were of an environment the loop would never have seen.
+#
+# Guarded, because this runs before the table exists. A payload missing this
+# module is reported by the `payload` check below, in the format the operator
+# is reading - not as a stack trace above the heading.
+$FromEnvFile = @()
+$envModule = Join-Path $RepoRoot 'lib/stationenv.psm1'
+if (Test-Path -LiteralPath $envModule -PathType Leaf) {
+    Import-Module $envModule -Force -Global
+    $FromEnvFile = @(Import-CapStationEnv -Root $RepoRoot)
+}
+
 $CheckOnly = $false
 $Rest = @()
 foreach ($a in $args) {
@@ -124,6 +142,21 @@ switch ($strategy) {
 # station whose clock is wrong produces logs nobody can line up with anything.
 report ok 'clock' "$([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))  <- compare this with a clock you trust"
 
+# --- where the settings below came from ---------------------------------------
+# EVERY CHECK AFTER THIS POINT READS AN ENVIRONMENT VARIABLE, and the operator
+# reading the table has no other way to tell whether it came from their shell or
+# from a file the installer wrote. That distinction is the whole difference
+# between "the task is misconfigured" and "your shell is", and it is invisible
+# in a refusal that only names the variable.
+$cfgPath = Get-CapStationEnvPath -Root $RepoRoot
+if ($FromEnvFile.Count -gt 0) {
+    report ok 'config' "$($FromEnvFile -join ', ') read from .station-env-ps. Anything already set in this shell was left alone"
+} elseif (Test-Path -LiteralPath $cfgPath -PathType Leaf) {
+    report warn 'config' '.station-env-ps is there and set nothing, because every name in it is already set in this shell. A scheduled task starts clean, so it will get the file'
+} else {
+    report ok 'config' 'no .station-env-ps, so everything below comes from this shell. A detached start inherits none of it - see .\service.ps1'
+}
+
 # --- the account IS the blast radius ------------------------------------------
 Import-Module (Join-Path $RepoRoot 'caplib.psm1') -Force
 $who = Get-CapUser
@@ -183,7 +216,7 @@ if ($CheckOnly) {
 }
 
 # --- the payload is all here --------------------------------------------------
-foreach ($need in 'run.ps1', 'caplib.psm1', 'lib/probe.psm1', 'lib/cancel.psm1') {
+foreach ($need in 'run.ps1', 'caplib.psm1', 'lib/probe.psm1', 'lib/cancel.psm1', 'lib/stationenv.psm1') {
     if (Test-Path -LiteralPath (Join-Path $RepoRoot $need) -PathType Leaf) {
         report ok 'payload' "$need"
     } else {
@@ -225,7 +258,11 @@ if (-not (Test-TpCapability -Name 'self')) {
 } else {
     report warn 'self-update' 'a newer station.ps1 makes the loop EXIT 75 rather than replace itself - PowerShell has no exec. Run it under something that restarts it, or it stops instead of updating. run.ps1, caplib.psm1 and the steps update with no restart at all'
 }
-report warn 'service' 'this payload ships no service installer. To survive a logout, register a scheduled task yourself - see the Windows page. The bash payload has service.ps1; this one does not'
+if (Test-Path -LiteralPath (Join-Path $RepoRoot 'service.ps1') -PathType Leaf) {
+    report ok 'service' '.\service.ps1 install registers a scheduled task, and carries this configuration into it'
+} else {
+    report warn 'service' 'this payload ships no service installer, so to survive a logout you must register a scheduled task yourself - see the Windows page'
+}
 
 Write-Output ''
 if ($script:Failed -gt 0) {

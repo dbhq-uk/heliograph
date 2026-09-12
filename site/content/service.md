@@ -115,7 +115,20 @@ log and cannot deliver it - and the far side waits for hours with nothing
 reporting a fault.
 
 `service.ps1 install` therefore copies what the station needs into
-`.station-env-ps` beside the payload, and the loop reads it at startup:
+`.station-env-ps` beside the payload, and **`start.ps1` reads it before its
+first check** - not just the loop:
+
+That ordering is the whole point, and it was wrong once. The reader lived in
+`station.ps1` alone, so a task installed with `TRANSPORT=share ALLOW_ROOT=1` in
+its config file was refused by the preflight twice over - for being an
+Administrator, and for running the `git` transport - and never reached the loop
+that would have read either. The install reported success, and the table named
+neither the config file nor the task, so every line of it pointed at the
+machine. The preflight now prints a `config` line saying which variables came
+from the file, because "the task is misconfigured" and "your shell is" are
+otherwise the same refusal.
+
+The format:
 
 - **`KEY=value`, one per line, read and never executed.** A `.ps1` there would
   be a file the loop runs at every start, sitting in a directory the far side
@@ -130,6 +143,10 @@ reporting a fault.
 - **The environment wins.** Running the station by hand overrides whatever the
   service was installed with, so debugging does not start with editing a
   dotfile. A task has a clean environment, so there the file always applies.
+- **Read with cmdlets, not .NET.** `start.ps1` loads it before it has reported
+  what the language mode is, and `[System.Environment]` is refused under
+  Constrained Language Mode. A table whose job is to name that policy plainly
+  cannot throw while loading a config file first.
 - **It holds a token**, so its ACL is set to this account only - inheritance
   off, inherited rules dropped - which is the Windows equivalent of the bash
   side's mode 600. `uninstall` deletes it; leaving a credential behind is not

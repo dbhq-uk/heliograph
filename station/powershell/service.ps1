@@ -43,7 +43,13 @@ $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 # replace the first, and CI must not unregister a task somebody is relying on.
 $TaskName = if ($env:HELIOGRAPH_SERVICE_NAME) { $env:HELIOGRAPH_SERVICE_NAME } else { 'heliograph-ps' }
 $LogFile = Join-Path $RepoRoot '.station-service.log'
-$EnvFile = Join-Path $RepoRoot '.station-env-ps'
+
+# From the module that READS the file, not spelled again here. The installer
+# writing to one path while the preflight and the loop read another is a
+# silent, total failure: the install reports success and the station starts
+# with nothing.
+Import-Module (Join-Path $RepoRoot 'lib/stationenv.psm1') -Force
+$EnvFile = Get-CapStationEnvPath -Root $RepoRoot
 
 # --- what the task has to be told --------------------------------------------
 # EVERY VARIABLE A TRANSPORT OR THE LOOP READS, because the task inherits none

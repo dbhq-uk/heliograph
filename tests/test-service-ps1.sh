@@ -179,7 +179,70 @@ assert_eq "  and the file's own far side was left alone" "0" \
   "$(ls -1 "$S/scope/ops-logs/"*.txt 2>/dev/null | wc -l | tr -d ' ')"
 
 # =============================================================================
-#  5. A NEWLINE IS REFUSED RATHER THAN STRIPPED
+#  5. AND SO DOES THE PREFLIGHT, WHICH IS WHAT THE TASK ACTUALLY RUNS
+# =============================================================================
+# THE DEFECT THIS EXISTS FOR, found by CI on a real Windows runner and not by
+# section 4. The reader lived in station.ps1 alone, and the task registers
+# `start.ps1`, which preflights FIRST and hands over only if it passes. So a
+# task installed with `TRANSPORT=share ALLOW_ROOT=1` in its config file was
+# refused twice over - for being an Administrator, and for running the `git`
+# transport - and never reached the loop that would have read either. The
+# install reported success. The table named neither the config file nor the
+# task, so every line of it pointed at the machine.
+#
+# Section 4 passed throughout: the loop did read the file. Testing the half you
+# wrote rather than the half the operator runs is what let this ship.
+rm -rf "$S/scope"; mkdir -p "$S/scope"
+cat > "$ENVFILE" <<EOF
+TRANSPORT=share
+SHARE_DIR=$(winpath "$S")
+SHARE_SCOPE=scope
+ALLOW_ROOT=1
+EOF
+
+# A TWIN COMPARISON. The same preflight, once with the variables in the
+# environment and once with them only in the file, must reach the same verdict
+# on the transport - because the loop behind it is going to.
+preflight() {  # preflight <env...>  -> PRE_OUT / PRE_RC
+  PRE_OUT="$( cd "$D" && env -u TRANSPORT -u SHARE_DIR -u SHARE_SCOPE -u ALLOW_ROOT \
+      "$@" timeout 120 "$PS_BIN" -NoProfile -File ./start.ps1 --check 2>&1 )"
+  PRE_RC=$?
+}
+tp_line() { printf '%s' "$1" | grep -E '^(ok|warn|FAIL)  (transport|reach)' | tr -s ' '; }
+
+preflight
+FROM_FILE="$(tp_line "$PRE_OUT")"
+FILE_RC=$PRE_RC
+preflight TRANSPORT=share "SHARE_DIR=$(winpath "$S")" SHARE_SCOPE=scope ALLOW_ROOT=1
+FROM_ENV="$(tp_line "$PRE_OUT")"
+
+assert_eq "the preflight reaches the same verdict from the file as from the environment" \
+  "$FROM_ENV" "$FROM_FILE"
+assert_eq "  and that verdict is not a refusal, or the two agree only in failing" "no" \
+  "$(printf '%s' "$FROM_FILE" | grep -q FAIL && echo yes || echo no)"
+assert_eq "  so a task with only a config file preflights clean" "0" "$FILE_RC"
+
+# THE TABLE SAYS WHERE THE SETTINGS CAME FROM. An operator staring at a refusal
+# has no other way to tell "the task is misconfigured" from "my shell is", and
+# that distinction is invisible in a line that only names the variable.
+preflight
+assert_contains "the table names the config file it read" "config" "$PRE_OUT"
+assert_contains "  and the variables it took from it" "TRANSPORT" \
+  "$(printf '%s' "$PRE_OUT" | grep '^ok    config')"
+
+# AND IT NO LONGER SAYS THE PAYLOAD HAS NO INSTALLER. That warning was true
+# until this branch and is now the opposite of true, printed by the very script
+# the installer registers.
+assert_eq "the preflight stops claiming this payload ships no service installer" "no" \
+  "$(printf '%s' "$PRE_OUT" | grep -q 'ships no service installer' && echo yes || echo no)"
+assert_contains "  and points at the installer instead" "service.ps1 install" "$PRE_OUT"
+
+# --check STILL CHANGES NOTHING, including not consuming the request.
+assert_eq "and --check started no station" "0" \
+  "$(ls -1 "$S/scope/ops-logs/"*.txt 2>/dev/null | wc -l | tr -d ' ')"
+
+# =============================================================================
+#  6. A NEWLINE IS REFUSED RATHER THAN STRIPPED
 # =============================================================================
 # The same injection the share transport refuses in a scope name: a newline in
 # a value forges a second variable. Refused, because silently changing a
@@ -202,7 +265,7 @@ assert_eq "  and no file was left behind carrying the forged variable" "no" \
   "$([ -e "$D/.station-env-inject" ] && echo yes || echo no)"
 
 # =============================================================================
-#  6. The whole payload is planted, including this file
+#  7. The whole payload is planted, including this file
 # =============================================================================
 # A service installer that is not planted is a service installer nobody has.
 PLANT="$WORK/planted"
@@ -213,5 +276,9 @@ assert_eq "bootstrap plants service.ps1 with the payload" "yes" \
 # transport repo the last machine's credential.
 assert_eq "  and never the config file, which may hold a credential" "no" \
   "$([ -e "$PLANT/.station-env-ps" ] && echo yes || echo no)"
+# The module that reads it. Planted separately from service.ps1 because it is
+# what makes the file worth writing, and the preflight refuses without it.
+assert_eq "  and the module that reads the config, or the installer writes to nothing" "yes" \
+  "$([ -f "$PLANT/lib/stationenv.psm1" ] && echo yes || echo no)"
 
 t_summary

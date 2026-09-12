@@ -194,6 +194,33 @@ the control side.
 
 `--check` is also asserted to leave the medium byte-for-byte as it found it. An
 operator runs the preflight on a machine where they may not yet alter anything.
+| #96 | **the PowerShell payload can survive a logout, and carry its own configuration** - `station/powershell/service.ps1`. A scheduled task rather than a service, registered against `start.ps1` so the preflight runs on every start. `--flavour powershell` had planted no way to survive a logout at all. The hard part is not the task: a task inherits nothing, so the transport's variables and the credential go into `.station-env-ps` - `KEY=value`, read and never executed, values verbatim, a newline refused rather than stripped, ACL set to this account only, deleted on uninstall. `install` refuses when a detached loop could not deliver, because nobody sees that failure until hours later |
+
+### What that change found
+
+**A config file only the loop could read.** The reader lived in `station.ps1`,
+and the task registers `start.ps1`, which preflights first and hands over only
+if it passes. So a task installed with `TRANSPORT=share ALLOW_ROOT=1` in its
+config file was refused twice over - for being an Administrator, and for
+running the `git` transport - and never reached the loop that would have read
+either. The install reported success.
+
+The local test passed throughout, because it asserted that *the loop* reads the
+file. Testing the half you wrote rather than the half the operator runs is what
+let it ship; CI on a real Windows runner is what caught it. The reader now
+lives in `lib/stationenv.psm1` and both entry points call it, the test compares
+the preflight's verdict from the file against its verdict from the environment,
+and removing the reader fails four assertions.
+
+Two smaller things fell out of it. The preflight prints a **`config`** line
+naming which variables came from the file, because "the task is misconfigured"
+and "your shell is" are otherwise the same refusal. And the reader uses cmdlets
+rather than `[System.Environment]`, because `start.ps1` loads it before it has
+reported what the language mode is - a table whose job is to name Constrained
+Language Mode plainly cannot throw while loading a config file first.
+
+Also corrected: the preflight still warned that *"this payload ships no service
+installer"*, printed by the very script the installer registers.
 
 ## Next, in order
 
@@ -211,7 +238,7 @@ outranks a capability that does not exist.**
 | 6 | **GitLab CI** (#58) and **the Kubernetes CronJob** (#59) | One file each, against patterns that already exist |
 | 7 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
 | 8 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
-| 10 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
+| 9 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
 
 Items 1 to 8 come from a survey of every transport, host and control node
 anyone has proposed, with the ones ruled out and why:
