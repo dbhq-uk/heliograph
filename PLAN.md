@@ -199,6 +199,17 @@ holds the evidence, measurements and sources. Both are published as
 
 ## Known defects, recorded rather than fixed
 
+- **The Windows credential-injection assertion has failed once, unexplained.**
+  `tests/test-transports-ps1.sh:273` runs `Invoke-CapGit config --get
+  http.extraHeader` with `GIT_TOKEN` set and asserts git received an
+  `Authorization` header. On 2026-09-12 it failed on 45517b3 (#84) with "git
+  received no Authorization header at all" and passed on the two runs since,
+  285ca02 and 9860c22, same job and same runner image. One failure in three is
+  not a flake anybody has characterised: the assertion is deliberately written
+  to ask git what it received rather than to grep the source, so a red here
+  means the injection genuinely did not happen that time. Worth catching the
+  next occurrence with the resolved `GIT_CONFIG_*` environment dumped on
+  failure, rather than guessing at a race now
 - **Delivery pushes to the configured upstream, not to `origin` explicitly.**
   `cap_push` (bash) and `Send-TpLog` (PowerShell) both use a bare `git push`, so
   a branch tracking another remote takes every log somewhere the control side
