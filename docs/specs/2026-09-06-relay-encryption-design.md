@@ -14,6 +14,8 @@ The question that decides whether this product is safe to exist is: **can a comp
 
 If it can, then compromising `relay.heliograph.dbhq.uk` yields code execution inside every customer estate at once, through a channel the customer installed deliberately and trusts. That is a worse position than any log disclosure, and it is the failure that would end the project.
 
+> **The hostname here is the one this document planned for, not the one that shipped.** The relay is at `heliograph-relay.dbhq.uk`; `relay.heliograph.dbhq.uk` has never resolved. The argument is unaffected and the name is left as written.
+
 So the requirements are ordered:
 
 | | requirement | |

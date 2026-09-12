@@ -6,6 +6,81 @@ Email <dan@dbhq.uk> rather than opening a public issue. Include what you found,
 how to reproduce it, and what an attacker could do with it. You will get a first
 response within 48 hours.
 
+### What happens next
+
+The timeline is Google Project Zero's, because it is the one the industry already
+recognises and there is no reason to invent another.
+
+A report is **urgent** when there is a credible way to exploit it today *and* the
+damage would be material. Both, not either. Something anybody can trigger that
+only wastes a few seconds of CPU is not urgent; something serious that nothing
+can reach is not urgent either.
+
+| | fixed within | advisory published |
+|---|---|---|
+| **urgent** | 7 days | 30 days after the fix, and never later than day 60 |
+| **everything else** | 90 days | 30 days after the fix, and never later than day 120 |
+
+**The 30 days between the fix and the advisory is for you.** It is there so an
+operator can upgrade before the details are public. heliograph runs in estates
+with slow change control, and publishing the day a patch exists would expose
+exactly the people the patch was for.
+
+If something is still unfixed when its deadline arrives, a **defensive notice**
+goes out anyway: affected versions, what it lets an attacker do, how to spot it
+and how to mitigate it, without a working exploit. You should not have to wait on
+a fix to find out you are exposed.
+
+**These are commitments rather than aspirations.** If one is missed, the advisory
+says so and says why. A deadline that gets quietly extended is worth nothing.
+
+### Findings get published
+
+Every confirmed finding is published once its fix has shipped, **in full rather
+than summarised**: affected versions, what it allowed, and the reasoning about
+why the old design was the wrong shape. That last part is usually the only part
+worth reading.
+
+This is deliberate and it is not comfortable. heliograph's whole proposition is
+that you can read it before you run it. A project making that claim while keeping
+a private list of the times its code was wrong is not really making it.
+
+What comes out: anything identifying somebody's estate, credentials, raw logs and
+live topology. **Where something is removed, the advisory names the category**,
+so you can tell a redaction from an argument that was never made.
+
+### If you run your own
+
+**You are not behind anybody in the queue.** Nobody gets earlier warning of a
+product vulnerability by paying for something. Charging for privileged protection
+against a flaw in code published to everybody would be the wrong way round.
+
+There is no way to reach somebody who pulled a container anonymously, and
+pretending otherwise would be a promise nobody could keep. So two things help:
+
+- **watch releases on this repository.** Advisories are published as GitHub
+  Security Advisories
+- **write down the version or image digest you deployed.** Advisories name
+  affected versions exactly, which only helps if you know what you are running
+
+Fixes land on the current release. An older deployment may need an upgrade rather
+than a patch, and the advisory will say which.
+
+### Dependencies
+
+Whether the flawed code can actually be reached decides what happens, not whether
+the package shows up in a manifest.
+
+- **reachable in a shipped path:** treated as a heliograph vulnerability, with an
+  advisory stating the real exposure
+- **a new flaw found upstream:** reported to that maintainer within one working
+  day. Coordinating with them does not extend the deadlines above
+- **present but demonstrably unreachable:** updated in the next release and noted
+  there, without an advisory implying you are at risk when you are not
+
+Linking to somebody else's CVE and saying nothing more is not much use, because
+the question you have is whether *this* is exploitable.
+
 ## What this skill does
 
 Heliograph debugs a machine you cannot log into, through an operator who cannot

@@ -184,7 +184,7 @@ that agree with each other and with nothing else.
 
 ```bash
 TRANSPORT=relay
-RELAY_URL=https://relay.heliograph.dbhq.uk
+RELAY_URL=https://heliograph-relay.dbhq.uk
 RELAY_ESTATE=payments
 RELAY_STATION=sql01
 RELAY_TOKEN=<the station-scoped token>
