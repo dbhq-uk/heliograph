@@ -795,6 +795,16 @@ func cmdStatus(args []string) error {
 	printIf("finished:", s.Finished)
 	printIf("exit:    ", s.Exit)
 	printIf("log:     ", s.Log)
+	// WHO ASKED, when the station could establish it. An archive that can only
+	// say the estate asked cannot answer the first question anybody puts to it.
+	printIf("by:      ", s.By)
+	// WHO MAY COMMAND THIS STATION. Printed here rather than only in `doctor`
+	// because this is the command people actually run, and a trusted set nobody
+	// looks at is an audit nobody performs.
+	if s.Trust != "" {
+		fmt.Printf("trust:    %s (serial %s)\n", short12(s.Trust), orDash(s.TrustSerial))
+		printIf("members: ", s.TrustMembers)
+	}
 	if s.Refused() {
 		// A refusal names a flag somebody has to pass. Saying so here saves
 		// the round trip that would otherwise be spent looking for a broken

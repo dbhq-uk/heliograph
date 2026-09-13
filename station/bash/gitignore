@@ -126,6 +126,9 @@ Thumbs.db
 # survives a restart. Local: a line deleted from a shared copy would let the
 # request it named be replayed.
 .station-seen-ids
+# The digest of the trusted set this station last published, so a set changed
+# at the machine is announced once on the next start rather than on every one.
+.station-trust-published
 # =============================================================================
 #  END SHARED BLOCK
 # =============================================================================

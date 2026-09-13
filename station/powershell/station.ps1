@@ -959,6 +959,36 @@ if ($script:TrustSet) {
     Write-Say "trusted set: serial $($script:TrustSet.Serial), $(Get-TrustMembersLine $script:TrustSet)"
     Write-Say "  the anchor changes only here, on this machine"
     Publish-TrustSet
+    # PUBLISHED AT STARTUP WHEN IT HAS CHANGED, and only then. station.sh does
+    # the identical thing at the identical point.
+    #
+    # A change that ARRIVED as a request publishes its own outcome. One made
+    # HERE does not, and that is the recovery path: the estate owner rotates the
+    # anchor at the machine precisely when the keys that could have sent a
+    # request are the problem. With nothing published, `heliograph doctor` would
+    # go on reporting a match against a digest from before the rotation.
+    #
+    # ONLY WHEN IT HAS CHANGED, because publishing on every start would
+    # overwrite the last run's exit and log with a `starting` that carries
+    # neither, and a station restarts for ordinary reasons.
+    $trustPublishedFile = Join-Path $RepoRoot '.station-trust-published'
+    $nowDigest = Get-TrustSetDigest $script:TrustSet
+    $lastDigest = ''
+    if (Test-Path -LiteralPath $trustPublishedFile -PathType Leaf) {
+        try { $lastDigest = ([System.IO.File]::ReadAllText($trustPublishedFile)).Trim() } catch { $lastDigest = '' }
+    }
+    if ($nowDigest -cne $lastDigest) {
+        $lastIdAtStart = ''
+        if (Test-Path -LiteralPath $StateFile -PathType Leaf) {
+            try { $lastIdAtStart = ([System.IO.File]::ReadAllText($StateFile)).Trim() } catch { $lastIdAtStart = '' }
+        }
+        if ($lastDigest) { Write-Say 'the trusted set changed while this station was down - publishing it' }
+        Publish-Status -State 'starting' -Id $lastIdAtStart -Step ''
+        try {
+            $utf8 = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($trustPublishedFile, $nowDigest + "`n", $utf8)
+        } catch { }
+    }
 } else {
     Write-Say 'trusted set: none configured - this station accepts whatever its transport verifies'
 }

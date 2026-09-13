@@ -585,10 +585,35 @@ if [ "$REQUIRE_PIN" = "1" ]; then
   fi
 fi
 say "request 'stop: yes' or Ctrl-C to finish, 'cancel: yes' to kill a running step"
+# Read before the trusted-set publish below, which names it so that a `starting`
+# status does not claim the station has handled nothing.
+LAST_ID_AT_START="$(cat "$STATE_FILE" 2>/dev/null || echo)"
 if [ -n "$TRUST_SET" ]; then
   say "trusted set: $(trust_line)"
   say "  the anchor changes only here: ./heliograph-seal trust anchor --set $TRUST_SET --anchor <key>"
   publish_trusted_set
+  # PUBLISHED AT STARTUP WHEN IT HAS CHANGED, and only then.
+  #
+  # The set otherwise reaches the far side on the next TRANSITION, which is fine
+  # for a change that arrived as a request - the station publishes the outcome
+  # anyway. It is not fine for one made HERE, with `trust anchor`, because that
+  # is the recovery path: the estate owner rotates the anchor at the machine
+  # precisely when the keys that could have sent a request are the problem. With
+  # nothing published, `heliograph doctor` would go on reporting a match against
+  # a digest from before the rotation - the alarm silent in the direction that
+  # reassures.
+  #
+  # ONLY WHEN IT HAS CHANGED, because publishing on every start would overwrite
+  # the last run's `exit:` and `log:` with a `starting` that carries neither, and
+  # a station restarts for ordinary reasons.
+  TRUST_PUBLISHED=".station-trust-published"
+  _tp_now="$(trust_field digest)"
+  _tp_last="$(cat "$TRUST_PUBLISHED" 2>/dev/null || echo)"
+  if [ -n "$_tp_now" ] && [ "$_tp_now" != "$_tp_last" ]; then
+    [ -n "$_tp_last" ] && say "the trusted set changed while this station was down - publishing it"
+    publish_status "starting" "$LAST_ID_AT_START" ""
+    printf '%s\n' "$_tp_now" > "$TRUST_PUBLISHED" 2>/dev/null || true
+  fi
 else
   say "trusted set: none configured - this station accepts whatever its transport verifies"
 fi
