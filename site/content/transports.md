@@ -446,13 +446,18 @@ encrypt-then-MAC and key agreement across openssl version differences, which is
 where crypto bugs live and where they are silent. `heliograph-seal` does the
 sealing and no networking at all. Every other transport stays pure bash.
 
-Run your own, or use the hosted one:
+Run your own:
 
 ```bash
 docker run -p 8080:8080 \
   -e HELIOGRAPH_RELAY_ESTATES="payments:$CTL:$STN" \
   ghcr.io/dbhq-uk/heliograph-relay:latest
 ```
+
+Or use the one DBHQ hosts at `heliograph-relay.dbhq.uk`. It is free, it has no
+sign-up page, and an estate on it is issued by hand:
+[how to ask, what the limits are, and what happens if it
+changes](/relay#the-hosted-relay-and-how-to-ask-for-a-token).
 
 ## Object store
 
