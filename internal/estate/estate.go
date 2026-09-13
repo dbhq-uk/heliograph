@@ -98,6 +98,17 @@ func StateDir() (string, error) {
 	return dir, os.MkdirAll(dir, 0o700)
 }
 
+// ConfigHome is the one directory everything heliograph keeps on this machine
+// lives under, exported so that a second package does not have to re-implement
+// the XDG rule.
+//
+// ONE IMPLEMENTATION, because two readers of one location is a location that
+// drifts: a credential written where a later build does not look is a sign-in
+// that silently stopped working. This repository has paid for that shape once
+// already, with `.station-env` read by a bash validator and a PowerShell one
+// that classified the same file differently.
+func ConfigHome() (string, error) { return heliographDir() }
+
 func heliographDir() (string, error) {
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
