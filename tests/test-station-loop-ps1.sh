@@ -212,6 +212,12 @@ assert_contains "  and the published reason names the flag that would allow it" 
 assert_eq "  and the step did NOT run" "no" \
   "$([ -e "$WORK/gate3-ran" ] && echo yes || echo no)"
 assert_eq "  and nothing was delivered" "0" "$(delivered_names | grep -c .)"
+# THE MODE THE STATION PUBLISHES MUST AGREE WITH THE GATE THAT JUST FIRED.
+# `actions:` is what a fleet view reads to answer "can this station make
+# changes", and the answer is worthless unless it is the same fact the gate
+# enforces. Two sources for one property is how a column starts lying.
+assert_eq "  and the station published its action mode as refused" \
+  "refused" "$(published actions)"
 
 # A REFUSAL RECORDS THE ID, so the same request is not re-refused on every poll.
 # Without that the station republishes a refusal every few seconds for ever,
@@ -236,6 +242,10 @@ assert_eq "gate 3: the same action RUNS when the station was started with --allo
   "idle" "$(published state)"
 assert_eq "  and the step really executed" "yes" \
   "$([ -e "$WORK/gate3-ran" ] && echo yes || echo no)"
+# The other half, from the SAME payload, so the two values cannot both be a
+# constant that happens to read correctly in one case.
+assert_eq "  and the station published its action mode as allowed" \
+  "allowed" "$(published actions)"
 
 # =============================================================================
 #  2b. A refusal is published ONCE, not on every poll

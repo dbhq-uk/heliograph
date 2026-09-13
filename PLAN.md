@@ -313,6 +313,43 @@ bundle and object store need nothing compiled, the PowerShell station needs
 nothing compiled even for the relay, and an estate that permits no binary loses
 two shapes rather than the tool.
 
+| - | **a station publishes whether it will run an action** (heliograph-io/heliograph-cloud#27) - `wire.Status` gains `actions:`, `allowed` or `refused`, written by all five status writers across the three shipped loops and read by `heliograph status` and `heliograph_status`. Before it, `read-only` versus `action` was `--allow-actions` and nothing else: a flag read once at startup, on no request and in no document, so anything wanting the answer had to infer it from log history - which is wrong in both directions, because a station restarted without the flag still has its old action logs and one started with it may never have been asked. **Three answers, not two.** A station that publishes nothing is not read-only, it is a station planted before the field, and the CLI says `not reported` rather than choosing a side. See below for what it found |
+
+### What the action mode found
+
+**The field is easy; the third answer is the whole job.** `ActionsRefused`
+written the obvious way, as `!ActionsAllowed()`, passes a test over both
+published values and reports every station in the field today - all of them, on
+every estate - as read-only. That is not a cosmetic default. It is the column
+somebody reads to decide whether an estate is safe to point at, and the answer
+would be manufactured by this side rather than reported by the station. So
+there are two predicates and neither fires on silence, `ActionsReported` says
+which silence it is, and the CLI prints four different sentences with no shared
+default arm. It is the argument `Undelivered` already makes in the same file,
+about not collapsing three cases into two, and it had to be made again from
+scratch.
+
+**The trusted set reached the same conclusion independently, hours apart.**
+`Trust`, `TrustSerial` and `TrustMembers` landed in this struct from #114 with
+"an empty value means *not published*, never *empty set*" written above them.
+Two people writing two unrelated fields both arrived at "absent is a third
+state, and the safe-looking default is a lie". That is worth saying out loud,
+because the next field added here will face it too.
+
+**Rewording an MCP tool description costs a human.** Adding the field to
+`heliograph_status`'s description failed `TestGlamaSnapshotMatchesTheTools`:
+Glama scores the tool definitions and publishes that score against a release
+version, and there is no API to make a release. So the description was reverted
+and the field explains itself in the returned text, which is where a model
+reads it. Worth knowing before planning any change to a tool's wording.
+
+**It found the progress defect that #116 then fixed.** The field was added to
+`publish_progress` and could not be proved from a Linux round trip, because
+that writer never fired: `ops-logs/"${STEP}"-*.txt` against a step sent by
+path. Filed as heliograph-io/heliograph-cloud#88, fixed separately by `step_log`
+so the fix could merge on its own, and the assertion here is a real round trip
+again on the rebase rather than a source read.
+
 ### What the blocked port found
 
 **A fixture can be hostile and still prove nothing.** The check that the host

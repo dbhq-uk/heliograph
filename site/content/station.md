@@ -49,19 +49,36 @@ Windows PowerShell 5.1, which is in-box on Server 2016 and later. Then whatever
 the transport needs: `git` for the git transport, `curl` for blob and relay,
 nothing at all for a file share.
 
-That is the whole list, and it is the entire proposition - on a locked-down box,
-installing anything is its own change request. **Nothing is ever installed on
-the far side.**
+That is the whole list, and it is close to the entire proposition - on a
+locked-down box, installing anything is its own change request.
 
-CI enforces it. No Go, no binary and no package may appear under `station/`.
-The only Go permitted is `station/embed.go`, which lets the CLI carry the
-payload, and its test - neither ships anywhere.
+**Which compiled things a station may need is a written policy, not a habit.**
+[`station/FAR-SIDE-BINARIES`](https://github.com/dbhq-uk/heliograph/blob/main/station/FAR-SIDE-BINARIES)
+is the list, CI reads that file, and a program under `cmd/` referenced anywhere
+under `station/` and absent from the list fails the build. No Go source may
+appear under `station/` either; the only Go permitted there is
+`station/embed.go`, which lets the CLI carry the payload, and its test -
+neither ships anywhere.
 
-There is exactly one exception, argued for explicitly rather than smuggled in:
-the **bash** relay transport needs `heliograph-seal`, because its construction
-is X25519, HKDF-SHA256, ChaCha20-Poly1305 and Ed25519, and hand-assembling
-those in shell across openssl versions is where crypto bugs live and where they
-are silent. Every other bash transport is pure text.
+The list has one entry and is meant to stay that way. The **bash** relay
+transport needs `heliograph-seal`, because its construction is X25519,
+HKDF-SHA256, ChaCha20-Poly1305 and Ed25519, and hand-assembling those in shell
+across openssl versions is where crypto bugs live and where they are silent.
+The trusted set needed Ed25519 verification on the far side too and reused the
+same binary rather than adding a second, which is the rule the list states:
+what matters to an estate is how many binaries it has to accept, not how many
+features wanted one.
+
+**Nothing else is compiled.** Git, a file share, a bundle and an object store
+need no binary anywhere on the far side, on either station. An estate that
+forbids compiled code entirely loses the relay on a bash station, and the beam
+when it lands - two shapes, not the tool.
+
+Listing a binary costs something and the list says so: "read it before you run
+it" stops working, and is replaced by "verify the binary matches the source you
+read". That is only true because `packaging/reproduce.sh` builds it, the
+checksum is published, and the station refuses a seal whose hash does not
+match.
 
 **The PowerShell relay needs no binary at all**, and that is the better answer
 rather than a lucky one. An estate that will not let you install a native
@@ -70,7 +87,7 @@ binary is precisely the estate this payload exists for, so the seal ships as
 startup: X25519, Ed25519 and Poly1305 from a vendored Chaos.NaCl - djb's ref10,
 MIT - with ChaCha20, the RFC 8439 framing and HKDF written beside them. Still
 plain text an operator can read before running it, which is the property the
-no-binary rule is actually protecting.
+list exists to protect.
 
 `Add-Type` needs FullLanguage, so Constrained Language Mode rules the relay
 out. That costs nothing extra: CLM already stops the whole station, because the
@@ -143,6 +160,40 @@ reason and stop meaning anything.
 `undelivered` matters more than it looks. Without it, "the log exists and
 cannot be shipped" and "the step is still running" are the same silence from
 your side, and only one of them is worth waiting on.
+
+## The action mode it publishes
+
+Every status also carries `actions:`, which is `allowed` or `refused`. It is
+not about the run. It says what this station will permit for the whole life of
+the process, and it is settled by `--allow-actions` at startup:
+
+| | |
+|---|---|
+| `actions: allowed` | started with `--allow-actions`. A step declaring `action` runs, still needing `CONFIRM=yes` on the request |
+| `actions: refused` | the default. A step declaring `action` is refused, and the refusal names the flag |
+
+It is published because the alternative is to infer it, and inference is wrong
+in both directions. A station restarted without the flag still has action logs
+sitting in the transport repo, and a station started with the flag may never
+have been asked for one. Anything showing a column of stations - `heliograph
+status`, a fleet view, a dashboard of your own - reads this field and never
+guesses from history.
+
+**A station that publishes no `actions:` line is not read-only.** It is a
+station planted before the field existed, and there is no way to ask it from
+your side. `heliograph status` says `not reported` for that case, which is a
+third answer and not a polite way of saying refused. Treating silence as
+read-only would tell somebody an estate is safe on the strength of a station
+that never said so.
+
+`actions:` and `trust:` answer different questions and neither substitutes for
+the other. The trusted set says **who may ask**; the action mode says **what
+this station will do when asked**. They do not interact: a request signed by a
+key in the trusted set still gets no action out of a station started without
+`--allow-actions`, and the refusal is published exactly as it would be for an
+unsigned one. A station can be wide open to actions and verify every signature,
+or trust nobody and still be started with the flag, so a fleet view needs both
+columns.
 
 ## Two properties everything else rests on
 

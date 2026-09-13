@@ -171,6 +171,19 @@ if [ -n "$FIRST_PROGRESS_COMMIT" ]; then
   assert_contains "the snapshot names the log by run.sh's label, not by the step's path" \
     "log:      ops-logs/slow-" "$PROGRESS_DOC"
   assert_contains "  and the state it publishes is running" "state:    running" "$PROGRESS_DOC"
+  # THE ACTION MODE, IN THE SNAPSHOT AND NOT ONLY IN THE TRANSITIONS.
+  #
+  # `actions:` is a property of the station's whole lifetime, so it has to be in
+  # every status document a reader might land on - and mid-run is precisely when
+  # somebody looks. A field present on transitions and missing here would empty
+  # a fleet view's column for exactly the duration of a long step, which reads
+  # as "this station is old" rather than as a defect.
+  #
+  # It is asserted HERE rather than only against a transition because this is
+  # the writer that could not be reached at all until the glob was fixed: the
+  # field was added to publish_progress and no round trip could prove it.
+  assert_contains "  and the snapshot carries the station's action mode" \
+    "actions:  refused" "$PROGRESS_DOC"
   # THE PARTIAL LOG ITSELF, not just a count. A line saying "12 lines" with no
   # log beside it is a number nobody can act on, and tp_put_progress commits the
   # file alongside the document precisely so it can be read.
