@@ -313,7 +313,7 @@ bundle and object store need nothing compiled, the PowerShell station needs
 nothing compiled even for the relay, and an estate that permits no binary loses
 two shapes rather than the tool.
 
-| - | **a station publishes whether it will run an action** (heliograph-io/heliograph-cloud#27) - `wire.Status` gains `actions:`, `allowed` or `refused`, written by all five status writers across the three shipped loops and read by `heliograph status` and `heliograph_status`. Before it, `read-only` versus `action` was `--allow-actions` and nothing else: a flag read once at startup, on no request and in no document, so anything wanting the answer had to infer it from log history - which is wrong in both directions, because a station restarted without the flag still has its old action logs and one started with it may never have been asked. **Three answers, not two.** A station that publishes nothing is not read-only, it is a station planted before the field, and the CLI says `not reported` rather than choosing a side. See below for what it found |
+| #112 | **a station publishes whether it will run an action** (heliograph-io/heliograph-cloud#27) - `wire.Status` gains `actions:`, `allowed` or `refused`, written by all five status writers across the three shipped loops and read by `heliograph status` and `heliograph_status`. Before it, `read-only` versus `action` was `--allow-actions` and nothing else: a flag read once at startup, on no request and in no document, so anything wanting the answer had to infer it from log history - which is wrong in both directions, because a station restarted without the flag still has its old action logs and one started with it may never have been asked. **Three answers, not two.** A station that publishes nothing is not read-only, it is a station planted before the field, and the CLI says `not reported` rather than choosing a side. See below for what it found |
 
 ### What the action mode found
 
@@ -349,6 +349,25 @@ that writer never fired: `ops-logs/"${STEP}"-*.txt` against a step sent by
 path. Filed as heliograph-io/heliograph-cloud#88, fixed separately by `step_log`
 so the fix could merge on its own, and the assertion here is a real round trip
 again on the rebase rather than a source read.
+
+**Where the guards are, because there are five writers and no single test
+covers them all.** `station.sh`'s transition writer is round-tripped by
+`TestARealStationPublishesItsActionMode`, its progress writer by
+`tests/test-station-progress.sh`, and both `station.ps1` writers by
+`tests/test-station-loop-ps1.sh` on Windows. `pigeonhole.sh` needs an Azure
+account and nothing round-trips it.
+`TestEveryStatusWriterInEveryStationPublishesTheActionMode` reads source to
+cover that one and to catch a SIXTH writer added later that nobody thinks to
+round-trip; it asserts the count, so a regex that stops matching fails loudly
+rather than passing vacuously.
+
+**`actions:` and `trust:` are orthogonal and a fleet view needs both columns.**
+The trusted set says who may ask; the action mode says what the station will do
+when asked. Gate 3 is untouched by trust at `station/bash/station.sh:887`, so a
+request signed by a key in the set still gets no action out of a station
+started without `--allow-actions`. Both are published in the same document and
+`/station` says so, because a reader meeting both will otherwise assume one
+implies the other.
 
 ### What the blocked port found
 
