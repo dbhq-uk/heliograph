@@ -767,9 +767,10 @@ cat > "$FAKE/badseal" <<'EOS'
 exit 0
 EOS
 chmod +x "$FAKE/badseal"
+BADSEAL_SHA="$(sha256sum "$FAKE/badseal" | cut -d' ' -f1)"
 RC=0
 OUT="$( cd "$TMP/relaystation" && relay_env \
-        && export RELAY_SEAL="$FAKE/badseal" RELAY_SEAL_SHA256="$(sha256sum "$FAKE/badseal" | cut -d' ' -f1)" \
+        && export RELAY_SEAL="$FAKE/badseal" RELAY_SEAL_SHA256="$BADSEAL_SHA" \
         && ./start.sh --check 2>&1 )" || RC=$?
 assert_contains "a key that will not parse names the station's own key file" \
   "FAIL  identity" "$OUT"
