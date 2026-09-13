@@ -37,11 +37,43 @@ type Request struct {
 	Cancel  string // "yes" kills whatever is running; an id kills only that run
 	Stop    string // "yes" ends the loop cleanly after the current run
 	Note    string // free text for the next human. The station ignores it
+
+	// THE SIGNED SCOPE, and every one of these exists because a signature over
+	// "run this" turned out not to be enough.
+	//
+	//	Mode     the request says what it expects the step to be. A step file
+	//	         edited from read-only to action between authoring and running
+	//	         would otherwise carry the earlier decision's authority
+	//	Target   the station this was written for, so a request captured from
+	//	         one estate cannot be replayed at another. The relay binds this
+	//	         in its envelope too; every other transport had nothing
+	//	Expires  a captured request stops being valid. Without it, one taken
+	//	         from a transport repo is good for ever
+	//
+	// All three are inside the document, so on the relay they are inside the
+	// signature already: sign-then-encrypt covers the plaintext. Enforcing them
+	// is what turns that into scope.
+	Mode    string // read-only | action, as the author expects to find it
+	Target  string // the station's scope: branch, station name, lane
+	Expires string // RFC3339 UTC, after which the station refuses it
+
+	// Trust carries a trusted-set change, verbatim.
+	//
+	// IT RIDES IN THE REQUEST because every transport already carries one, and a
+	// second fetch verb would have to be implemented on all six. On the relay it
+	// would be worse than awkward: collection deletes, so asking twice eats the
+	// queue.
+	//
+	// wire does not parse it. The lines are `trust-*` keys, they are passed
+	// through untouched, and internal/trust is the only thing that reads them -
+	// so the document format and the trust schema can move independently, and
+	// wire has no reason to import a package about authority.
+	Trust []byte
 }
 
 // order fixes the sequence keys are written in. Stable output means a diff
 // between two requests shows what changed rather than everything moving.
-var order = []string{"version", "id", "step", "env", "cancel", "stop", "note"}
+var order = []string{"version", "id", "step", "mode", "target", "expires", "env", "cancel", "stop", "note"}
 
 func (r Request) field(k string) string {
 	switch k {
@@ -54,6 +86,12 @@ func (r Request) field(k string) string {
 		return r.ID
 	case "step":
 		return r.Step
+	case "mode":
+		return r.Mode
+	case "target":
+		return r.Target
+	case "expires":
+		return r.Expires
 	case "env":
 		return r.Env
 	case "cancel":
@@ -82,6 +120,34 @@ func (r Request) Validate() error {
 	if r.ID == "" {
 		return fmt.Errorf("wire: a request needs an id, which is the only thing that triggers a run")
 	}
+	switch r.Mode {
+	case "", "read-only", "action":
+	default:
+		return fmt.Errorf("wire: mode %q is neither read-only nor action, and a station would refuse it on a machine nobody can reach", r.Mode)
+	}
+	if r.Expires != "" {
+		if _, err := time.Parse(time.RFC3339, r.Expires); err != nil {
+			return fmt.Errorf("wire: expires %q is not an RFC3339 UTC time, and a station that cannot parse it refuses the request", r.Expires)
+		}
+	}
+	// A CHANGE IS ONE SIGNED ACT AND IT TRAVELS ALONE.
+	//
+	// The station reads `trust-op` with `sed -n` and takes the FIRST match, so a
+	// document carrying two changes would silently apply one. And a request that
+	// both alters authority and runs a step is one whose audit line cannot say
+	// which of the two the author meant to be the point.
+	if len(r.Trust) > 0 && r.Step != "" {
+		return fmt.Errorf("wire: a request carries a trusted-set change or a step, not both: the change is the act, and a step alongside it has no audit line of its own")
+	}
+	for _, line := range bytes.Split(r.Trust, []byte("\n")) {
+		k, _, ok := splitField(string(line))
+		if !ok || len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		if !strings.HasPrefix(k, "trust-") {
+			return fmt.Errorf("wire: %q is in the trust block and is not a trust- key: it would forge a request field", k)
+		}
+	}
 	return nil
 }
 
@@ -99,6 +165,14 @@ func (r Request) Marshal() []byte {
 			fmt.Fprintf(&b, "%s:\n", k)
 		}
 	}
+	// Verbatim, and LAST. The station's `field` helper takes the first match of
+	// a key, so appending cannot shadow one of the keys above.
+	if len(r.Trust) > 0 {
+		b.Write(r.Trust)
+		if r.Trust[len(r.Trust)-1] != '\n' {
+			b.WriteByte('\n')
+		}
+	}
 	return b.Bytes()
 }
 
@@ -110,6 +184,7 @@ func (r Request) Marshal() []byte {
 // on exactly the machine nobody can reach to upgrade.
 func ParseRequest(b []byte) (Request, error) {
 	var r Request
+	var trust []byte
 	s := bufio.NewScanner(bytes.NewReader(b))
 	s.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for s.Scan() {
@@ -132,8 +207,21 @@ func ParseRequest(b []byte) (Request, error) {
 			r.Stop = v
 		case "note":
 			r.Note = v
+		case "mode":
+			r.Mode = v
+		case "target":
+			r.Target = v
+		case "expires":
+			r.Expires = v
+		default:
+			// Collected rather than parsed. See Request.Trust.
+			if strings.HasPrefix(k, "trust-") {
+				trust = append(trust, s.Text()...)
+				trust = append(trust, '\n')
+			}
 		}
 	}
+	r.Trust = trust
 	return r, s.Err()
 }
 
