@@ -189,6 +189,23 @@ that is not progress.
 | - | **the build is reproducible, and the far-side binary rule is now a policy instead of an exception** - `packaging/reproduce.sh` builds every released artefact and the release workflow calls that same file, so the command a stranger is given and the command that made the artefact are one thing. Two builds of the same source, at different paths, one with no `.git`, produce identical `SHA256SUMS`. `AGENTS.md`'s absolute "never a binary on the far side" is replaced by a per-transport policy with `station/FAR-SIDE-BINARIES` as the enforced list, because `heliograph-seal` had already escaped the letter of the old rule and the CI message still said the far side never gets a binary |
 
 ### What reproducible builds found
+**The relay half landed at the same time**, in
+[dbhq-uk/heliograph-relay#14](https://github.com/dbhq-uk/heliograph-relay/pull/14):
+`edge/reproduce.sh` builds the Worker bundle and prints its hash, the deploy
+workflow runs that same script to compute the number it stamps in, and
+`GET /health` reports the version serving and the hash of what is serving in
+both implementations. The Go relay hashes its own executable at startup, so its
+answer is what is running rather than what it was told - measured
+`319f7aae334326a25f593392d895299903c324e30e4ccb38698c7f4278826c20` on disk and
+the same string from the endpoint. A Worker cannot read its own code, so its
+hash arrives from the deploy log, and the README says so rather than glossing
+it.
+
+**Nothing is signed.** The signing step exists in `release.yml` and no tag has
+been through it, so no release carries a signature and nothing claims one does.
+The claim "the code in the path is provably the code you can read" is therefore
+still unpublished, deliberately.
+
 
 **The build was not reproducible, and nothing said so.** Measured on
 2026-09-12 before anything was changed: the same commit built in the git
