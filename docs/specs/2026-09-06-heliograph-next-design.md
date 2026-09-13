@@ -323,7 +323,7 @@ No Go in `heliograph-skill`. No station-side dependency introduced here that the
 
 ## Domain
 
-`heliograph.dbhq.uk`. `heliograph.sh` was available and is the stronger standalone brand, but the subdomain is free, inherits dbhq.uk's authority, and correctly reads as a DBHQ project. Registering `heliograph.sh` later as the primary, with the subdomain redirecting, remains open.
+`heliograph.dbhq.uk`. The subdomain is free, inherits dbhq.uk's authority, and correctly reads as a DBHQ project.
 
 ```
 heliograph.dbhq.uk             marketing home
@@ -334,7 +334,9 @@ relay.heliograph.dbhq.uk       the hosted relay endpoint
 
 > **Not what shipped.** The relay deployed at `heliograph-relay.dbhq.uk`, because a four-label host under `dbhq.uk` needs an advanced certificate pack and those need a paid add-on - the whole lesson is in `edge/wrangler.toml`. `relay.heliograph.dbhq.uk` has never resolved. Left here rather than edited, because the name this document planned for is why the deployed one looks the way it does.
 
-`heliograph.com` is registered and significant, and the product name is an ordinary English word, so plan to rank for "heliograph agent", "heliograph skill" and "heliograph remote debugging" rather than for the word itself.
+> **Two sentences left this section on 2026-09-13, and this note is here rather than a silent edit.** One named a domain this project might register later; the other assessed who holds the exact-match `.com` and named three keywords to rank for. Both are go-to-market work of the same kind as the keyword research that left this repository on 2026-09-12 (heliograph-io/heliograph-cloud#76), and they are recorded verbatim in heliograph-io/heliograph-cloud#209 so neither is in neither place. The domain sentence was also stale: the position moved to `heliograph.io` after this document was written.
+>
+> What stays is what a reader needs to understand why the shipped hostnames look as they do - the subdomain rationale above, the block below it, and the certificate-pack note, which is cost reasoning behind an engineering constraint rather than a commercial position.
 
 ## The roadmap
 
