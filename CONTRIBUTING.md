@@ -74,7 +74,15 @@ one is not, because redaction fails quietly.
 **A far-side dependency.** Bash, git and GNU coreutils. A machine in a locked-down
 environment often has no package manager you can use, no network route to a
 registry, and no appetite for a change request. Anything that needs installing
-cannot run where this is meant to run.
+does not run where this is meant to run.
+
+The one narrow exception is a compiled binary for a single transport, and it is
+not a judgement call either: it has to be named in
+[`station/FAR-SIDE-BINARIES`](station/FAR-SIDE-BINARIES), argued for in a spec,
+built by `packaging/reproduce.sh` so anybody can rebuild the bytes and check
+them against the published checksum, and verified by hash on the station before
+it runs. `heliograph-seal`, for the relay, is the only one today. A third-party
+binary is not in scope for that exception at all.
 
 ## Licence
 

@@ -79,15 +79,23 @@
 # and this repository's own container suite builds with podman as well as
 # docker. `debian:bookworm-slim` below resolves on this host through an alias
 # and is left alone; a new line has no such history to rely on.
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-alpine AS seal
+#
+# PINNED TO THE PATCH, and here it is load-bearing rather than tidy. A station
+# verifies this binary against RELAY_SEAL_SHA256, which the operator takes from
+# the release's SHA256SUMS. A floating `1.27` tag builds a seal that is correct,
+# works, and does not match the published checksum - so the operator is told
+# their binary has been tampered with. With the pin, and with the same flags
+# packaging/reproduce.sh uses, the seal in this image is the released one.
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.1-alpine AS seal
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/heliograph-seal ./cmd/heliograph-seal
 COPY internal ./internal
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOARCH="${TARGETARCH:-amd64}" go build -trimpath \
-      -ldflags "-s -w" -o /heliograph-seal ./cmd/heliograph-seal
+RUN CGO_ENABLED=0 GOARCH="${TARGETARCH:-amd64}" GOAMD64=v1 go build \
+      -trimpath -buildvcs=false -ldflags "-s -w" \
+      -o /heliograph-seal ./cmd/heliograph-seal
 
 FROM debian:bookworm-slim
 

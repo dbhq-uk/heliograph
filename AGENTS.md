@@ -19,19 +19,92 @@ generalised, packaged as a skill, then grew the CLI. The skill repository
 `docs/specs/2026-09-08-station-and-skill-merge.md`. Every rule in here was
 paid for by an investigation that went wrong first.
 
-## The boundary that must not be crossed
+## The boundary, and what it costs to cross it
 
-Everything under `station/bash/` (and, when it exists, `station/powershell/`)
-runs on the far side, on a locked-down box where installing anything is its
-own change request. **Never add Go, a binary dependency, an interpreter or a
-package requirement under `station/bash/`.** The one Go file permitted under
-`station/` is `station/embed.go`, which never ships to the far side, and CI
-enforces exactly that.
+Everything under `station/bash/` and `station/powershell/` runs on the far
+side, on a locked-down box where installing anything is its own change
+request. The payload is planted **as source** and read before it is run, and
+that property is what gets heliograph through the door.
 
-The one binary exception on the far side of the trust argument is
-`heliograph-seal`, the crypto helper for the relay transport, argued for
-explicitly in the relay spec. Every other transport stays pure bash on the
-station side.
+**Still absolute: never add Go, an interpreter or a package requirement under
+`station/`.** The only Go files permitted there are `station/embed.go` and
+`station/embed_test.go`, neither of which is under `bash/` or `powershell/`,
+so neither ever ships. CI enforces exactly that.
+
+**Compiled binaries on the far side are opt-in, per feature, and written
+down.** Today the list has exactly one entry and the default is no binary at
+all: `heliograph-seal`, which the relay transport installs on a bash station.
+The beam is designed to want its own component. The list is
+[`station/FAR-SIDE-BINARIES`](station/FAR-SIDE-BINARIES), CI fails any build
+that references a compiled program the list does not name, and the file itself
+carries the three conditions an entry has to meet.
+
+**Reuse the listed one before proposing a second.** The policy has already
+decided a case: #114 needed Ed25519 verification on the far side for a trusted
+set, which Bash 4 with git and coreutils does not do - `openssl` has no
+Ed25519 verify verb across the versions this runs on, and hand-rolling one
+would be bespoke cryptography. It reused `heliograph-seal` rather than adding
+a second binary, and recorded rejecting one as "a new thing to audit, a new
+checksum, a second argument with every change control". So the number of
+binaries an estate has to accept is one, not one per feature that needs
+signing, and a bash station on any transport may end up carrying it. The
+PowerShell station needs none even then: its seal is managed C# shipped as
+source and compiled by `Add-Type` at startup.
+
+**The price of listing one is a reproducible build**, and that phrasing is
+[#93](https://github.com/dbhq-uk/heliograph/issues/93)'s rather than this
+file's:
+
+> Open-sourcing it is **not sufficient**. The component needs **reproducible
+> builds and published checksums**, so an operator can verify the binary
+> matches the source they read. This is the price of moving off pure bash, and
+> the estates that care will ask.
+
+"Read it before you run it" stops working at a binary and is replaced by
+"verify the binary matches the source you read" - which is a claim, not a
+property, unless anybody can rebuild the exact bytes from the tag and check
+them against a published checksum. `packaging/reproduce.sh` is that build; `/provenance` on the site is
+the command. A far-side binary that is not reproducible is not permitted, and
+that ordering is deliberate: the estates that mind a binary on their machine
+are exactly the ones who will ask.
+
+**Nobody loses heliograph over this.** A beacon or a flare over git, a file
+share, a bundle or an object store needs no binary anywhere on the far side
+and is a complete product: same requests, same gates, same logs. What an
+estate that forbids compiled code gives up is the relay on a bash station, the
+beam when it lands, and any later feature that needs a signature verified on
+the far side - and even the relay has a way through on the PowerShell station.
+Two shapes, not the tool. Say so where the beam is introduced rather than
+leaving somebody to discover it during a security review.
+
+### The rule this replaced, and what it cost
+
+Until 2026-09-12 this section read:
+
+> **Never add Go, a binary dependency, an interpreter or a package requirement
+> under `station/bash/`.** The one Go file permitted under `station/` is
+> `station/embed.go`, which never ships to the far side, and CI enforces
+> exactly that.
+>
+> The one binary exception on the far side of the trust argument is
+> `heliograph-seal`, the crypto helper for the relay transport, argued for
+> explicitly in the relay spec. Every other transport stays pure bash on the
+> station side.
+
+An absolute prohibition with an exception beneath it is not a rule, and this
+one had already been escaped rather than argued: `heliograph-seal` is a
+compiled Go binary running on the far side, and it passes the letter of the
+old rule only because it is built from `cmd/` instead of existing as Go source
+under `station/`. The gate agreed. It printed "the far side never gets a
+binary dependency" while one already did.
+
+**Who paid.** The next contributor, who would have read a green check and a
+true-sounding message and added a second binary by the same two-line route,
+with nothing anywhere saying the policy had changed. And the reviewer in the
+estate, who is told the far side is readable, finds a binary, and now has to
+decide whether anything else they were told is also approximately true. The
+cost of the old wording was not that it was strict; it was that it was
+escapable, and being escapable is what made it silent.
 
 The skill (`skills/heliograph/`) drives the CLI and nothing else. Do not give
 it a second, hand-edited path around `send`, `watch` or the gates: one driver

@@ -52,7 +52,12 @@
 #  configured. That is the correct answer, not a failure: the tools exist, and
 #  there is nowhere for them to point yet.
 # =============================================================================
-FROM golang:1.27-alpine AS build
+# PINNED TO THE PATCH. `golang:1.27-alpine` floats to whatever 1.27.x is
+# current, and a Go patch release changes the bytes the compiler emits - so
+# with a floating tag the binary in this image is not the binary anybody can
+# reproduce from the tag. The pin is go.mod's `go` directive, and
+# packaging/toolchain_test.go fails the build if this line disagrees with it.
+FROM golang:1.27.1-alpine AS build
 WORKDIR /src
 # The module files first, so a change to the source does not re-resolve
 # dependencies. There are two of them and they rarely move.
@@ -64,7 +69,12 @@ COPY . .
 # `docker build .` still works.
 ARG VERSION=dev
 # CGO off: the binary has to run on a distroless image with no libc of its own.
-RUN CGO_ENABLED=0 go build -trimpath \
+#
+# -buildvcs=false for the same reason packaging/reproduce.sh uses it: Go
+# otherwise stamps the git commit into the binary, this stage has no .git in
+# its context, and `auto` omits the stamp silently - so the image binary would
+# differ from the released one for a reason nothing reports.
+RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false \
       -ldflags "-s -w -X main.version=${VERSION}" -o /heliograph ./cmd/heliograph
 
 # Distroless static: no shell, no package manager, nothing to exec into. The

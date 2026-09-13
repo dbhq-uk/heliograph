@@ -187,6 +187,64 @@ that is not progress.
 | - | **a blocked port is diagnosed as a blocked port** (#66) - the read check ended every failure on *"Check the remote URL and the credential reported above"*, so an estate that drops outbound 22 sent the operator at the two things that were fine, and `443` appeared nowhere in the repository. Both stations now classify the NETWORK before they blame the credential: a timeout, a refusal, a name that will not resolve, an untrusted CA and a proxy 407 are five different estates with five different remedies, and the message names the host's SSH endpoint on 443 where it has one. `/transports` gains the two sections that need no code at all: SSH on 443 for GitHub and GitLab, and an https remote through an inspecting proxy - `http_proxy`, `no_proxy` and `GIT_SSL_CAINFO`, and why `http.sslVerify=false` is not the answer |
 | - | **the keyword research leaves the public repository** (heliograph-io/heliograph-cloud#76) - `docs/seo/2026-09-09-keyword-research.md` was go-to-market work sitting in a public repo: volumes, difficulty scores, competitor SERPs, positioning and a spend line, with a summary stating the market-size question in public. It is now `reports/heliograph/2026-09-09-keyword-research.md` in the private `dbhq-uk/dbhq-seo`, beside the 44 raw responses it cites, which were always there. The spec and the plan that link to it are annotated at the point of change rather than rewritten. The rest of the repository was swept for strategy content and there is none: `/roadmap`'s "never" table is the boundary statement the public repo is meant to carry, and `compared.md`'s pricing line is AWS's own published pricing |
 
+| - | **the build is reproducible, and the far-side binary rule is now a policy instead of an exception** - `packaging/reproduce.sh` builds every released artefact and the release workflow calls that same file, so the command a stranger is given and the command that made the artefact are one thing. Two builds of the same source, at different paths, one with no `.git`, produce identical `SHA256SUMS`. `AGENTS.md`'s absolute "never a binary on the far side" is replaced by a per-transport policy with `station/FAR-SIDE-BINARIES` as the enforced list, because `heliograph-seal` had already escaped the letter of the old rule and the CI message still said the far side never gets a binary |
+
+### What reproducible builds found
+
+**The relay half landed at the same time**, in
+[dbhq-uk/heliograph-relay#14](https://github.com/dbhq-uk/heliograph-relay/pull/14):
+`edge/reproduce.sh` builds the Worker bundle and prints its hash, the deploy
+workflow runs that same script to compute the number it stamps in, and
+`GET /health` reports the version serving and the hash of what is serving in
+both implementations. The Go relay hashes its own executable at startup, so its
+answer is what is running rather than what it was told - measured
+`319f7aae334326a25f593392d895299903c324e30e4ccb38698c7f4278826c20` on disk and
+the same string from the endpoint. A Worker cannot read its own code, so its
+hash arrives from the deploy log, and the README says so rather than glossing
+it.
+
+**Nothing is signed.** The signing step exists in `release.yml` and no tag has
+been through it, so no release carries a signature and nothing claims one does.
+The claim "the code in the path is provably the code you can read" is therefore
+still unpublished, deliberately.
+
+
+**The build was not reproducible, and nothing said so.** Measured on
+2026-09-12 before anything was changed: the same commit built in the git
+worktree and in a tarball of that worktree gave
+`475be5207e51b5406a684aabf5335fadd676f5a3473fd7b4481f477442fccebb` and
+`7a1ac6922a41e4596cd835e0802863471d79d44882275dcfc133d5804ab8f8ac`. Go stamps
+`vcs.revision`, `vcs.time` and `vcs.modified` into every binary by default and
+omits them **silently** where there is no repository, so the one person who
+would have found out is somebody verifying a download against the published
+hash - who would reasonably conclude the release was not built from the
+source. `-buildvcs=false` in one place fixes it; `-trimpath` alone never would
+have.
+
+**`go 1.27.1` in go.mod and `go-version: '1.27'` in four workflows is not a
+pin, it is two pins that happen to agree.** With `check-latest: true` the
+runner takes the newest 1.27.x that exists on the morning the job runs, and a
+Go patch release changes the compiler, so the day 1.27.2 ships the released
+binary stops matching anything anybody can rebuild - with every check still
+green. `packaging/toolchain_test.go` now fails the build when go.mod, the
+workflows and the two Dockerfiles disagree.
+
+**A check can enforce half a rule and report PASS while the rule is broken.**
+The station purity gate refused Go source under `station/` and printed "the far
+side never gets a binary dependency". `heliograph-seal` is a Go binary that
+runs on the far side and has done for weeks; it passes because it is built from
+`cmd/` rather than living under `station/`. The gate was green, its message was
+false, and the next contributor to add a far-side binary would have taken that
+message as permission. The list is now the rule, and the message says what is
+actually checked and what is not.
+
+**"Beacon and flare need no binary" is very nearly true and worth not
+rounding off.** The relay is a beacon and its bash station does need
+`heliograph-seal`. The accurate line, and the one the docs carry: git, share,
+bundle and object store need nothing compiled, the PowerShell station needs
+nothing compiled even for the relay, and an estate that permits no binary loses
+two shapes rather than the tool.
+
 ### What the blocked port found
 
 **A fixture can be hostile and still prove nothing.** The check that the host
