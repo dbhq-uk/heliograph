@@ -135,12 +135,20 @@ func (s Set) Apply(c Change, now time.Time) (Set, error) {
 	// gets past this. Not even the anchor's own key: the anchor changes with
 	// `heliograph-seal trust anchor` on the machine, and nothing that arrives
 	// over a transport reaches that command.
+	//
+	// THE SENTENCE NAMES NO BINARY, and that was a correction. It read "changes
+	// only with `heliograph-seal trust anchor`" until the golden vectors put the
+	// two implementations side by side: the PowerShell station has no
+	// heliograph-seal and never will, because its verification is managed C#. A
+	// refusal that tells half the estate to run a command they do not have is
+	// worse than one that names none. The exact command is printed by each
+	// station's own startup banner, where it can be true.
 	if c.Name == s.Anchor.Name {
-		return s, refuse(ErrAnchor, "%q is the anchor, and it changes only with `heliograph-seal trust anchor` on the machine itself",
+		return s, refuse(ErrAnchor, "%q is the anchor, and it changes only on the machine itself, with the station's own trust anchor command",
 			c.Name)
 	}
 	if c.Subject.Equal(s.Anchor.Public) {
-		return s, refuse(ErrAnchor, "%s is the anchor's key, and it changes only with `heliograph-seal trust anchor` on the machine itself",
+		return s, refuse(ErrAnchor, "%s is the anchor's key, and it changes only on the machine itself, with the station's own trust anchor command",
 			s.Anchor.Public.Fingerprint())
 	}
 

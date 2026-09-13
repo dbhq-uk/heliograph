@@ -255,12 +255,22 @@ func (s Set) Digest() string {
 }
 
 // Fingerprints is the one-line audit view: who may command this estate.
+//
+// THIS IS THE ONLY RENDERER OF THAT LINE, and it is why `trust show` prints it
+// as a field rather than leaving the station to assemble one. It used to be
+// built three times - here, by heliograph-seal's show output, and by a sed
+// pipeline in station.sh - and the three disagreed: `revoked` here, `REVOKED`
+// there. An owner grepping their estate for REVOKED would have found it on the
+// PowerShell stations and not on the bash ones, which is the audit failing
+// silently in the direction that reassures.
+//
+// Upper case, because it is the word somebody scanning a status is looking for.
 func (s Set) Fingerprints() string {
 	var parts []string
 	for _, m := range s.Everyone() {
 		state := ""
 		if !m.Active() {
-			state = " revoked"
+			state = " REVOKED"
 		}
 		parts = append(parts, fmt.Sprintf("%s=%s%s", m.Name, m.Public.Fingerprint(), state))
 	}

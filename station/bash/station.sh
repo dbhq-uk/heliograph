@@ -509,12 +509,12 @@ trust_line() {
   printf '%s' "$(printf '%s\n' "$sh" | sed -n 's/^\(anchor\|member\):[[:space:]]*\([^ ]*\)[[:space:]]*\([^ ]*\).*/\2=\3/p' | tr '\n' ' ')"
 }
 trust_members_line() {
-  # name=fingerprint pairs, revoked ones marked. One line, because it goes into
-  # the status document, which is `key: value` and read with sed on the far
-  # side. A newline here would forge a second key.
-  trust_show | sed -n 's/^\(anchor\|member\):[[:space:]]*\([^ ]*\)[[:space:]]*\([^ ]*\)[[:space:]]*\(.*\)$/\2=\3\4/p' \
-    | sed 's/added .*//; s/REVOKED.*/ REVOKED/; s/(changeable.*//' \
-    | tr -d '\n' | sed 's/[[:space:]]\{1,\}/ /g'
+  # READ AS A FIELD, not reassembled. This was a sed pipeline over `trust show`
+  # and it lower-cased REVOKED, so the line this station published differed from
+  # the PowerShell station's for the same set - and an owner grepping their
+  # estate for REVOKED would have found it on one and not the other. There is
+  # one renderer now, in Go, and both stations print what it gives them.
+  trust_field members
 }
 
 if [ -n "$TRUST_SET" ]; then

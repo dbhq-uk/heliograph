@@ -87,3 +87,18 @@ func (p PublicIdentity) Equal(q PublicIdentity) bool {
 	}
 	return true
 }
+
+// SigningInputForTest exposes the exact bytes a detached signature covers.
+//
+// IT EXISTS FOR THE GOLDEN VECTORS AND NOTHING ELSE. The PowerShell station
+// builds these bytes again in managed code, and the failure mode of getting it
+// wrong is invisible: two implementations that each verify their own signatures
+// and neither the other's. Pinning the intermediate stage is what turns "the
+// signature differs" into "your length prefixes count characters".
+//
+// It reveals nothing. The input is derived entirely from public values the
+// verifier already has, which is why it can be exported at all - a function
+// that leaked anything secret would not be worth a fixture.
+func SigningInputForTest(domain string, body []byte) []byte {
+	return signingInput(domain, body)
+}

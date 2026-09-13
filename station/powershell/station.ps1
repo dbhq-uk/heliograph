@@ -78,6 +78,10 @@ Set-Location -LiteralPath $RepoRoot
 Import-Module (Join-Path $RepoRoot 'caplib.psm1') -Force -Global
 Import-Module (Join-Path $RepoRoot 'lib/transport.psm1') -Force -Global
 Import-Module (Join-Path $RepoRoot 'lib/cancel.psm1') -Force -Global
+# The trusted set. Imported unconditionally so `--help` and a station with no
+# TRUST_SET behave identically to one with it, and so a set that will not parse
+# is a startup failure rather than a surprise at the first request.
+Import-Module (Join-Path $RepoRoot 'lib/trust.psm1') -Force -Global
 
 $SelfPath = $MyInvocation.MyCommand.Path
 
@@ -155,6 +159,34 @@ $ProgressEvery = [int](Get-EnvOr 'PROGRESS_EVERY' '60')
 # makes it apply. Add whatever does that on your branch.
 $ActionEnv = (Get-EnvOr 'ACTION_ENV' 'APPLY=1 CONFIRM=yes DESTROY=1 FORCE=1 WRITE=1') -split '\s+' |
     Where-Object { $_ }
+
+# --- the trusted set: who may command this station ---------------------------
+#
+# OFF UNLESS THE OPERATOR PLANTED ONE, exactly as on the bash side. Every
+# station in the field has none, and upgrading one means somebody standing at a
+# machine.
+#
+# UNLIKE THE BASH STATION, THIS ONE NEEDS NOTHING INSTALLED. Ed25519
+# verification is already here in managed C# (lib/seal.psm1 over
+# vendor/Chaos.NaCl), so there is no TRUST_SEAL and no binary to check. The
+# formats are held identical to the Go side by tests/trust-vectors.ps1, which
+# compares canonical bytes, digests and whole refusal sentences against
+# tests/fixtures/trust-vectors.json.
+#
+# THE FILE IS LOCAL AND GITIGNORED, for the reason .station-approved-ps is:
+# recorded in the transport repo it could be edited from the far side, and the
+# far side is the only side a trust root exists to distrust. What is published
+# is a read-only COPY.
+$TrustSetPath = Get-EnvOr 'TRUST_SET' ''
+$TrustPublish = 'station/trusted-set'
+$TrustSet = $null
+
+# Every request id this station has ACTED ON. The replay defence, on disk so it
+# survives a restart - a station restarts when the machine does, which is
+# exactly when nobody is watching. .station-state holds only the LAST id, so a
+# request from two days ago, put back, ran again with every gate satisfied.
+$SeenIdsFile = Join-Path $RepoRoot '.station-seen-ids'
+$SeenIdsKeep = [int](Get-EnvOr 'SEEN_IDS_KEEP' '2000')
 
 $StateFile = Join-Path $RepoRoot '.station-state'
 # A FILE OF ITS OWN, not the bash station's .station-approved.
@@ -624,6 +656,96 @@ function Split-EnvLine {
 # RESERVED_ENV_PATTERN - read by tests/test-station-gate.sh. Keep on one line.
 $ReservedEnvPattern = '^(TRANSPORT|PUSH|REDACT|LOG_DIR|ALLOW_ROOT|ALLOW_ACTIONS|CAP_.*|RELAY_.*|SHARE_.*|PIGEONHOLE_.*|OBJSTORE_.*|BLOB_.*|BUNDLE_.*|TRUST_.*)$'
 
+# --- the trusted set ----------------------------------------------------------
+#
+# VALIDATED AT STARTUP, WHILE SOMEBODY IS STILL LISTENING. A station configured
+# with a set it cannot read would refuse every request afterwards, on a machine
+# nobody can log into, for a reason nothing had said out loud. That is the shape
+# of the defect RELAY_PEER had on the bash side: readable was checked, usable
+# was not, and every verification failed silently.
+function Initialize-TrustSet {
+    if (-not $TrustSetPath) { return }
+    if (-not (Test-Path -LiteralPath $TrustSetPath -PathType Leaf)) {
+        Write-Error@"
+station: cannot read the trusted set at $TrustSetPath.
+         Plant it here, on this machine. Unlike the bash station this one needs
+         no extra binary: the verification is managed code already in the
+         payload. Create the set with the control side's public identity as the
+         anchor and restart with TRUST_SET pointing at it.
+"@
+        exit 2
+    }
+    try { $script:TrustSet = Import-TrustSetFile $TrustSetPath }
+    catch {
+        Write-Error @"
+station: the trusted set at $TrustSetPath will not parse: $($_.Exception.Message)
+         Every request would be refused. Re-plant it.
+"@
+        exit 2
+    }
+}
+
+# Publish-TrustSet writes the auditable copy the estate owner reads.
+#
+# A COPY, never the authority. The authoritative set is the gitignored local
+# file; this one lives in the transport where the far side can edit it, and
+# editing it changes nothing at all. Publishing it is what lets an owner see a
+# key appearing that nobody authorised, without asking us.
+function Publish-TrustSet {
+    if (-not $script:TrustSet) { return }
+    try {
+        $dir = Split-Path -Parent $TrustPublish
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) { $null = New-Item -ItemType Directory -Path $dir -Force }
+        $header = @(
+            '# Published by the station. The authority is a local file this repo'
+            '# cannot reach; editing this copy changes nothing. Compare it against'
+            "# your own with 'heliograph doctor'."
+        ) -join "`n"
+        $utf8 = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($TrustPublish, $header + "`n" + (Export-TrustSet $script:TrustSet), $utf8)
+    } catch { }
+}
+
+# --- the replay ledger: an id is used once, and that survives a restart -------
+#
+# .station-state records the LAST id, which stops the same request firing on
+# every poll and is not replay protection: a request from two days ago, put
+# back, has an id that is not the last one. THE LEDGER IS A FILE, because an
+# in-memory window forgets when the station restarts, and a station restarts
+# when the machine does.
+function Test-SeenId {
+    param([string] $Id)
+    if (-not (Test-Path -LiteralPath $SeenIdsFile -PathType Leaf)) { return $false }
+    foreach ($line in [System.IO.File]::ReadAllLines($SeenIdsFile)) {
+        if ($line -ceq $Id) { return $true }
+    }
+    return $false
+}
+
+function Add-SeenId {
+    param([string] $Id)
+    try {
+        $utf8 = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::AppendAllText($SeenIdsFile, $Id + "`n", $utf8)
+    } catch {
+        # A LEDGER THAT COULD NOT BE WRITTEN IS NOT A LEDGER. Said out loud
+        # rather than swallowed: a full disk would otherwise leave replay
+        # protection off with nothing to say so.
+        Write-Say "warn: could not record request id in $SeenIdsFile - replay protection is not being written down"
+        return
+    }
+    try {
+        $lines = [System.IO.File]::ReadAllLines($SeenIdsFile)
+        if ($lines.Count -gt ($SeenIdsKeep * 2)) {
+            $keep = $lines[($lines.Count - $SeenIdsKeep)..($lines.Count - 1)]
+            $tmp = "$SeenIdsFile.$PID.tmp"
+            $utf8 = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($tmp, (($keep -join "`n") + "`n"), $utf8)
+            Move-Item -LiteralPath $tmp -Destination $SeenIdsFile -Force
+        }
+    } catch { }
+}
+
 # --- status, published so the far side can see what is happening --------------
 function Publish-Status {
     param(
@@ -645,6 +767,15 @@ function Publish-Status {
         "utc:      $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
         "payload:  $Payload"
     )
+    # WHO MAY COMMAND THIS STATION, published on every transition, exactly as
+    # station.sh publishes it. This is what lets an estate owner audit the set
+    # from their own transport without asking us, so a key appearing that
+    # nobody authorised is independently detectable.
+    if ($script:TrustSet) {
+        $lines += "trust:    $(Get-TrustSetDigest $script:TrustSet)"
+        $lines += "trust-serial: $($script:TrustSet.Serial)"
+        $lines += "trust-members: $(Get-TrustMembersLine $script:TrustSet)"
+    }
     if ($Extra) { $lines += $Extra }
     $body = ($lines -join "`n") + "`n"
     if (-not (Send-TpStatus -Body $body -Message "station: $State ($Id) ***NO_CI***" -AlsoFile $AlsoFile)) {
@@ -823,6 +954,15 @@ if ($RequirePin) {
 }
 Write-Say 'request "stop: yes" or Ctrl-C to finish, "cancel: yes" to kill a running step'
 
+Initialize-TrustSet
+if ($script:TrustSet) {
+    Write-Say "trusted set: serial $($script:TrustSet.Serial), $(Get-TrustMembersLine $script:TrustSet)"
+    Write-Say "  the anchor changes only here, on this machine"
+    Publish-TrustSet
+} else {
+    Write-Say 'trusted set: none configured - this station accepts whatever its transport verifies'
+}
+
 $LastId = ''
 if (Test-Path -LiteralPath $StateFile -PathType Leaf) {
     try { $LastId = ([System.IO.File]::ReadAllText($StateFile)).Trim() } catch { $LastId = '' }
@@ -918,13 +1058,117 @@ while ($true) {
     if (-not $id) { Start-Sleep -Seconds $Interval; continue }
     if ($id -ceq $LastId) { Start-Sleep -Seconds $Interval; continue }
 
+    # --- a trusted-set change, which is an act and not a step ----------------
+    #
+    # IT RIDES IN THE REQUEST DOCUMENT, so it costs no new transport verb, and
+    # it is verified INDEPENDENTLY of however the request arrived: the signature
+    # is over the change, by a key in the set. THE STEP PATH IS NOT REACHED - a
+    # change is one signed act, and the control side refuses to write a request
+    # carrying both.
+    $incoming = $null
+    try { $incoming = Import-TrustChange -Text $body } catch { $incoming = $null }
+    if ($incoming) {
+        if (-not $script:TrustSet) {
+            Deny -Id $id -Step '' `
+                 -Reason 'this station has no trusted set, so there is nothing for a trusted-set change to change. The operator plants one on the machine' `
+                 -Local 'a trusted-set change arrived and this station has no trusted set'
+            Add-SeenId $id
+            if ($Once) { Stop-Station }
+            Start-Sleep -Seconds $Interval; continue
+        }
+        $applied = $null
+        $refusal = $null
+        try { $applied = Invoke-TrustApply $script:TrustSet $incoming ([DateTime]::UtcNow) }
+        catch { $refusal = $_.Exception.Message }
+        if ($applied) {
+            Save-TrustSet -Path $TrustSetPath -Set $applied
+            $script:TrustSet = $applied
+            Write-Say "TRUSTED SET: $($incoming.Op) $($incoming.Name) by $($incoming.Author), serial $($applied.Serial)"
+            Publish-TrustSet
+            Publish-Status -State 'idle' -Id $id -Step '' `
+                -Extra "reason:   trusted set updated: $($incoming.Op) $($incoming.Name) by $($incoming.Author) serial $($applied.Serial)"
+            $script:LastId = $id
+            [System.IO.File]::WriteAllText($StateFile, $id)
+            Add-SeenId $id
+        } else {
+            # EVERY REFUSAL IS PUBLISHED WITH THE VERIFIER'S OWN SENTENCE, which
+            # names the key and says what was wrong with it. It is word for word
+            # the Go side's, and tests/trust-vectors.ps1 compares the whole
+            # sentence rather than a substring.
+            Deny -Id $id -Step '' -Reason $refusal -Local "trusted-set change refused: $refusal"
+            Add-SeenId $id
+        }
+        if ($Once) { Stop-Station }
+        Start-Sleep -Seconds $Interval; continue
+    }
+
     $step = Get-Field -Body $body -Name 'step'
     $envLine = Get-Field -Body $body -Name 'env'
     if (-not $step) { $step = Get-DefaultStep }
 
     Write-Say "request $id -> step '$step'$(if ($envLine) { "  env: $envLine" })"
 
+    # --- the signed scope: target, expiry, mode and id -----------------------
+    #
+    # A signature over "run this" is not enough, and each of these closes one
+    # gap a signature alone left open. All four are fields of the request
+    # document, so on a sealed transport they are inside the signature already;
+    # enforcing them here is what turns that into scope. station.sh applies the
+    # identical four, in the identical order.
+
+    # TARGET: a request written for one station, replayed at another.
+    $target = Get-Field -Body $body -Name 'target'
+    if ($target -and $target -cne $Scope) {
+        Deny -Id $id -Step $step `
+             -Reason "this request names target '$target' and this station is '$Scope'" `
+             -Local "request $id was written for '$target', not for this station"
+        if ($Once) { Stop-Station }
+        Start-Sleep -Seconds $Interval; continue
+    }
+
+    # EXPIRY: a captured request stops being valid. Without it, one taken out of
+    # a transport is good for ever - and --allow-actions and CONFIRM=yes were
+    # decided days before it.
+    #
+    # COMPARED AS A STRING, deliberately, exactly as station.sh does. A
+    # fixed-width Z-suffixed RFC3339 stamp sorts lexicographically in the same
+    # order it sorts chronologically, and comparing strings cannot disagree with
+    # the bash side about a time zone or a locale.
+    $expires = Get-Field -Body $body -Name 'expires'
+    if ($expires) {
+        $nowUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        if ([string]::CompareOrdinal($nowUtc, $expires) -gt 0) {
+            Deny -Id $id -Step $step `
+                 -Reason "this request expired at $expires and it is now $nowUtc" `
+                 -Local "request $id expired at $expires"
+            if ($Once) { Stop-Station }
+            Start-Sleep -Seconds $Interval; continue
+        }
+    }
+
+    # REPLAY: an id this station has already acted on, remembered across a
+    # restart because the ledger is a file.
+    if (Test-SeenId $id) {
+        Deny -Id $id -Step $step `
+             -Reason "request id '$id' has already been acted on here, and an id is used once" `
+             -Local "request $id is a replay: this station has already acted on that id"
+        if ($Once) { Stop-Station }
+        Start-Sleep -Seconds $Interval; continue
+    }
+
     $mode = Get-StepMode -Step $step
+
+    # MODE: the request says what it expected the step to declare. A step file
+    # edited from read-only to action between authoring and running would
+    # otherwise carry the earlier decision's authority.
+    $wantMode = Get-Field -Body $body -Name 'mode'
+    if ($wantMode -and $wantMode -cne $mode) {
+        Deny -Id $id -Step $step `
+             -Reason "the request was signed for a '$wantMode' step and '$step' declares '$mode'. The step changed after the request was written" `
+             -Local "request $id expected '$step' to be $wantMode and it declares $mode"
+        if ($Once) { Stop-Station }
+        Start-Sleep -Seconds $Interval; continue
+    }
     if ($mode -cne 'read-only' -and $mode -cne 'action') {
         # run.ps1 would refuse this too, and its message is better. Catching it
         # here means the far side gets a status rather than an exit code buried
@@ -1060,6 +1304,14 @@ while ($true) {
     # at all, or `idle` for one that produced a log nobody received, are both
     # lies told to somebody who cannot check.
     Remove-Item -LiteralPath $DeliveryFile -Force -ErrorAction SilentlyContinue
+
+    # RECORDED BEFORE THE RUN, NOT AFTER, and the difference is a duplicate
+    # execution. If the station is killed mid-step - the machine reboots,
+    # somebody closes the session - the id written after the wait was never
+    # written, so on restart the same request is new again and a state-changing
+    # step runs a second time. An id is used once, and "once" includes the
+    # attempt. station.sh records it at the identical point.
+    Add-SeenId $id
 
     $child = Start-Step -Step $step -Assignments $assignments
     if ($null -eq $child) {

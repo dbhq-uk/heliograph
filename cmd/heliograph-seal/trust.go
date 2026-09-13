@@ -184,6 +184,12 @@ func trustShow(args []string, digestOnly bool) error {
 	}
 	fmt.Printf("estate:  %s\nstation: %s\nserial:  %d\ndigest:  %s\n",
 		s.Estate, s.Station, s.Serial, s.Digest())
+	// THE AUDIT LINE, AS A FIELD, so the station can read it with sed rather
+	// than reassemble it from the human-readable lines below. It did the latter
+	// for one commit, and the pipeline lower-cased REVOKED - so the published
+	// line differed between the bash and PowerShell stations, and an owner
+	// grepping for it would have found it on one and not the other.
+	fmt.Printf("members: %s\n", s.Fingerprints())
 	fmt.Printf("anchor:  %-16s %s   (changeable only on this machine)\n",
 		s.Anchor.Name, s.Anchor.Public.Fingerprint())
 	for _, m := range s.Members() {

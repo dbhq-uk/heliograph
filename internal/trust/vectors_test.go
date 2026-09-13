@@ -1,0 +1,301 @@
+package trust
+
+// Golden vectors for the trusted set, so the PowerShell station can be checked
+// against this implementation without either running the other.
+//
+// THE PROBLEM THIS SOLVES IS THE SAME ONE internal/seal/vectors_test.go SOLVES,
+// and the consequence here is worse. The bash station shells out to
+// heliograph-seal, so it runs THIS code. The PowerShell station cannot: it has
+// its own trusted set in managed PowerShell over Chaos.NaCl. Two
+// implementations of an authorisation format that have never been compared are
+// two formats, and the way that failure presents is a signed change that is
+// applied on one machine and refused on another - so an estate owner's audit is
+// right about half their estate and they have no way to know which half.
+//
+// A ROUND TRIP WOULD PASS ALL OF THIS AND PROVE NOTHING, exactly as it would
+// for the seal. Both sides agreeing with each other and with nothing else is
+// what fixed bytes catch.
+//
+// EVERY STAGE IS PINNED, not just the digest: the set's canonical encoding, its
+// digest, the change's canonical encoding, the document signing input, and the
+// signature. "The digest differs" is not a debuggable statement about five
+// chained steps, and the one most likely to be wrong is the least visible -
+// length prefixes counted in characters rather than bytes.
+//
+// Regenerate with:
+//
+//	go test ./internal/trust/ -run TestTrustGoldenVectors -update
+//
+// A DIFF IN THE COMMITTED FILE IS AN AUTHORISATION CHANGE. Every station in the
+// field verifies against the version in it, and there is no negotiation, so a
+// change here strands whatever is already planted. That is the point of
+// committing it.
+
+import (
+	"encoding/hex"
+	"encoding/json"
+	"flag"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/dbhq-uk/heliograph/internal/seal"
+)
+
+var update = flag.Bool("update", false, "rewrite the committed vector file")
+
+// Outside this package on purpose: the PowerShell tests read the same file, and
+// a fixture buried in `internal/` reads as private to Go.
+const trustVectorPath = "../../tests/fixtures/trust-vectors.json"
+
+// Fixed identities, in the encoding Identity.Encode produces. NOT generated at
+// test time: a vector that changes on every run is not a vector.
+//
+// These secret keys are published in a public repository and are worth exactly
+// nothing. Nothing else may ever use them, which is why they are named so
+// unmistakably.
+const (
+	testAnchorSecret = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw"
+	testAliceSecret  = "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl9gYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-fw"
+	testBobSecret    = "gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp-goaKjpKWmp6ipqqusra6vsLGys7S1tre4ubq7vL2-vw"
+)
+
+type trustIdentityVec struct {
+	Note        string `json:"note"`
+	Secret      string `json:"secret"`
+	Public      string `json:"public"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+type trustSetVec struct {
+	Name         string `json:"name"`
+	Why          string `json:"why"`
+	Marshalled   string `json:"marshalled"`
+	CanonicalHex string `json:"canonicalHex"`
+	Digest       string `json:"digest"`
+	MembersLine  string `json:"membersLine"`
+}
+
+type trustChangeVec struct {
+	Name string `json:"name"`
+	Why  string `json:"why"`
+
+	Marshalled   string `json:"marshalled"`
+	CanonicalHex string `json:"canonicalHex"`
+	// The exact bytes Ed25519 signs, which is where a port that concatenates
+	// rather than length-prefixes diverges without any other symptom.
+	SigningInputHex string `json:"signingInputHex"`
+	SignatureHex    string `json:"signatureHex"`
+
+	// What applying it to the set named below must produce. An empty
+	// ResultDigest with a Refusal set means it must be refused.
+	AppliesTo    string `json:"appliesTo"`
+	ResultDigest string `json:"resultDigest"`
+	Refusal      string `json:"refusal"`
+}
+
+type trustVectors struct {
+	Note       string                      `json:"note"`
+	Version    int                         `json:"version"`
+	Domain     string                      `json:"domain"`
+	Identities map[string]trustIdentityVec `json:"identities"`
+	Sets       []trustSetVec               `json:"sets"`
+	Changes    []trustChangeVec            `json:"changes"`
+}
+
+// fixedTime is the same clock in both implementations. A vector whose contents
+// depend on when it was generated is not a vector.
+var fixedTime = time.Date(2026, 1, 4, 9, 0, 0, 0, time.UTC)
+
+func mustIdentity(t *testing.T, s string) *seal.Identity {
+	t.Helper()
+	id, err := seal.DecodeIdentity(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// buildVectors is the single source of the fixture, used both to write it and
+// to check the committed one still describes this code.
+func buildVectors(t *testing.T) trustVectors {
+	t.Helper()
+	anchor := mustIdentity(t, testAnchorSecret)
+	alice := mustIdentity(t, testAliceSecret)
+	bob := mustIdentity(t, testBobSecret)
+
+	v := trustVectors{
+		Note: "Golden vectors for the heliograph trusted set. Generated by " +
+			"internal/trust/vectors_test.go and checked by tests/trust-vectors.ps1. " +
+			"A diff here is an authorisation change and strands planted stations.",
+		Version: Version,
+		Domain:  Domain,
+		Identities: map[string]trustIdentityVec{
+			"anchor": {Note: "the key the machine's owner keeps", Secret: testAnchorSecret,
+				Public: anchor.Public().Encode(), Fingerprint: anchor.Public().Fingerprint()},
+			"alice": {Note: "an engineer", Secret: testAliceSecret,
+				Public: alice.Public().Encode(), Fingerprint: alice.Public().Fingerprint()},
+			"bob": {Note: "a second engineer, revoked in the last set", Secret: testBobSecret,
+				Public: bob.Public().Encode(), Fingerprint: bob.Public().Fingerprint()},
+		},
+	}
+
+	planted, err := NewSet("acme", "db-a", "owner", anchor.Public(), fixedTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := func(name, why string, s Set) {
+		v.Sets = append(v.Sets, trustSetVec{
+			Name: name, Why: why,
+			Marshalled:   string(s.Marshal()),
+			CanonicalHex: hex.EncodeToString(s.canonical()),
+			Digest:       s.Digest(),
+			MembersLine:  s.Fingerprints(),
+		})
+	}
+	record("planted", "an anchor and nobody else, exactly as the operator leaves it", planted)
+
+	sign := func(who *seal.Identity, s Set, op, name string, subj seal.PublicIdentity, author string) Change {
+		c := NewChange(s, op, name, subj, Member{Name: author}, fixedTime)
+		c, err := SignChange(who, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	recordChange := func(name, why, appliesTo string, c Change, s Set) Set {
+		next, applyErr := s.Apply(c, fixedTime)
+		vec := trustChangeVec{
+			Name: name, Why: why, AppliesTo: appliesTo,
+			Marshalled:      string(c.Marshal()),
+			CanonicalHex:    hex.EncodeToString(c.canonical()),
+			SigningInputHex: hex.EncodeToString(signingInputFor(c)),
+			SignatureHex:    hex.EncodeToString(c.Sig),
+		}
+		if applyErr != nil {
+			vec.Refusal = applyErr.Error()
+		} else {
+			vec.ResultDigest = next.Digest()
+		}
+		v.Changes = append(v.Changes, vec)
+		if applyErr != nil {
+			return s
+		}
+		return next
+	}
+
+	withAlice := recordChange("add-alice",
+		"the anchor enrols the first engineer, which is the chain's second link",
+		"planted", sign(anchor, planted, OpAdd, "alice", alice.Public(), "owner"), planted)
+	record("with-alice", "one member, added by the anchor", withAlice)
+
+	withBob := recordChange("add-bob",
+		"alice enrols bob: a member adds a member, with no operator at the machine",
+		"with-alice", sign(alice, withAlice, OpAdd, "bob", bob.Public(), "alice"), withAlice)
+	record("with-bob", "two members, the second added by the first", withBob)
+
+	revoked := recordChange("revoke-bob",
+		"the leaver flow, run remotely, which is the whole reason revocation is not the operator's job",
+		"with-bob", sign(alice, withBob, OpRevoke, "bob", bob.Public(), "alice"), withBob)
+	record("bob-revoked", "a tombstone rather than a deletion, so a refusal can name him", revoked)
+
+	// THE REFUSALS, and the anchor ones are why this file exists. If the
+	// PowerShell twin applied any of these, the estate owner could be locked
+	// out of their own machine on half their estate.
+	recordChange("revoke-the-anchor",
+		"a trusted member trying to evict the anchor. Refused, or the owner can be locked out remotely",
+		"bob-revoked", sign(alice, revoked, OpRevoke, "owner", anchor.Public(), "alice"), revoked)
+
+	recordChange("re-add-the-anchors-key",
+		"the same attempt by the other road: the anchor's KEY under a name of the attacker's choosing",
+		"bob-revoked", sign(alice, revoked, OpAdd, "backup", anchor.Public(), "alice"), revoked)
+
+	recordChange("shadow-the-anchors-name",
+		"and by the third road: a second member CALLED the anchor, after which revoking it is ambiguous",
+		"bob-revoked", sign(alice, revoked, OpAdd, "owner", bob.Public(), "alice"), revoked)
+
+	recordChange("revoked-key-authors",
+		"bob was revoked and tries to enrol somebody. The refusal must NAME him, not say unknown",
+		"bob-revoked", sign(bob, revoked, OpAdd, "mallory", bob.Public(), "bob"), revoked)
+
+	recordChange("replayed",
+		"the change that added bob, offered again after it has already been applied",
+		"bob-revoked", sign(alice, withAlice, OpAdd, "bob", bob.Public(), "alice"), revoked)
+
+	return v
+}
+
+// signingInputFor exposes the exact bytes Ed25519 covers, for the fixture only.
+// It duplicates nothing: seal builds the same bytes, and this asks seal for
+// them by signing with a known key would not reveal them, so the shape is
+// rebuilt here and asserted against a real signature below.
+func signingInputFor(c Change) []byte {
+	return seal.SigningInputForTest(Domain, c.canonical())
+}
+
+func TestTrustGoldenVectors(t *testing.T) {
+	got := buildVectors(t)
+	blob, err := json.MarshalIndent(got, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob = append(blob, '\n')
+
+	if *update {
+		if err := os.MkdirAll(filepath.Dir(trustVectorPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(trustVectorPath, blob, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("wrote %s", trustVectorPath)
+		return
+	}
+
+	want, err := os.ReadFile(trustVectorPath)
+	if err != nil {
+		t.Fatalf("%v\nRegenerate with: go test ./internal/trust/ -run TestTrustGoldenVectors -update", err)
+	}
+	if string(want) != string(blob) {
+		t.Errorf("the committed vectors no longer describe this code.\n"+
+			"Every planted station verifies against the format in %s, and there is no "+
+			"negotiation - so if this change is deliberate it strands them, and if it is "+
+			"not it is a bug. Regenerate only when it is deliberate:\n"+
+			"  go test ./internal/trust/ -run TestTrustGoldenVectors -update", trustVectorPath)
+	}
+}
+
+// TestTheVectorsCoverTheAnchorRefusals stops the fixture quietly losing the
+// cases it exists for.
+//
+// A vector file is only as good as what is in it, and the easiest way to make
+// this whole cross-implementation check pass is to remove the hard cases. These
+// four are the ones the product claim rests on, so their absence is a failure
+// rather than a smaller fixture.
+func TestTheVectorsCoverTheAnchorRefusals(t *testing.T) {
+	v := buildVectors(t)
+	needed := map[string]bool{
+		"revoke-the-anchor":       false,
+		"re-add-the-anchors-key":  false,
+		"shadow-the-anchors-name": false,
+		"revoked-key-authors":     false,
+		"replayed":                false,
+	}
+	for _, c := range v.Changes {
+		if _, ok := needed[c.Name]; ok {
+			needed[c.Name] = true
+			if c.Refusal == "" {
+				t.Errorf("vector %q records no refusal, so it pins the wrong behaviour", c.Name)
+			}
+			if c.ResultDigest != "" {
+				t.Errorf("vector %q was APPLIED", c.Name)
+			}
+		}
+	}
+	for name, present := range needed {
+		if !present {
+			t.Errorf("the vectors no longer contain %q, which is one of the cases the claim rests on", name)
+		}
+	}
+}

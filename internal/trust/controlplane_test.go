@@ -107,6 +107,7 @@ func TestNoControlPlanePathAuthorsAChange(t *testing.T) {
 		"internal/trust/change.go":            true, // the definition
 		"internal/trust/trust_test.go":        true, // this package's own tests
 		"internal/trust/controlplane_test.go": true, // this file, which names it
+		"internal/trust/vectors_test.go":      true, // the golden vectors, which must sign to pin a signature
 		"cmd/heliograph/trust.go":             true, // `heliograph trust add|revoke`
 		"cmd/heliograph/trust_test.go":        true,
 		// THE ADVERSARY, and it is on the list deliberately. It authors changes

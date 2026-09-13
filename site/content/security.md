@@ -193,6 +193,91 @@ primitives plus Ed25519. The relay server is [its own
 repository](https://github.com/dbhq-uk/heliograph-relay) precisely so it is
 publicly, obviously incapable of either. Details: [the relay](/relay).
 
+## Who may command a station, and who may change that
+
+Signature verification only tells you that a request was signed by a key the
+station was told to trust. So the interesting question is not "is it signed" but
+**who decides what the station trusts** - because anything that could add a key
+could then sign legitimately, with nothing stolen and nothing forged.
+
+A station may hold a **trusted set**: several keys, each belonging to one
+person, any of which may author a request. Four rules govern it, and each does
+one job.
+
+**A change to the set is itself a signed document.** It travels over the
+transport the estate already uses and is verified against the set as it stands.
+There is no unsigned path and no permissive mode.
+
+**Any trusted key may add or revoke any key except the anchor.** Offboarding one
+engineer across forty estates cannot mean forty visits, so revocation is
+something a colleague does remotely.
+
+**The anchor changes only on the machine.** The anchor is the key the estate's
+owner keeps, planted when the station is planted. No request can move it, add a
+second member under its name, or revoke its key - not even a request signed by
+the anchor's own key. A compromised key can therefore evict every other
+engineer and cannot evict the owner, so recovery is a signed change from
+whoever holds the anchor rather than a site visit.
+
+**The station publishes its set.** The digest, the serial and every member's
+fingerprint go into the status on every transition, and a full copy is written
+to the transport. So an estate owner can audit who may command their machine
+from their own transport, with the CLI, **without asking us** - and
+`heliograph doctor` reports a set that differs from the one the control node
+holds.
+
+### What a service may and may not do
+
+| may | may not |
+|---|---|
+| display the set a station reported | add a key |
+| **propose** a change, as an unsigned draft a person signs on their own machine | revoke a key |
+| record that a change happened, as an audit event | alter a change in transit |
+| alert that a station's set differs from the expected one | be **required** for a legitimate change |
+
+That last row matters twice. If a service were required, losing it would lock a
+customer out of their own estate, **and** compromising it would be equivalent to
+holding a key. A change is authored from a set and a key with no network on the
+path, so a customer can administer their trusted set with the service
+unreachable.
+
+### Revocation is eventual, and that is worth stating
+
+A station learns of a revocation **on its next poll**. Between a change being
+sent and that poll, the revoked key still works.
+
+An **already-running step is not interrupted**. Revocation removes the ability
+to ask for the next one, not the ability to finish the current one. Terminating
+an open session is a separate mechanism and does not exist yet.
+
+For a station polling every five seconds that window is seconds; on a long
+interval it is that interval. Neither is instant. "Revoked" read as "instant" is
+the kind of assumption that gets discovered during an incident, which is why it
+is written here rather than left to be inferred.
+
+### What it needs on the far side
+
+Verification is Ed25519, which bash and GNU coreutils cannot do. The two
+stations resolve that differently, and the difference is worth knowing before
+you plan a rollout:
+
+- the **PowerShell station** needs nothing new. Its verification is managed C#
+  already in the payload
+- the **bash station** needs `heliograph-seal`, the single binary the relay
+  transport already installs on the far side. A bash station on any other
+  transport can use a trusted set by carrying that binary too
+
+A bash station told to use a trusted set without it **refuses to start**, rather
+than accepting everything quietly - a station that was told to verify and then
+did not is one whose owner believes an assurance the mechanism is not providing.
+
+Both implementations are held to the same bytes. `tests/fixtures/trust-vectors.json`
+pins the canonical encodings, the digests, the signing input and the refusal
+sentences, and the PowerShell side is checked against it - because a control
+side cannot tell which implementation answered, and two stations disagreeing
+about who may command a machine would make an owner's audit right about half
+their estate.
+
 ## Reporting something
 
 Security issues go to the address in
@@ -210,3 +295,9 @@ not to a public issue.
 - A step author with commit access to the transport repo can run anything the
   station's account can run. That is the design - it is what the tool is for -
   and the control is who has write access to that repo
+- **Revocation is eventual, never instant.** A station acts on it at its next
+  poll, and a step already running is not interrupted. See above
+- A trusted set is **opt-in and not yet the default**. A station started without
+  one behaves as it always has: it accepts whatever its transport verifies,
+  which for the relay is one recorded peer and for git is whoever has write
+  access to the repo
