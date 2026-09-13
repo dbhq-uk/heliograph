@@ -221,6 +221,79 @@ control node keeps what it collects, which is why `heliograph logs` works here
 at all - and why `status` is repeatable rather than reporting a station that has
 gone away the second time you ask.
 
+## trust: who may command a station
+
+One key per estate is enough for one person. For four engineers on a client
+estate it is not: the archive cannot say *who* asked, somebody leaving means
+re-enrolling every station they could reach, and there is no revocation short
+of that.
+
+A station may instead hold a **trusted set** - several keys, each belonging to
+one person - and verify a request against any active member of it.
+
+```bash
+heliograph trust init -e payments          # record the anchor, and print what the operator plants
+heliograph trust show -e payments          # who may command this station
+heliograph trust add -e payments alice <alice's public identity>
+heliograph trust revoke -e payments alice
+heliograph doctor -e payments              # compare our copy against what the station published
+```
+
+### The anchor, and why it only changes on the machine
+
+The set starts with an **anchor**: one key, planted by the operator, on the
+machine, at the same moment they plant the station.
+
+```
+ANCHOR   owner   4d18-...   planted on the machine. Changeable ONLY there
+alice            9f3c-...   added 2026-01-04, signed by owner
+bob              2a71-...   added 2026-02-11, signed by alice
+carol            c40e-...   added 2026-03-02, signed by alice   REVOKED by bob 2026-04-18
+```
+
+Any trusted key may add or revoke any key **except the anchor**. That one
+exception is the recovery property: a compromised key can evict every other
+engineer, and it cannot evict the anchor, so putting the estate back is a signed
+change from whoever holds it rather than a site visit. It also means the estate
+owner **is never locked out of their own machine by anything remote**.
+
+Rotating an anchor is a command run on the machine and nowhere else:
+
+```bash
+./heliograph-seal trust anchor --set .station-trusted-set --anchor <new key>
+```
+
+### A change is a signed document, and nothing else is on the path
+
+`heliograph trust add` signs a change with the key on **your** machine, applies
+it to your copy, and sends it over the transport the estate already uses. The
+station verifies it against the set as it stands and applies it, or refuses it
+and publishes the reason.
+
+Nothing in between authors anything. A service can display a set, propose a
+change and record that one happened; producing one needs a key. So a change
+lands with heliograph cloud unreachable, and compromising a service is not
+equivalent to holding a key.
+
+### Revocation is eventual, and that is worth saying out loud
+
+The station learns of a revocation **on its next poll**. Between the change
+being sent and that poll, the revoked key still works. An already-running step
+is not interrupted, either: revocation removes the ability to ask for the next
+one.
+
+For a station polling every five seconds that is seconds. For one on a long
+interval it is that interval. Neither is instant, and "revoked" read as
+"instant" is the kind of assumption that gets discovered during an incident.
+
+### What it needs on the far side
+
+Verification is Ed25519, which bash and coreutils cannot do, so a trusted set
+needs `heliograph-seal` on the station - the one binary the relay transport
+already installs there. A station on any other transport can use a trusted set
+by carrying that binary too; without it, `TRUST_SET` makes the station refuse to
+start rather than accept everything quietly.
+
 ## logs --gaps
 
 The reason the binary is worth installing.

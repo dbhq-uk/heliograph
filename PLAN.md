@@ -173,6 +173,73 @@ that file is bounded by the clock now, and the condition requires a `progress:`
 key AND the step's own output, because each alone is satisfiable by something
 that is not progress.
 
+## In review, not merged 2026-09-13
+
+**The trusted set** (`heliograph-io/heliograph-cloud#29`, `#28`). Held at the PR
+deliberately: it changes authorisation semantics in a public repository, and a
+wrong merge there is shipped to self-hosters.
+
+The hole it closes is that "the service holds no signing key, so it cannot cause
+a station to run anything" is true and insufficient. Signature verification only
+means the station trusts whatever key it was told to trust, so anything able to
+administer trust roots could add a key it controls and then sign legitimately -
+nothing stolen, nothing forged, every gate passed, claim false.
+
+A station may now hold a **trusted set**: several keys, each belonging to one
+person. Four rules, each doing one job.
+
+| | |
+|---|---|
+| a change is itself a signed document | verified against the set as it stands, over the transport the estate already uses. There is no unsigned path and no permissive mode |
+| any trusted key may add or revoke any key **except the anchor** | offboarding one engineer across forty estates cannot mean forty visits |
+| **the anchor changes only on the machine** | no request moves it, shadows its name or revokes its key - not even one signed by the anchor's own key. A compromised key can evict every other engineer and cannot evict the owner |
+| the station publishes its set | digest, serial and every fingerprint, on every transition, so an owner audits who may command their estate **without asking us** |
+
+**The mutation rule is what makes the first one a property rather than a habit.**
+`trust.Set.members` is unexported and the package exports no mutator except
+`Apply`, which verifies a signature before it returns a changed set. No package
+outside `internal/trust` can add a member to a set, and Go's compiler enforces
+that rather than a reviewer.
+
+**The two assertions that carry the claim**, both watched failing:
+
+- `TestTheAnchorIsUnchangeableByAnyRequest`. Dropping the anchor's KEY check and
+  keeping the name check - the shape a refactor would take - lets "a member
+  re-adding the anchor's key" through with a nil error, and turns "revoking the
+  anchor's key under another name" into `ErrNotAMember`
+- `TestNoControlPlanePathAuthorsAChange` and its three siblings, which assert
+  over SOURCE rather than behaviour. "The service cannot cause a station to run
+  anything" is a statement about what code exists, not about what it does when
+  run: a behavioural test can only show that the paths somebody thought of do
+  not author a change
+
+**Both stations verify, and they cost different things.** The PowerShell station
+needs nothing new - Ed25519 is already there in managed C#. The bash station
+needs `heliograph-seal`, the one binary the relay already installs on the far
+side; on any other transport it is opt-in, and a bash station told to use a set
+without it refuses to start rather than accepting everything quietly. That
+asymmetry is the finding for `#48`, which holds the binary policy: nothing new
+crosses the boundary, and the alternative would have been a second far-side
+binary.
+
+`tests/fixtures/trust-vectors.json` holds the two implementations to the same
+bytes - canonical encodings, digests, signing input and **whole refusal
+sentences**. It found two divergences immediately, neither cryptographic: the
+anchor refusal named a binary the PowerShell station does not have, and the
+published audit line said `revoked` in one renderer and `REVOKED` in two others,
+so an owner grepping their estate for REVOKED would have found it on half of it.
+
+Also in the same branch, because a signature over "run this" was not enough:
+`mode`, `target` and `expiry` join the signed scope, and the id ledger is a file
+so replay protection survives a restart. `.station-state` held only the LAST id,
+so a request from two days ago, put back, ran again with every gate satisfied -
+the relay's sequence counter caught that and git, share, blob, bundle and object
+store had nothing.
+
+**Revocation is eventual and now says so** in `security.md`, in `cli.md`, and in
+the CLI's own output at the moment somebody changes access. A station acts on a
+revocation at its next poll and an already-running step is not interrupted.
+
 ## Landed 2026-09-12
 
 | PR | |
@@ -482,6 +549,7 @@ outranks a capability that does not exist.**
 | 6 | **Claude Code on the web** (#64), then **Termux and Crostini** (#63) | Proving runs. #64 answers a question that will be asked more often |
 | 7 | **Arista EOS and the network devices** (#61) | Blocked twice: needs #56 to land, because git is absent on a switch, and needs a device to prove it on |
 | 8 | **The AWS host family** (#60) | Blocked on an AWS account. Until there is one, #5's decision stands and Fargate stays a recipe. Do not merge a template that has never started a station |
+| - | **Review and merge the trusted set** (`heliograph-cloud#29`, `#28`) | Out of the numbered ranking because it is not a capability to schedule: it is a claim that is currently overstated, and the branch that makes it true is written and held at the PR. Reviewing it outranks everything above |
 
 Items 1 to 8 come from a survey of every transport, host and control node
 anyone has proposed, with the ones ruled out and why:

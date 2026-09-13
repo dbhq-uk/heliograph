@@ -27,6 +27,20 @@ type Status struct {
 	Progress string // "412 lines", while a step runs
 	Last     string // the last real line of the log. Usually the probe in flight
 	Reason   string // why, when the state is refused
+
+	// WHO MAY COMMAND THIS STATION, published on every transition.
+	//
+	// This is what lets an estate owner audit the trusted set from their own
+	// transport, with the CLI, without asking us - and a key appearing that
+	// nobody authorised is then independently detectable rather than something
+	// they have to trust us to notice.
+	//
+	// Absent from every station that has no trusted set, which is all of them
+	// today. An empty value means "not published", never "empty set".
+	Trust        string // the digest of the set the station is verifying against
+	TrustSerial  string // how many changes it has applied
+	TrustMembers string // name=fingerprint pairs, revoked ones marked
+	By           string // who signed the request this run came from
 }
 
 // ParseStatus reads a status document.
@@ -72,6 +86,14 @@ func ParseStatus(b []byte) (Status, error) {
 			s.Last = v
 		case "reason":
 			s.Reason = v
+		case "trust":
+			s.Trust = v
+		case "trust-serial":
+			s.TrustSerial = v
+		case "trust-members":
+			s.TrustMembers = v
+		case "by":
+			s.By = v
 		}
 	}
 	return s, sc.Err()

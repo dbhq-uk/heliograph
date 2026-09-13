@@ -115,6 +115,20 @@ Thumbs.db
 # that gets read - one name for two formats would mean whichever station read
 # it last was wrong. It holds a token too.
 .station-env-ps
+# The trusted set: WHO MAY COMMAND THIS STATION. Local and never committed,
+# for the reason .station-approved is - recorded in the transport repo it could
+# be edited from the far side, and the far side is the only side a trust root
+# exists to distrust. The station publishes a read-only COPY at
+# station/trusted-set so the estate owner can audit it; editing that copy
+# changes nothing.
+.station-trusted-set
+# Every request id this station has acted on. The replay defence, on disk so it
+# survives a restart. Local: a line deleted from a shared copy would let the
+# request it named be replayed.
+.station-seen-ids
+# The digest of the trusted set this station last published, so a set changed
+# at the machine is announced once on the next start rather than on every one.
+.station-trust-published
 # =============================================================================
 #  END SHARED BLOCK
 # =============================================================================

@@ -59,6 +59,11 @@ const usage = `heliograph - run things on a machine you cannot log into
       [-e <estate>] [--dir <path>]
   heliograph plant                          what to send the operator
   heliograph send <step> [K=V ...]          publish a request, and return
+      [--mode read-only|action] [--expires 24h|0]
+  heliograph trust init                     record the anchor this estate is planted with
+  heliograph trust show                     who may command this station
+  heliograph trust add <name> <key>         a signed change: enrol somebody
+  heliograph trust revoke <name>            a signed change: remove somebody
   heliograph status                         what the station is doing now
   heliograph watch                          follow a run until it ends
   heliograph logs                           list the captured logs
@@ -91,6 +96,8 @@ func main() {
 		err = cmdStation(os.Args[2:])
 	case "relay":
 		err = cmdRelay(os.Args[2:])
+	case "trust":
+		err = cmdTrust(os.Args[2:])
 	case "plant":
 		err = cmdPlant(os.Args[2:])
 	case "send":
@@ -681,6 +688,20 @@ func cmdSend(args []string) error {
 	fs := flag.NewFlagSet("send", flag.ExitOnError)
 	name := estateFlag(fs)
 	note := fs.String("note", "", "free text for the next human")
+	mode := fs.String("mode", "", "the mode you expect the step to declare: read-only or action")
+	// AN EXPIRY BY DEFAULT, and 24 hours is a decision worth stating.
+	//
+	// Without one, a request lifted out of a transport repo is valid for ever -
+	// and `--allow-actions` and `CONFIRM=yes` were decided days before it, so a
+	// replayed request is a destructive step running again with every gate
+	// already satisfied. A day is long enough for a station that is down when
+	// the request is sent and comes back the same working day, which is the case
+	// people actually hit; anything longer stops being a bound.
+	//
+	// `--expires 0` turns it off, for an estate that plants a station a week
+	// after writing the request. That is a real workflow, so it has a flag
+	// rather than being impossible.
+	expires := fs.Duration("expires", 24*time.Hour, "how long this request stays valid; 0 for no expiry")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -710,6 +731,20 @@ func cmdSend(args []string) error {
 		Step:    step,
 		Env:     strings.Join(env, " "),
 		Note:    *note,
+		Mode:    *mode,
+		// THE STATION THIS WAS WRITTEN FOR, always. A request lifted out of one
+		// transport repo and put into another used to run there: the relay binds
+		// estate and station inside its envelope, and no other transport bound
+		// anything at all. A station refuses a target that is not its own scope,
+		// and ignores the key entirely if it predates this - so setting it costs
+		// nothing and closes the gap wherever the far side is current.
+		Target: op.Scope,
+	}
+	if *expires > 0 {
+		req.Expires = time.Now().UTC().Add(*expires).Format(time.RFC3339)
+	}
+	if err := req.Validate(); err != nil {
+		return err
 	}
 	if err := op.PutRequest(req); err != nil {
 		return err
@@ -718,6 +753,9 @@ func cmdSend(args []string) error {
 	fmt.Printf("  step: %s\n", step)
 	if req.Env != "" {
 		fmt.Printf("  env:  %s\n", req.Env)
+	}
+	if req.Expires != "" {
+		fmt.Printf("  valid until %s. A station that reads it later refuses it.\n", req.Expires)
 	}
 	fmt.Println("  the station picks this up within its poll interval. `heliograph status` to follow it.")
 	return nil
@@ -757,6 +795,16 @@ func cmdStatus(args []string) error {
 	printIf("finished:", s.Finished)
 	printIf("exit:    ", s.Exit)
 	printIf("log:     ", s.Log)
+	// WHO ASKED, when the station could establish it. An archive that can only
+	// say the estate asked cannot answer the first question anybody puts to it.
+	printIf("by:      ", s.By)
+	// WHO MAY COMMAND THIS STATION. Printed here rather than only in `doctor`
+	// because this is the command people actually run, and a trusted set nobody
+	// looks at is an audit nobody performs.
+	if s.Trust != "" {
+		fmt.Printf("trust:    %s (serial %s)\n", short12(s.Trust), orDash(s.TrustSerial))
+		printIf("members: ", s.TrustMembers)
+	}
 	if s.Refused() {
 		// A refusal names a flag somebody has to pass. Saying so here saves
 		// the round trip that would otherwise be spent looking for a broken
@@ -976,6 +1024,15 @@ func cmdDoctor(args []string) error {
 		}
 		fmt.Println()
 	}
+
+	// --- the trusted set, ours against theirs --------------------------------
+	//
+	// THE STATION'S COPY IS THE ONE THAT DECIDES, so this reports rather than
+	// reconciles. A divergence is the alarm the whole mechanism exists to raise:
+	// a key in the station's set that is not in ours is a key somebody added
+	// that this machine never authorised, and an estate owner can see that here
+	// without asking us and without logging into the machine.
+	problems += doctorTrust(op.Estate.Name, s)
 
 	logs, err := op.ListLogs()
 	if err != nil {

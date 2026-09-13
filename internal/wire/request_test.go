@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -95,13 +96,67 @@ func TestParseKeepsColonsInsideAValue(t *testing.T) {
 }
 
 func TestRoundTrip(t *testing.T) {
-	in := Request{Version: 1, ID: "i", Step: "s", Env: "E=1", Note: "why"}
+	in := Request{
+		Version: 1, ID: "i", Step: "s", Env: "E=1", Note: "why",
+		Mode: "read-only", Target: "db-a", Expires: "2026-09-13T10:00:00Z",
+	}
 	out, err := ParseRequest(in.Marshal())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != in {
+	// reflect.DeepEqual rather than ==, since Trust is a []byte. Comparing the
+	// marshalled forms instead would pass for two structs that differ in a field
+	// Marshal does not write, which is the bug this test exists to catch.
+	if !reflect.DeepEqual(out, in) {
 		t.Errorf("got %+v want %+v", out, in)
+	}
+}
+
+// A trusted-set change rides inside the request, and every line of it has to
+// survive untouched: the signature covers those exact bytes.
+func TestATrustBlockRoundTripsUntouched(t *testing.T) {
+	block := "trust-version: 1\ntrust-op: add\ntrust-subject: alice KEY\ntrust-sig: AAAA\n"
+	in := Request{Version: 1, ID: "i", Note: "adding alice", Trust: []byte(block)}
+	if err := in.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ParseRequest(in.Marshal())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out.Trust) != block {
+		t.Errorf("the trust block did not survive:\ngot  %q\nwant %q", out.Trust, block)
+	}
+}
+
+// A change is one signed act. A request that also runs a step has an audit line
+// that cannot say which of the two was the point.
+func TestARequestCarriesAChangeOrAStepAndNotBoth(t *testing.T) {
+	r := Request{Version: 1, ID: "i", Step: "probe", Trust: []byte("trust-op: add\n")}
+	if err := r.Validate(); err == nil {
+		t.Error("a request carrying both a step and a trusted-set change was accepted")
+	}
+}
+
+// The trust block is appended verbatim, so a line in it that is NOT a trust-
+// key would forge a request field - `stop: yes`, for instance, on a machine
+// nobody can reach.
+func TestATrustBlockCannotForgeARequestField(t *testing.T) {
+	r := Request{Version: 1, ID: "i", Trust: []byte("trust-op: add\nstop: yes\n")}
+	if err := r.Validate(); err == nil {
+		t.Error("a trust block containing `stop: yes` was accepted")
+	}
+}
+
+func TestModeAndExpiryAreRefusedWhenUnusable(t *testing.T) {
+	if err := (Request{ID: "i", Mode: "whatever"}).Validate(); err == nil {
+		t.Error("a mode that is neither read-only nor action was accepted")
+	}
+	if err := (Request{ID: "i", Expires: "next tuesday"}).Validate(); err == nil {
+		t.Error("an unparseable expiry was accepted, and the station would refuse it where nobody can see")
+	}
+	if err := (Request{ID: "i", Mode: "action", Expires: "2026-09-13T10:00:00Z"}).Validate(); err != nil {
+		t.Errorf("a usable mode and expiry were refused: %v", err)
 	}
 }
 
