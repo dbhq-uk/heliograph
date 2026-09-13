@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dbhq-uk/heliograph/internal/cloud"
 	"github.com/dbhq-uk/heliograph/internal/seal"
 )
 
@@ -324,11 +325,30 @@ func TestPushForwardsARealSpoolAndAuthorsNothing(t *testing.T) {
 		t.Fatalf("%d body/bodies stored, want the one this run produced", archive.storedCount())
 	}
 
-	// THE STORED BODY IS THE STATION'S OWN BYTES. A log that has been through a
-	// renderer is not evidence.
-	localLogs, err := filepath.Glob(filepath.Join(spool, "ops-logs", "*.txt"))
-	if err != nil || len(localLogs) != 1 {
-		t.Fatalf("want one collected log in the spool, got %v (%v)", localLogs, err)
+	// A SNAPSHOT IS NOT EVIDENCE, and since #116 the spool holds one: a
+	// progress snapshot now lands under the station's own name with a
+	// `.partial.txt` suffix rather than under a sequence name, so a plain
+	// `*.txt` glob finds two files for one run.
+	//
+	// That is exactly the distinction `push` has to keep. The snapshot is a
+	// half-written capture of a run that was still going, and storing it under
+	// a name the finished run will later claim is the one way this path could
+	// lose a log. So the finished body is picked deliberately here, and the
+	// count below asserts the snapshot was not uploaded.
+	all, err := filepath.Glob(filepath.Join(spool, "ops-logs", "*.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var localLogs, snapshots []string
+	for _, p := range all {
+		if strings.HasSuffix(p, ".partial.txt") {
+			snapshots = append(snapshots, p)
+			continue
+		}
+		localLogs = append(localLogs, p)
+	}
+	if len(localLogs) != 1 {
+		t.Fatalf("want one finished log in the spool, got %v (snapshots: %v)", localLogs, snapshots)
 	}
 	want, err := os.ReadFile(localLogs[0])
 	if err != nil {
@@ -347,6 +367,30 @@ func TestPushForwardsARealSpoolAndAuthorsNothing(t *testing.T) {
 	if !strings.Contains(string(stored), "PUSHED-FROM-THE-SPOOL") {
 		t.Error("the archived body does not carry the step's output")
 	}
+	// THE SNAPSHOT WAS NOT OFFERED AS A BODY, asserted against the real spool
+	// this station just produced rather than against the bytes.
+	//
+	// Comparing bytes was tried first and is UNSOUND: a step that finishes
+	// inside one poll leaves a snapshot byte-identical to the finished log, so
+	// "the archive holds the snapshot" and "the archive holds the log" are the
+	// same string and the check fired on a correct push. What is observable is
+	// what the reader offered, so that is what is asserted.
+	if len(snapshots) > 0 {
+		sp, rerr := cloud.Read(spool)
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		if len(sp.Logs) != 1 || strings.HasSuffix(sp.Logs[0].Name, ".partial.txt") {
+			t.Errorf("the spool reader offered %d body/bodies including a partial capture: %+v",
+				len(sp.Logs), sp.Logs)
+		}
+		if len(sp.Snapshots) != len(snapshots) {
+			t.Errorf("%d snapshot(s) on disk and %d accounted for: an unaccounted snapshot took a "+
+				"sequence number and would be reported as a message that never arrived",
+				len(snapshots), len(sp.Snapshots))
+		}
+	}
+
 	if !strings.Contains(string(stored), " | PUSHED-FROM-THE-SPOOL") {
 		t.Error("the archived body lost the timestamp column, which is the one property these logs have")
 	}

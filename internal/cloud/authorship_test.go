@@ -48,9 +48,17 @@ import (
 // Between them they are every route from this process to a station's request
 // queue. Without both, no code path in this package can cause a run, whatever
 // it is asked to do.
+// `internal/trust` is the third, and it arrived with the signed trusted set. A
+// trust change is not a request, so it does not author a run directly - it
+// decides WHO MAY, which is the same reach one step removed. `SignChange` is
+// "the ONLY thing in this repository that produces a valid change"
+// (`internal/trust/change.go:86`), so keeping it out of here keeps the same
+// property: a compromised service can display a set and propose a change and
+// cannot produce one.
 var authorshipForbidden = []string{
 	"github.com/dbhq-uk/heliograph/internal/seal",
 	"github.com/dbhq-uk/heliograph/internal/transport",
+	"github.com/dbhq-uk/heliograph/internal/trust",
 }
 
 // 1. The dependency graph, transitively.

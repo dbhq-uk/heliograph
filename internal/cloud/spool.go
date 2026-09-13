@@ -98,6 +98,17 @@ type Spool struct {
 	Dir      string
 	Statuses []Status
 	Logs     []Log
+
+	// Snapshots are the partial captures: bodies this control node collected
+	// and will never upload, because a run in flight is a snapshot rather than
+	// evidence.
+	//
+	// THEY ARE KEPT BECAUSE THEY TOOK A SEQUENCE NUMBER. Skipping them as
+	// bodies is right and forgetting them entirely is not: the relay assigned
+	// each one a number on the way here, so each is one of the holes `Gaps`
+	// counts. Dropping them made an ordinary run report a message that never
+	// arrived, about a file sitting in ops-logs.
+	Snapshots []Log
 }
 
 // Read describes a spool without touching it.
@@ -111,7 +122,7 @@ func Read(dir string) (Spool, error) {
 	if s.Statuses, err = readStatuses(filepath.Join(dir, statusesDirName)); err != nil {
 		return Spool{}, err
 	}
-	if s.Logs, err = readLogs(filepath.Join(dir, logsDirName)); err != nil {
+	if s.Logs, s.Snapshots, err = readLogs(filepath.Join(dir, logsDirName)); err != nil {
 		return Spool{}, err
 	}
 	return s, nil
@@ -154,15 +165,14 @@ func readStatuses(dir string) ([]Status, error) {
 	return out, nil
 }
 
-func readLogs(dir string) ([]Log, error) {
+func readLogs(dir string) (logs []Log, snapshots []Log, err error) {
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
-	var out []Log
 	for _, e := range ents {
 		// FLAT, and `.txt` only. A directory under ops-logs is not this
 		// transport's layout, and a name that is not `.txt` is not a log:
@@ -176,17 +186,23 @@ func readLogs(dir string) ([]Log, error) {
 		// finished runs, and the archive wants the same distinction: a
 		// half-written body stored under a name the finished run will later
 		// claim is the one way this path could lose a log.
-		if strings.HasSuffix(e.Name(), ".partial.txt") {
-			continue
-		}
 		l, derr := describe(filepath.Join(dir, e.Name()), e.Name())
 		if derr != nil {
-			return nil, derr
+			return nil, nil, derr
 		}
-		out = append(out, l)
+		// KEPT, AND KEPT APART. A snapshot is never offered as a body, and it
+		// is not forgotten either: it took a sequence number on the way here
+		// and `Gaps` has to account for that or it reports a message that
+		// never arrived about a file sitting right there.
+		if strings.HasSuffix(e.Name(), ".partial.txt") {
+			snapshots = append(snapshots, l)
+			continue
+		}
+		logs = append(logs, l)
 	}
-	sort.Slice(out, func(a, b int) bool { return out[a].Name < out[b].Name })
-	return out, nil
+	sort.Slice(logs, func(a, b int) bool { return logs[a].Name < logs[b].Name })
+	sort.Slice(snapshots, func(a, b int) bool { return snapshots[a].Name < snapshots[b].Name })
+	return logs, snapshots, nil
 }
 
 func describe(path, name string) (Log, error) {
@@ -326,16 +342,20 @@ func (s Spool) Gaps() []string {
 			seqs = append(seqs, st.Seq)
 		}
 	}
-	for _, l := range s.Logs {
-		if l.Seq == 0 {
-			// A body the spool holds and whose sequence it did not record. It
-			// took a number, and that number is one of the holes below.
-			unrecorded++
-			continue
-		}
-		if !seen[l.Seq] {
-			seen[l.Seq] = true
-			seqs = append(seqs, l.Seq)
+	// Bodies AND snapshots, because both took a number. A snapshot is not
+	// uploadable and that is a separate question from whether it arrived.
+	for _, group := range [][]Log{s.Logs, s.Snapshots} {
+		for _, l := range group {
+			if l.Seq == 0 {
+				// A body the spool holds and whose sequence it did not record.
+				// It took a number, and that number is one of the holes below.
+				unrecorded++
+				continue
+			}
+			if !seen[l.Seq] {
+				seen[l.Seq] = true
+				seqs = append(seqs, l.Seq)
+			}
 		}
 	}
 	if len(seqs) < 2 {

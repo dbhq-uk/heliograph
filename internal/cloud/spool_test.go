@@ -269,3 +269,35 @@ func TestGapsSaysNothingWhenTheSequenceIsWhole(t *testing.T) {
 		t.Fatalf("a whole sequence reported a gap: %v", got)
 	}
 }
+
+// A SNAPSHOT IS SKIPPED AS A BODY AND STILL TOOK A SEQUENCE NUMBER, and
+// forgetting the second half makes the bound over-report.
+//
+// Since heliograph#116 a progress snapshot lands under the station's own name
+// with a `.partial.txt` suffix. `Read` does not offer it as a body, correctly:
+// it is a half-written capture of a run that was still going. But the relay
+// assigned it a sequence on the way here, so it is one of the holes - and a
+// hole with nothing to explain it is reported as a message that never arrived.
+//
+// Found by the end-to-end test after #116 landed: an ordinary run reported
+// "at least 1 message(s) between sequence 1 and 5 were never collected" about a
+// snapshot sitting in ops-logs.
+func TestASkippedSnapshotStillAccountsForItsSequenceNumber(t *testing.T) {
+	dir := writeSpool(t, map[string]string{
+		// status 1, snapshot 2, log 3, status 4: what one run leaves now.
+		"statuses/status-000001.txt": statusFor("run-1", "running", "", ""),
+		"statuses/status-000004.txt": statusFor("run-1", "idle", "", ""),
+		"ops-logs/env-1.partial.txt": envLog,
+		"ops-logs/env-1.txt":         envLog,
+	})
+	s, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Logs) != 1 {
+		t.Fatalf("the snapshot was offered as a body: %+v", s.Logs)
+	}
+	if got := s.Gaps(); len(got) != 0 {
+		t.Fatalf("two holes, one log and one snapshot to explain them, and a gap was still claimed: %v", got)
+	}
+}

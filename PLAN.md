@@ -398,6 +398,23 @@ whose gap detector sees only the sequences that arrive on `/ingest/status`:
 raised on heliograph-io/heliograph-cloud#17 with the two sequence numbers one
 ordinary run produced.
 
+**A skipped snapshot still took a sequence number, and forgetting the second
+half made the bound over-report.** Since #116 a progress snapshot lands under
+the station's own name with a `.partial.txt` suffix rather than under a sequence
+name. `Read` does not offer it as a body, correctly - a run in flight is a
+snapshot rather than evidence - and the first version dropped it entirely, so an
+ordinary run reported *"at least 1 message(s) between sequence 1 and 5 were
+never collected"* about a file sitting in `ops-logs`. `Spool.Snapshots` keeps
+them apart rather than throwing them away: never uploadable, always counted.
+Found by the end-to-end test on the rebase onto #116, not by the unit tests.
+
+**Comparing bytes could not tell a snapshot from the log it is a snapshot of.**
+The first version of that assertion compared the archived body against each
+`.partial.txt` on disk. A step that finishes inside one poll leaves a snapshot
+BYTE-IDENTICAL to the finished log, so "the archive holds the snapshot" and "the
+archive holds the log" are the same string, and the check fired on a correct
+push. It asserts what the spool reader OFFERED instead, which is observable.
+
 **A test double more permissive than the real thing is worse than none, again.**
 The smoke stub checked the credential on provisioning and rotation and not on
 ingest, so *"a refusal is read as a refusal"* passed against a stub that refused
