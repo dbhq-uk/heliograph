@@ -314,6 +314,25 @@ the receiver drops anything at or below what it has already accepted, by
 design, because that is the replay defence. One of the two messages can be
 lost.
 
+### A relay-only estate cannot be alerted on when it goes quiet
+
+This one is structural rather than a defect, and it decides whether the relay
+alone is enough for you.
+
+Everything the relay carries reaches a hosted archive only when the control node
+forwards it, with `heliograph push`. That is deliberate: a hosted poller reading
+the relay would race your own control node, and a relay **deletes on
+collection**, so whichever side asked first would silently eat the other's logs.
+
+The consequence is that a relay-only estate gets the archive and the history,
+and gets **no gone-quiet alerting**. Nothing reaches the service while your
+control node is closed, so the service cannot tell a station that has stopped
+reporting from a laptop that is shut. You cannot alert on silence when your only
+source of it is also silent.
+
+Running a git transport alongside closes it, and costs nothing: the station
+pushes to the repository whether anybody is watching or not.
+
 ## What DBHQ can and cannot claim
 
 **Can:** the hosted relay cannot read your content, and cannot cause a station

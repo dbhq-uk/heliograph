@@ -314,6 +314,7 @@ nothing compiled even for the relay, and an estate that permits no binary loses
 two shapes rather than the tool.
 
 | #112 | **a station publishes whether it will run an action** (heliograph-io/heliograph-cloud#27) - `wire.Status` gains `actions:`, `allowed` or `refused`, written by all five status writers across the three shipped loops and read by `heliograph status` and `heliograph_status`. Before it, `read-only` versus `action` was `--allow-actions` and nothing else: a flag read once at startup, on no request and in no document, so anything wanting the answer had to infer it from log history - which is wrong in both directions, because a station restarted without the flag still has its old action logs and one started with it may never have been asked. **Three answers, not two.** A station that publishes nothing is not read-only, it is a station planted before the field, and the CLI says `not reported` rather than choosing a side. See below for what it found |
+| - | **`heliograph login`, `push` and `rotate`** (heliograph-io/heliograph-cloud#15 and #11) - the CLI half of the hosted service. `login` is a device-code flow with nothing to paste; `init --transport relay --hosted` provisions an estate, so there is no container to run and no TLS for the customer to terminate; `push` forwards the spool; `rotate` replaces a control credential and says first what it does not rotate. `doctor` reads a refusal as a refusal, branching on `cause` rather than on a status code. `internal/cloud` cannot reach `internal/seal`, `internal/transport` or `internal/trust` and never names `wire.Request`, so **no code path in it can author a request**, asserted three ways rather than promised |
 
 ### What the action mode found
 
@@ -369,7 +370,57 @@ started without `--allow-actions`. Both are published in the same document and
 `/station` says so, because a reader meeting both will otherwise assume one
 implies the other.
 
-### What the blocked port found
+### What login and push found
+
+**The spool held one status document, and a run is keyed by the id inside one.**
+`spoolStatus` wrote `<spool>/status` and overwrote it every drain. The archive
+keys a run by the `id:` inside its own status document, and the sealed envelope
+binds the estate, station, direction, kind and sequence - a run id is none of
+them, so no other copy of that id exists on this side. Eleven collected logs and
+one status meant ten runs this control node could name and not identify. The
+case that broke it is two statuses in ONE drain: `lastStatus` is overwritten by
+the next in the batch, and the station publishes on every transition, so
+`running` and `idle` for one run routinely travel together and the first was
+dropped before it reached disk. `keepStatus` files every one by its signed
+sequence and never overwrites.
+
+**The gap report was stating an inference as an observation, on every healthy
+run.** The relay assigns a sequence to every message it carries - a status, a
+progress snapshot and a finished log each take one - and the spool records a
+sequence in a name only sometimes: a status always carries its own, a log
+carries its own only when no status named it. So an ordinary run leaves status
+1, log 2, status 3 and the names show 1 and 3. The first push printed *"sequence
+2 was never collected by this control node"* about a log sitting in `ops-logs`.
+`Spool.Gaps` now states a BOUND - holes, minus collected bodies whose sequence
+the spool did not record, reported as "at least N" - because which ones they
+were is not knowable from here. **The same arithmetic will bite the archive**,
+whose gap detector sees only the sequences that arrive on `/ingest/status`:
+raised on heliograph-io/heliograph-cloud#17 with the two sequence numbers one
+ordinary run produced.
+
+**A skipped snapshot still took a sequence number, and forgetting the second
+half made the bound over-report.** Since #116 a progress snapshot lands under
+the station's own name with a `.partial.txt` suffix rather than under a sequence
+name. `Read` does not offer it as a body, correctly - a run in flight is a
+snapshot rather than evidence - and the first version dropped it entirely, so an
+ordinary run reported *"at least 1 message(s) between sequence 1 and 5 were
+never collected"* about a file sitting in `ops-logs`. `Spool.Snapshots` keeps
+them apart rather than throwing them away: never uploadable, always counted.
+Found by the end-to-end test on the rebase onto #116, not by the unit tests.
+
+**Comparing bytes could not tell a snapshot from the log it is a snapshot of.**
+The first version of that assertion compared the archived body against each
+`.partial.txt` on disk. A step that finishes inside one poll leaves a snapshot
+BYTE-IDENTICAL to the finished log, so "the archive holds the snapshot" and "the
+archive holds the log" are the same string, and the check fired on a correct
+push. It asserts what the spool reader OFFERED instead, which is observable.
+
+**A test double more permissive than the real thing is worse than none, again.**
+The smoke stub checked the credential on provisioning and rotation and not on
+ingest, so *"a refusal is read as a refusal"* passed against a stub that refused
+nothing. Found by reading the output rather than by the test failing. The Go
+e2e had the check throughout, which is the only reason the behaviour was
+actually covered.### What the blocked port found
 
 **A fixture can be hostile and still prove nothing.** The check that the host
 match is exact rather than a substring used `gitlab.corp.example`, which no
@@ -767,6 +818,15 @@ existed to run.
 
 Added here when something cost real time. AGENTS.md holds the hard rules; this
 holds what was learned proving them.
+
+**A guard on a dependency graph outlives a guard on an import block.** The claim
+that `push` cannot author a request is the product's central one, and it is kept
+by three assertions rather than one: `go list -deps` proves the package cannot
+REACH `internal/seal` or `internal/transport` transitively, an AST walk proves it
+never names `wire.Request`, and the end-to-end test counts POSTs to the
+station's request queue across a real push and requires the count not to move.
+The first is the one that keeps working when somebody adds a helper in a year,
+because an import three packages away signs exactly as well as a direct one.
 
 **A check nobody has watched fail is a check nobody knows works.** Two coverage
 guards written on 2026-09-08 were wrong in ways that read as correct:

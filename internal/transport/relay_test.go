@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
@@ -483,4 +484,157 @@ func contains(s, sub string) bool {
 		}
 		return false
 	})()
+}
+
+// --- the spool keeps every status, not only the newest ------------------------
+
+func setupWithSpool(t *testing.T, spool string) (*Relay, *station, *fakeRelay) {
+	t.Helper()
+	f, srv := newFakeRelay(t)
+	control, err := seal.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := seal.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewRelayWithSpool(srv.URL, "e1", "st1", "tok", control, st.Public(),
+		filepath.Join(t.TempDir(), "state.json"), spool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r, &station{id: st, peer: control.Public(), estate: "e1", name: "st1"}, f
+}
+
+// EVERY STATUS IS KEPT, and that is what makes the spool a store rather than a
+// snapshot of the last thing that happened.
+//
+// `status` held exactly one document, overwritten on every drain, so the spool
+// could say what the station is doing now and nothing at all about the eleven
+// runs before it. That was enough while the only reader was `heliograph
+// status`; it is not enough for anything that has to describe a RUN, because a
+// run is keyed by the `id:` inside its own status document and no other copy
+// of that id exists anywhere on this side of the gap.
+//
+// Two of them arriving in one drain is the case that matters. The station
+// publishes on every transition, so `running` and `idle` for one run routinely
+// travel together, and keeping only the last of a batch loses the first.
+func TestTheSpoolKeepsEveryStatusDocumentAndNotOnlyTheNewest(t *testing.T) {
+	spool := t.TempDir()
+	r, st, f := setupWithSpool(t, spool)
+
+	st.publish(t, f, []byte("state: running\nid: run-1\nstep: env\nutc: 20260913T090000Z\n"))
+	st.publish(t, f, []byte("state: idle\nid: run-1\nstep: env\nexit: 0\nutc: 20260913T090012Z\n"))
+	if _, err := r.FetchStatus(); err != nil {
+		t.Fatal(err)
+	}
+
+	st.publish(t, f, []byte("state: running\nid: run-2\nstep: net\nutc: 20260913T091000Z\n"))
+	if _, err := r.FetchStatus(); err != nil {
+		t.Fatal(err)
+	}
+
+	kept, err := os.ReadDir(filepath.Join(spool, "statuses"))
+	if err != nil {
+		t.Fatalf("the spool kept no statuses directory: %v", err)
+	}
+	if len(kept) != 3 {
+		var names []string
+		for _, e := range kept {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("the spool kept %d status document(s), want 3: %v", len(kept), names)
+	}
+
+	// Every one of them is readable and carries the run it describes. A file
+	// that exists and cannot be parsed is worse than an absent one, because it
+	// reads as coverage.
+	ids := map[string]int{}
+	for _, e := range kept {
+		b, rerr := os.ReadFile(filepath.Join(spool, "statuses", e.Name()))
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		s, perr := wire.ParseStatus(b)
+		if perr != nil {
+			t.Fatalf("%s does not parse as a status: %v", e.Name(), perr)
+		}
+		ids[s.ID]++
+	}
+	if ids["run-1"] != 2 || ids["run-2"] != 1 {
+		t.Errorf("the kept statuses describe %v, want two for run-1 and one for run-2", ids)
+	}
+}
+
+// The SEQUENCE is in the name, because it is the one thing about a collected
+// message that the sender signed. A spool that named statuses by arrival order
+// would be naming them by something the relay controls.
+func TestAKeptStatusIsNamedBySignedSequence(t *testing.T) {
+	spool := t.TempDir()
+	r, st, f := setupWithSpool(t, spool)
+
+	st.publish(t, f, []byte("state: idle\nid: run-1\n"))
+	if _, err := r.FetchStatus(); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := os.ReadDir(filepath.Join(spool, "statuses"))
+	if err != nil || len(kept) != 1 {
+		t.Fatalf("want one kept status, got %v (%v)", kept, err)
+	}
+	if kept[0].Name() != "status-000001.txt" {
+		t.Errorf("the kept status is named %q, want it named by the sequence the sender signed", kept[0].Name())
+	}
+}
+
+// AND IT NEVER OVERWRITES, for the reason spoolLog never does: a collected
+// document is the only copy there will ever be, because the relay deleted it on
+// collection. A second write under a name already taken would replace evidence.
+func TestAKeptStatusIsNeverOverwritten(t *testing.T) {
+	spool := t.TempDir()
+	r, st, f := setupWithSpool(t, spool)
+
+	if err := os.MkdirAll(filepath.Join(spool, "statuses"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	taken := filepath.Join(spool, "statuses", "status-000001.txt")
+	if err := os.WriteFile(taken, []byte("state: idle\nid: earlier\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	st.publish(t, f, []byte("state: idle\nid: run-1\n"))
+	if _, err := r.FetchStatus(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(taken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "earlier") {
+		t.Errorf("a kept status was overwritten: %q", b)
+	}
+}
+
+// The single `status` file is what `heliograph status` reads, and it still has
+// to hold the newest document. Keeping a history is an addition, not a move.
+func TestTheNewestStatusIsStillAtTheOldPath(t *testing.T) {
+	spool := t.TempDir()
+	r, st, f := setupWithSpool(t, spool)
+
+	st.publish(t, f, []byte("state: running\nid: run-1\n"))
+	st.publish(t, f, []byte("state: idle\nid: run-1\n"))
+	s, err := r.FetchStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.State != "idle" {
+		t.Fatalf("FetchStatus reported %q, want the newest", s.State)
+	}
+	b, err := os.ReadFile(filepath.Join(spool, "status"))
+	if err != nil {
+		t.Fatalf("the single status file is gone: %v", err)
+	}
+	if !strings.Contains(string(b), "idle") {
+		t.Errorf("the status file holds %q, want the newest document", b)
+	}
 }
