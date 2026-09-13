@@ -352,3 +352,80 @@ jobs:
             exit 1
           fi
           echo "the published image serves its tools"
+
+  winget:
+    name: Submit to winget
+    # After build, beside npm rather than behind it: the manifest points at
+    # the two Windows executables the build job just published, and needs
+    # nothing from npm or the registry.
+    #
+    # SUBMIT, NOT PUBLISH. winget has no registry to push to. A package is a
+    # pull request to microsoft/winget-pkgs holding three YAML files, and it
+    # is installable only once a moderator has merged it, which is hours on a
+    # good day. So this job opens the PR and stops; the release is complete
+    # before it runs and does not wait for it.
+    #
+    # PORTABLE, which is winget's word for a bare executable that gets a
+    # symlink on PATH. No installer is built, no zip, no MSI: the URL in the
+    # manifest is the same heliograph-windows-amd64.exe a stranger downloads
+    # from the release page, and the hash winget checks before running it is
+    # the same number that is in SHA256SUMS. That is the point. An installer
+    # would be a second artefact, built by a second tool, with a second hash
+    # that packaging/reproduce.sh does not produce.
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Get komac
+        # Pinned by version and by hash, because this tool writes the file
+        # that decides what a Windows machine downloads and runs. There is no
+        # OIDC route into winget-pkgs (below), so a compromised komac release
+        # would run with the one long-lived credential this workflow holds.
+        # The hash was taken from the v2.16.0 release on 2026-09-13.
+        run: |
+          set -euo pipefail
+          curl -sSL -o komac.tgz \
+            https://github.com/russellbanks/Komac/releases/download/v2.16.0/komac-2.16.0-x86_64-unknown-linux-gnu.tar.gz
+          echo "7d2707fa6210f2789a3702de49fbd150b736dbf426ee0b9bc8e098736f9fd82d  komac.tgz" | sha256sum -c
+          tar -xzf komac.tgz komac
+          sudo install -m 0755 komac /usr/local/bin/komac
+          komac --version
+
+      - name: Open the pull request on winget-pkgs
+        # THE ONE LONG-LIVED CREDENTIAL IN THIS FILE, and why. npm and the MCP
+        # registry accept an Actions OIDC token, so those jobs hold nothing.
+        # winget-pkgs is somebody else's repository: the submission is a PR
+        # from a fork, and GitHub gives a workflow no identity that can push
+        # to a fork it does not own. komac needs a classic personal access
+        # token with `public_repo` (komac README, "GitHub Token Setup"), and
+        # a fine-grained token cannot open the PR (russellbanks/Komac#310).
+        #
+        # `public_repo` on a person's account can write to every public
+        # repository that person can, including this one. So WINGET_TOKEN
+        # belongs to a separate account that owns nothing but its fork of
+        # winget-pkgs and is a member of no organisation. What the token can
+        # reach if it leaks is that fork.
+        #
+        # Skipped, loudly, when the secret is absent. A release that reached
+        # GitHub, npm, the registry and ghcr.io is not broken because winget
+        # did not hear about it, and failing this job would say it was.
+        env:
+          TAG: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITHUB_TOKEN:-}" ]; then
+            echo "::warning::WINGET_TOKEN is not set, so ${TAG} was not submitted to winget. Add the secret and re-run this job, or submit by hand: komac update heliograph-io.heliograph --version ${TAG#v} --urls <the two windows .exe release URLs> --submit"
+            exit 0
+          fi
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          komac update heliograph-io.heliograph \
+            --version "${TAG#v}" \
+            --urls "${base}/heliograph-windows-amd64.exe" \
+                   "${base}/heliograph-windows-arm64.exe" \
+            --release-notes-url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}" \
+            --created-with "dbhq-uk/heliograph release workflow" \
+            --created-with-url "https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/.github/workflows/release.yml" \
+            --submit
