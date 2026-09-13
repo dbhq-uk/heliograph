@@ -679,6 +679,24 @@ holds the evidence, measurements and sources. Both are published as
   means the injection genuinely did not happen that time. Worth catching the
   next occurrence with the resolved `GIT_CONFIG_*` environment dumped on
   failure, rather than guessing at a race now
+- **And a SECOND assertion in that same file now fails intermittently on
+  Windows**, which makes one shared cause likelier than two coincidences.
+  `tests/test-transports-ps1.sh:256` asserts `Get-TpDescribe` masks a
+  credential in a remote URL **and still names the host**. The masking half
+  passes; the host half failed on `main` twice on 2026-09-13 - on 4e1f2a7
+  (#113) and on 1f730c6 (#115) - reporting `58 passed, 1 failed` both times,
+  and passed on the five commits between and either side. Neither commit
+  touches a file under `station/` or `tests/`, and #115's own PR run of the
+  same job was green on identical tree content.
+  Both assertions sit inside a `for` over two remote URLs with a
+  `git remote remove` and `git remote add` between iterations, and both read
+  `$TP_OUT` captured from a PowerShell invocation - so a stale `TP_OUT` or a
+  `git remote add` that had not taken effect would fail the assertion that
+  depends on WHICH url is current and pass the one that only looks for the
+  absence of a secret. That is a hypothesis and nobody has the evidence.
+  Filed as `heliograph-io/heliograph-cloud#150` with the run ids, and
+  deliberately NOT re-run: a re-run that goes green is a diagnosis nobody made,
+  and the evidence that would settle it is the kind the next run destroys
 - **Delivery pushes to the configured upstream, not to `origin` explicitly.**
   `cap_push` (bash) and `Send-TpLog` (PowerShell) both use a bare `git push`, so
   a branch tracking another remote takes every log somewhere the control side
