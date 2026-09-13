@@ -18,6 +18,7 @@ import (
 	"sort"
 
 	"github.com/dbhq-uk/heliograph/internal/seal"
+	"github.com/dbhq-uk/heliograph/internal/trust"
 )
 
 var version = "dev"
@@ -28,13 +29,18 @@ const usage = `heliograph-seal - seals and opens heliograph relay messages
   heliograph-seal fingerprint [--identity <file> | --peer <file>]
   heliograph-seal public --identity <file>
   heliograph-seal seal   --identity F --peer F --estate E --station S --dir D --kind K --seq N --in F --out F
-  heliograph-seal open   --identity F --peer F --estate E --station S --dir D --kind K --min-seq N --in F
+  heliograph-seal open   --identity F --peer F|--set F --estate E --station S --dir D --kind K --min-seq N --in F
+  heliograph-seal trust  init|show|digest|verify|apply|anchor ...
   heliograph-seal version
 
 open reads the relay's JSON array on stdin or --in, verifies every message, and
 prints the accepted sequence number on the first line followed by the document.
 It exits non-zero when nothing verified, which is not an error condition: a
 relay is entitled to hand over anything at all.
+
+--set verifies against a trusted set rather than against one recorded peer, so
+several people can each hold their own key. --author-out records who signed the
+message that was accepted, which is what makes an archived run attributable.
 `
 
 func main() {
@@ -54,6 +60,8 @@ func main() {
 		err = cmdSeal(os.Args[2:])
 	case "open":
 		err = cmdOpen(os.Args[2:])
+	case "trust":
+		err = cmdTrust(os.Args[2:])
 	case "version", "--version":
 		fmt.Printf("heliograph-seal %s\n", version)
 		return
@@ -213,6 +221,8 @@ func cmdOpen(args []string) error {
 	mf.register(fs)
 	minSeq := fs.Uint64("min-seq", 0, "refuse anything at or below this sequence number")
 	in := fs.String("in", "", "the relay's JSON array; stdin if absent")
+	setPath := fs.String("set", "", "a trusted set to verify against, instead of one peer")
+	authorOut := fs.String("author-out", "", "write `<name> <fingerprint>` of whoever signed the accepted message here")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -220,9 +230,49 @@ func cmdOpen(args []string) error {
 	if err != nil {
 		return err
 	}
-	peer, err := loadPeer(mf.peer)
-	if err != nil {
-		return err
+
+	// THE CANDIDATES A MESSAGE MAY HAVE COME FROM.
+	//
+	// With one peer there is one. With a trusted set there is one per active
+	// member, and the anchor. seal.Open takes an expected sender rather than
+	// discovering one, deliberately: it will not tell a caller who signed
+	// something it could not verify, so the set is tried member by member and a
+	// message that matches nobody is dropped exactly as before.
+	//
+	// REVOKED MEMBERS ARE NOT CANDIDATES, and that is the revocation. They are
+	// still looked up afterwards, so the refusal can name the person rather than
+	// saying "unknown" - which reads as a broken enrolment and sends somebody to
+	// re-plant a station that is working perfectly.
+	type candidate struct {
+		name string
+		pub  seal.PublicIdentity
+	}
+	var candidates []candidate
+	var set trust.Set
+	haveSet := false
+	if *setPath != "" {
+		set, err = loadSet(*setPath)
+		if err != nil {
+			return err
+		}
+		haveSet = true
+		for _, m := range set.Everyone() {
+			if m.Active() {
+				candidates = append(candidates, candidate{m.Name, m.Public})
+			}
+		}
+	}
+	if mf.peer != "" {
+		peer, perr := loadPeer(mf.peer)
+		if perr != nil {
+			return perr
+		}
+		if !haveSet {
+			candidates = append(candidates, candidate{"peer", peer})
+		}
+	}
+	if len(candidates) == 0 {
+		return fmt.Errorf("give --peer or --set: there is nothing to verify against, and running unverified is not a mode this offers")
 	}
 
 	var raw []byte
@@ -244,6 +294,7 @@ func cmdOpen(args []string) error {
 
 	var bestSeq uint64
 	var best []byte
+	var bestAuthor candidate
 	for _, msg := range msgs {
 		// THE REPLAY CHECK. A gap is tolerated because the relay may
 		// legitimately expire a message; a regression is refused, because that
@@ -258,17 +309,50 @@ func cmdOpen(args []string) error {
 			Estate: mf.estate, Station: mf.station, Dir: mf.dir,
 			Seq: msg.Seq, Kind: mf.kind, Recipient: id.Public().Fingerprint(),
 		}
-		plain, err := seal.Open(id, peer, m, msg.Body)
-		if err != nil {
-			continue
+		for _, c := range candidates {
+			plain, oerr := seal.Open(id, c.pub, m, msg.Body)
+			if oerr != nil {
+				continue
+			}
+			bestSeq, best, bestAuthor = msg.Seq, plain, c
+			break
 		}
-		bestSeq, best = msg.Seq, plain
 	}
 	if best == nil {
+		// A REFUSAL THAT NAMES A REVOKED KEY, when that is what happened.
+		//
+		// The claimed signing key is the first 32 bytes of the envelope and is
+		// not secret - the relay can read it - so saying "carol was revoked"
+		// tells a hostile relay nothing it did not already have. It tells the
+		// station's log the one thing that distinguishes "your access was
+		// removed" from "something is broken", and those send the reader to
+		// completely different places.
+		if haveSet {
+			for _, msg := range msgs {
+				if len(msg.Body) < 64 {
+					continue
+				}
+				if m, ok := set.LookupSigning(msg.Body[:32]); ok && !m.Active() {
+					fmt.Fprintf(os.Stderr,
+						"heliograph-seal: refused a message signed by %s (%s), revoked on %s by %s\n",
+						m.Name, m.Public.Fingerprint(), m.Revoked, m.RevokedBy)
+					os.Exit(4)
+				}
+			}
+		}
 		// Exit 1 with no output. The caller treats that as "nothing to do",
 		// which is right: a station that stopped on rubbish would be one a
 		// hostile relay could halt at will.
 		os.Exit(1)
+	}
+	if *authorOut != "" {
+		// ATTRIBUTION, WRITTEN WHERE THE RUNNER CAN READ IT. Without this the
+		// archive can say the estate asked for something and never who, which
+		// is the gap that stops an organisation being able to run this.
+		line := fmt.Sprintf("%s %s\n", bestAuthor.name, bestAuthor.pub.Fingerprint())
+		if werr := os.WriteFile(*authorOut, []byte(line), 0o600); werr != nil {
+			return werr
+		}
 	}
 	fmt.Printf("%d\n", bestSeq)
 	_, err = os.Stdout.Write(best)
