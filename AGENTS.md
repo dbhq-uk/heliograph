@@ -51,11 +51,19 @@ signing, and a bash station on any transport may end up carrying it. The
 PowerShell station needs none even then: its seal is managed C# shipped as
 source and compiled by `Add-Type` at startup.
 
-**The price of listing one is a reproducible build.** "Read it before you run
-it" stops working at a binary and is replaced by "verify the binary matches
-the source you read" - which is a claim, not a property, unless anybody can
-rebuild the exact bytes from the tag and check them against a published
-checksum. `packaging/reproduce.sh` is that build; `/provenance` on the site is
+**The price of listing one is a reproducible build**, and that phrasing is
+[#93](https://github.com/dbhq-uk/heliograph/issues/93)'s rather than this
+file's:
+
+> Open-sourcing it is **not sufficient**. The component needs **reproducible
+> builds and published checksums**, so an operator can verify the binary
+> matches the source they read. This is the price of moving off pure bash, and
+> the estates that care will ask.
+
+"Read it before you run it" stops working at a binary and is replaced by
+"verify the binary matches the source you read" - which is a claim, not a
+property, unless anybody can rebuild the exact bytes from the tag and check
+them against a published checksum. `packaging/reproduce.sh` is that build; `/provenance` on the site is
 the command. A far-side binary that is not reproducible is not permitted, and
 that ordering is deliberate: the estates that mind a binary on their machine
 are exactly the ones who will ask.

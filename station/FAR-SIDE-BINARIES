@@ -14,8 +14,11 @@
 # WHAT LISTING ONE COSTS. "Read it before you run it" stops working the moment
 # a station needs something compiled, and it is replaced by "verify the binary
 # matches the source you read" - which is only true if the build is
-# reproducible and the checksum is published. So a binary may be added here
-# only when all three hold:
+# reproducible and the checksum is published. Issue #93 put it first and put it
+# better: "Open-sourcing it is not sufficient ... This is the price of moving
+# off pure bash, and the estates that care will ask."
+#
+# So a binary may be added here only when all three hold:
 #
 #   1. the transport or feature that needs it genuinely cannot be done in
 #      bash, and the argument is written in a spec, not in a commit message
