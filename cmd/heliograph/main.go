@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dbhq-uk/heliograph/internal/bootstrap"
+	"github.com/dbhq-uk/heliograph/internal/cloud"
 	"github.com/dbhq-uk/heliograph/internal/logfile"
 	"github.com/dbhq-uk/heliograph/internal/plant"
 	"github.com/dbhq-uk/heliograph/internal/seal"
@@ -47,12 +48,19 @@ const usage = `heliograph - run things on a machine you cannot log into
 
   heliograph bootstrap <dir>                plant the station payload into a transport repo
       [--flavour bash|powershell|both]      bash by default; powershell for an estate with none
+  heliograph login                          sign in to a hosted service, nothing to paste
+      [--service <url>] [--status] [--logout]
+  heliograph push                           forward this control node's spool to the archive
+      [-e <estate>] [--dry-run]
+  heliograph rotate                         replace an estate's control credential
+      [-e <estate>] [--yes]
   heliograph init <estate> --dir <path>     remember a transport repo by name
       [--transport git|share|bundle|objstore|relay]
       objstore: --dir <https endpoint> --bucket <name> --scope <lane> [--prefix p] [--region r]
                 keys come from HELIOGRAPH_S3_ACCESS_KEY and HELIOGRAPH_S3_SECRET_KEY
       relay:    --dir <https base url> --relay-estate <id> --scope <station> [--identity file]
                 the token comes from HELIOGRAPH_RELAY_TOKEN
+                or --transport relay --hosted, which provisions all three
   heliograph relay peer <file|->            record the station's public identity
   heliograph estates                        what is configured here
   heliograph station add <name>             a second station on this repo, on its own branch
@@ -90,6 +98,12 @@ func main() {
 		err = cmdBootstrap(os.Args[2:])
 	case "init":
 		err = cmdInit(os.Args[2:])
+	case "login":
+		err = cmdLogin(os.Args[2:])
+	case "push":
+		err = cmdPush(os.Args[2:])
+	case "rotate":
+		err = cmdRotate(os.Args[2:])
 	case "estates":
 		err = cmdEstates()
 	case "station":
@@ -348,11 +362,25 @@ func open(name string) (opened, error) {
 					"  Then here:       heliograph relay peer -e %s <the public line they send back>",
 				e.Name, e.Name)
 		}
+		// THE ENVIRONMENT WINS AND THE STORE IS THE FALLBACK. The variable is
+		// the form a pipeline injects, and a pipeline must not be overridden by
+		// whatever a person happened to sign in as on the same machine. The
+		// store is what `heliograph login` and `init --hosted` fill in, and it
+		// is what makes "the control token never touches the clipboard" true
+		// for the whole of a hosted estate's life rather than only at signup.
 		token := os.Getenv("HELIOGRAPH_RELAY_TOKEN")
 		if token == "" {
+			if creds, cerr := cloud.LoadCredentials(); cerr == nil {
+				if stored, ok := creds.Estate(e.Name); ok {
+					token = stored.Token
+				}
+			}
+		}
+		if token == "" {
 			return opened{}, fmt.Errorf(
-				"estate %q is a relay and HELIOGRAPH_RELAY_TOKEN is not set.\n"+
+				"estate %q is a relay and it has no control credential here.\n"+
 					"  It is the CONTROL token for relay estate %q, from whoever runs the relay.\n"+
+					"  Set HELIOGRAPH_RELAY_TOKEN, or sign in with `heliograph login` if it is hosted.\n"+
 					"  Without it every call is refused with 401, which reads like a fault at the far end",
 				e.Name, e.RelayEstate)
 		}
@@ -489,6 +517,8 @@ func cmdInit(args []string) error {
 	region := fs.String("region", "", "with --transport objstore: the region (default auto, which suits R2 and MinIO)")
 	relayEstate := fs.String("relay-estate", "", "with --transport relay: the estate id the RELAY routes on")
 	identity := fs.String("identity", "", "with --transport relay: this side's identity file (default: generated beside the estate)")
+	hosted := fs.Bool("hosted", false, "with --transport relay: provision the estate on a hosted service")
+	hostedSvc := fs.String("service", "", "with --hosted: the hosted service (default: HELIOGRAPH_CLOUD_URL)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -506,6 +536,22 @@ func cmdInit(args []string) error {
 	// in more than one place now, so it is settled once, here.
 	if err := estate.ValidName(name); err != nil {
 		return err
+	}
+	// --hosted ANSWERS --dir, --relay-estate AND THE TOKEN, which is the whole
+	// point of it: those three are what somebody had to stand up a relay and
+	// terminate TLS in order to obtain. Answered before --dir is demanded,
+	// because demanding it would be demanding the thing being provisioned.
+	if *hosted {
+		if *kind != "relay" {
+			return fmt.Errorf("--hosted provisions a relay estate, and --transport is %q", *kind)
+		}
+		if *dir != "" {
+			return fmt.Errorf("--hosted and --dir disagree: --hosted is what supplies the relay URL")
+		}
+		if *relayEstate != "" {
+			return fmt.Errorf("--hosted and --relay-estate disagree: --hosted is what issues the estate id")
+		}
+		return hostedProvision(name, *hostedSvc, *scopeFlag)
 	}
 	if *dir == "" {
 		return fmt.Errorf("--dir is required: it is the clone this estate writes to")
@@ -1080,6 +1126,11 @@ func cmdDoctor(args []string) error {
 	} else {
 		fmt.Printf("ok        %d log(s) on this branch\n", len(logs))
 	}
+
+	// The hosted half, when there is one. A refusal is read as a refusal here
+	// rather than as a generic failure: the nine causes have different remedies
+	// and one of them is not the operator's problem at all.
+	problems += cloudDoctor(op.Estate)
 
 	if problems > 0 {
 		return fmt.Errorf("%d blocking problem(s) above", problems)

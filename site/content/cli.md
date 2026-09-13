@@ -246,6 +246,8 @@ control node keeps what it collects, which is why `heliograph logs` works here
 at all - and why `status` is repeatable rather than reporting a station that has
 gone away the second time you ask.
 
+That store is called the spool, and it is what `heliograph push` forwards.
+
 ## trust: who may command a station
 
 One key per estate is enough for one person. For four engineers on a client
@@ -318,7 +320,102 @@ needs `heliograph-seal` on the station - the one binary the relay transport
 already installs there. A station on any other transport can use a trusted set
 by carrying that binary too; without it, `TRUST_SET` makes the station refuse to
 start rather than accept everything quietly.
+## login
 
+Signs in to a hosted heliograph service. **There is nothing to paste.**
+
+```bash
+heliograph login --service https://<the service>
+```
+
+It prints a short code and a URL, you enter the code in a browser, and the
+credential comes back over the connection the CLI already opened. It is written
+to `~/.config/heliograph/credentials.json` at mode 600 and is never printed - not
+by `login`, and not by `heliograph login --status`, which shows what is stored
+without showing any value.
+
+This build has **no service URL compiled into it**. A hostname in a released
+binary is a promise that outlives the binary, and a station pointed at a name
+that used to resolve fails on the far side, silently, in front of somebody who
+cannot debug it. So `--service` or `HELIOGRAPH_CLOUD_URL` is required.
+
+`heliograph login --logout` forgets the credential on this machine. It does not
+revoke it: revoke it in the console if it may have been seen.
+
+### A hosted estate, with no relay to stand up
+
+```bash
+heliograph init payments --transport relay --hosted
+```
+
+`--hosted` supplies the three things you would otherwise have obtained by
+standing up a relay: the URL, the estate id the relay routes on, and the control
+credential. There is no container to run and no TLS for you to terminate,
+because both ends dial out over ordinary HTTPS. It prints the line to send the
+operator, which carries the enrolment key and is shown once.
+
+The identity is still made **here**. The service provisions routing and
+credentials and never sees a key that can open or sign anything.
+
+## push
+
+Forwards the spool this control node already keeps.
+
+```bash
+heliograph push -e payments
+heliograph push -e payments --dry-run     # what would be sent, and send nothing
+```
+
+The status documents go first, because the archive builds its record from those
+bytes and keys a run by the `id:` inside one. Then a manifest, so the client
+learns what to skip; then the log bodies, in chunks with a digest each; then a
+completion that verifies the whole body. Each step returns a receipt.
+
+Four properties worth knowing, because each is asserted in a test rather than
+promised:
+
+- **`push` never authors a request.** It cannot reach the code that signs one or
+  the code that publishes one, and driving it with a station and a relay both
+  running sends nothing to the station's request queue
+- **The spool is untouched.** It is read and never written, compared as a whole
+  tree before and after
+- **It is idempotent**, so running it at the end of every session is a habit
+  rather than a decision. The manifest is what makes a repeat push cheap
+- **An interrupted push resumes.** The service says which byte offsets it
+  already holds and only the rest is sent
+
+A failed push names the local path of every log it could not send. Nothing is
+deleted and nothing is moved, so a push that fails costs a retry and never a
+round trip through the operator.
+
+### What a relay-only estate does not get
+
+An estate that reaches the service only by `push` gets the archive and the
+history. **It does not get gone-quiet alerting**, because nothing reaches the
+service while this control node is closed: you cannot alert on silence when your
+only source is a laptop that also goes silent. The archive is as current as the
+last push and no more.
+
+Running a git transport alongside is what closes that, and it costs nothing.
+
+## rotate
+
+Replaces an estate's control credential.
+
+```bash
+heliograph rotate -e payments          # prints the warning, changes nothing
+heliograph rotate -e payments --yes    # having read it
+```
+
+The warning is printed **before** the question rather than after the answer,
+because the two credentials are not the same kind of thing. A control credential
+lives on this machine, so replacing it costs one command. A **station**
+credential lives on a machine you cannot reach, in front of an operator with
+their own schedule, so replacing one is not a rotation at all - it is a
+re-enrolment, and somebody has to run the planting line there again.
+
+Rotating a control credential rotates no station credential. Nothing here will
+offer to rotate one as if it were an ordinary action.
 ## logs --gaps
 
 The reason the binary is worth installing.

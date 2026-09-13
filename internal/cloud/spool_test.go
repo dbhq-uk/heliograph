@@ -3,6 +3,7 @@ package cloud
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -197,11 +198,45 @@ func TestAStatusThatDoesNotParseIsReportedRatherThanSkipped(t *testing.T) {
 	}
 }
 
-func TestGapsNamesTheSequencesThisControlNodeNeverCollected(t *testing.T) {
+// GAPS ARE A BOUND, NOT A LIST, and this is the correction the first round trip
+// forced.
+//
+// The relay assigns a sequence to EVERY message it carries: a status, a
+// progress snapshot and a finished log each take one. The spool records the
+// sequence of a status in its name, and records a log's sequence ONLY when no
+// status named the log - because a log the status named is written under the
+// station's own filename instead. So an ordinary run leaves statuses at 1 and 3
+// with the log at 2, and 2 is missing from the names while being sitting right
+// there in ops-logs.
+//
+// Reporting that as "sequence 2 was never collected" is stating an inference as
+// an observation, about the one thing in this product that is supposed to be a
+// fact. What IS a fact is arithmetic: if there are more holes than there are
+// collected bodies whose sequence the spool did not record, the surplus were
+// genuinely never collected.
+func TestAHoleExplainedByACollectedBodyIsNotReportedAsAGap(t *testing.T) {
 	dir := writeSpool(t, map[string]string{
-		"statuses/status-000001.txt": idleStatus,
-		"statuses/status-000004.txt": idleStatus,
-		"statuses/status-000005.txt": idleStatus,
+		// The shape an ordinary run leaves: status 1, log at 2, status 3.
+		"statuses/status-000001.txt": statusFor("run-1", "running", "", ""),
+		"statuses/status-000003.txt": statusFor("run-1", "idle", "", ""),
+		"ops-logs/env-1.txt":         envLog,
+	})
+	s, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Gaps(); len(got) != 0 {
+		t.Fatalf("a hole that a collected body accounts for was reported as a gap: %v", got)
+	}
+}
+
+// And when the holes outnumber what could explain them, the surplus is real and
+// is stated as a surplus.
+func TestGapsReportsOnlyTheHolesNothingCollectedCanAccountFor(t *testing.T) {
+	dir := writeSpool(t, map[string]string{
+		"statuses/status-000001.txt": statusFor("run-1", "idle", "", ""),
+		"statuses/status-000009.txt": statusFor("run-2", "idle", "", ""),
+		"ops-logs/env-1.txt":         envLog,
 	})
 	s, err := Read(dir)
 	if err != nil {
@@ -209,17 +244,22 @@ func TestGapsNamesTheSequencesThisControlNodeNeverCollected(t *testing.T) {
 	}
 	got := s.Gaps()
 	if len(got) != 1 {
-		t.Fatalf("want one gap, got %v", got)
+		t.Fatalf("want one sentence, got %v", got)
 	}
-	if got[0] != "sequences 2 to 3 were never collected by this control node" {
-		t.Errorf("gap sentence %q", got[0])
+	// Seven holes (2 to 8), one collected body whose sequence the spool did not
+	// record, so at least six messages never arrived here.
+	if !strings.Contains(got[0], "at least 6") {
+		t.Errorf("the sentence does not state the bound it can prove: %q", got[0])
+	}
+	if !strings.Contains(got[0], "never collected by this control node") {
+		t.Errorf("the sentence does not say whose absence this is: %q", got[0])
 	}
 }
 
 func TestGapsSaysNothingWhenTheSequenceIsWhole(t *testing.T) {
 	dir := writeSpool(t, map[string]string{
-		"statuses/status-000001.txt": idleStatus,
-		"statuses/status-000002.txt": idleStatus,
+		"statuses/status-000001.txt": statusFor("run-1", "idle", "", ""),
+		"statuses/status-000002.txt": statusFor("run-1", "idle", "", ""),
 	})
 	s, err := Read(dir)
 	if err != nil {

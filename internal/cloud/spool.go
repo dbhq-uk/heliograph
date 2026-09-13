@@ -291,38 +291,65 @@ func (s Spool) Runs() (runs []Run, unpaired []Log) {
 	return runs, unpaired
 }
 
-// Gaps names the sequence numbers this control node never collected.
+// Gaps states what this control node can PROVE it never collected, and states
+// it as a bound rather than as a list.
 //
-// A relay may legitimately expire a message, so a gap is not proof of
-// wrongdoing. It is proof that the archive is not complete, which is the
-// difference between "here is what we have" and "here is what we have, and we
-// can see something is missing". The service computes the authoritative report;
-// this is what `push` can say before it has sent anything, and it says it about
-// the sequence numbers the spool records rather than about runs.
+// THE FIRST ROUND TRIP CORRECTED THIS, and the correction is the whole comment.
+// The relay assigns a sequence to every message it carries - a status, a
+// progress snapshot and a finished log each take one - and the spool records a
+// sequence in a file name only sometimes. A status always carries its own. A
+// LOG carries its own only when no status named it, because a named log is
+// written under the station's own filename instead (`Relay.spoolLog`).
+//
+// So an ordinary, perfectly healthy run leaves status 1, log 2, status 3, and
+// the names show 1 and 3. The first version of this function reported "sequence
+// 2 was never collected" about a log sitting in ops-logs, on every run. That is
+// stating an inference as an observation, about the one number in this product
+// whose whole value is being a fact.
+//
+// What is a fact is arithmetic. Count the holes between the lowest and highest
+// sequence seen; count the collected bodies whose sequence the spool did not
+// record, because each of those could be exactly one hole. The surplus is the
+// number of messages that genuinely never arrived here, and it is reported as
+// "at least N", because which ones they were is not knowable from here.
+//
+// The service's completeness report is the authoritative one and says more.
+// This is what `push` can say before it has sent anything, and it is deliberately
+// the weaker claim.
 func (s Spool) Gaps() []string {
 	var seqs []uint64
+	seen := map[uint64]bool{}
+	unrecorded := 0
 	for _, st := range s.Statuses {
-		if st.Seq != 0 {
+		if st.Seq != 0 && !seen[st.Seq] {
+			seen[st.Seq] = true
 			seqs = append(seqs, st.Seq)
 		}
 	}
 	for _, l := range s.Logs {
-		if l.Seq != 0 {
+		if l.Seq == 0 {
+			// A body the spool holds and whose sequence it did not record. It
+			// took a number, and that number is one of the holes below.
+			unrecorded++
+			continue
+		}
+		if !seen[l.Seq] {
+			seen[l.Seq] = true
 			seqs = append(seqs, l.Seq)
 		}
 	}
-	sort.Slice(seqs, func(a, b int) bool { return seqs[a] < seqs[b] })
-	var out []string
-	for i := 1; i < len(seqs); i++ {
-		if seqs[i] == seqs[i-1] || seqs[i] == seqs[i-1]+1 {
-			continue
-		}
-		if seqs[i] == seqs[i-1]+2 {
-			out = append(out, fmt.Sprintf("sequence %d was never collected by this control node", seqs[i-1]+1))
-			continue
-		}
-		out = append(out, fmt.Sprintf("sequences %d to %d were never collected by this control node",
-			seqs[i-1]+1, seqs[i]-1))
+	if len(seqs) < 2 {
+		return nil
 	}
-	return out
+	sort.Slice(seqs, func(a, b int) bool { return seqs[a] < seqs[b] })
+	low, high := seqs[0], seqs[len(seqs)-1]
+	holes := int(high-low+1) - len(seqs)
+	surplus := holes - unrecorded
+	if surplus <= 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"at least %d message(s) between sequence %d and %d were never collected by this control node. "+
+			"%d number(s) are unaccounted for and %d collected log(s) could explain that many",
+		surplus, low, high, holes, unrecorded)}
 }
