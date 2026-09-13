@@ -138,3 +138,9 @@ the price of being on it. An estate that permits no compiled code loses two
 shapes, not the tool - and even the relay has a way through, because the
 PowerShell station ships the same construction as source and compiles it at
 startup.
+
+The list has one entry and the intent is that it keeps having one. What matters
+to somebody approving this is how many compiled things they have to accept, not
+how many features wanted one, so anything a bash station later needs signed or
+verified is expected to reuse `heliograph-seal` rather than arrive as a second
+binary with its own checksum and its own change control.

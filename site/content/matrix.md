@@ -40,6 +40,14 @@ over any of those is a complete product - the same requests, the same gates,
 the same logs. An estate that permits no compiled code loses two shapes, not
 the tool.
 
+There is **one** such binary rather than one per feature, and that is
+deliberate: anything else a bash station later needs signing or verifying is
+expected to reuse `heliograph-seal` rather than arrive as a second thing to
+audit and checksum. The list is
+[`station/FAR-SIDE-BINARIES`](https://github.com/dbhq-uk/heliograph/blob/main/station/FAR-SIDE-BINARIES),
+it is enforced in CI, and adding to it is a deliberate edit rather than a side
+effect.
+
 The price of every far-side binary is a build you can reproduce and a checksum
 you can check for yourself, which is on [provenance](/provenance).
 

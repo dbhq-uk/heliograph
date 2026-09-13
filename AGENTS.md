@@ -31,12 +31,25 @@ that property is what gets heliograph through the door.
 `station/embed_test.go`, neither of which is under `bash/` or `powershell/`,
 so neither ever ships. CI enforces exactly that.
 
-**Compiled binaries on the far side are per-transport, opt-in, and written
-down.** A git, share, bundle or object-store station is pure bash and always
-will be. The relay adds `heliograph-seal`. The beam will add its own
-component. The list is [`station/FAR-SIDE-BINARIES`](station/FAR-SIDE-BINARIES),
-CI fails any build that references a compiled program the list does not name,
-and the file itself carries the three conditions an entry has to meet.
+**Compiled binaries on the far side are opt-in, per feature, and written
+down.** Today the list has exactly one entry and the default is no binary at
+all: `heliograph-seal`, which the relay transport installs on a bash station.
+The beam is designed to want its own component. The list is
+[`station/FAR-SIDE-BINARIES`](station/FAR-SIDE-BINARIES), CI fails any build
+that references a compiled program the list does not name, and the file itself
+carries the three conditions an entry has to meet.
+
+**Reuse the listed one before proposing a second.** The policy has already
+decided a case: #114 needed Ed25519 verification on the far side for a trusted
+set, which Bash 4 with git and coreutils does not do - `openssl` has no
+Ed25519 verify verb across the versions this runs on, and hand-rolling one
+would be bespoke cryptography. It reused `heliograph-seal` rather than adding
+a second binary, and recorded rejecting one as "a new thing to audit, a new
+checksum, a second argument with every change control". So the number of
+binaries an estate has to accept is one, not one per feature that needs
+signing, and a bash station on any transport may end up carrying it. The
+PowerShell station needs none even then: its seal is managed C# shipped as
+source and compiled by `Add-Type` at startup.
 
 **The price of listing one is a reproducible build.** "Read it before you run
 it" stops working at a binary and is replaced by "verify the binary matches
@@ -47,13 +60,14 @@ the command. A far-side binary that is not reproducible is not permitted, and
 that ordering is deliberate: the estates that mind a binary on their machine
 are exactly the ones who will ask.
 
-**Nobody loses heliograph over this.** Beacon and flare, over git, a file
-share, a bundle or an object store, need no binary anywhere on the far side
-and are a complete product. What an estate that forbids compiled code loses is
-the relay on a bash station - and even that has a way through, because
-`station/powershell/lib/seal.psm1` ships the same construction as source. It
-loses two shapes, not the tool. Say so where the beam is introduced rather
-than leaving somebody to discover it in a security review.
+**Nobody loses heliograph over this.** A beacon or a flare over git, a file
+share, a bundle or an object store needs no binary anywhere on the far side
+and is a complete product: same requests, same gates, same logs. What an
+estate that forbids compiled code gives up is the relay on a bash station, the
+beam when it lands, and any later feature that needs a signature verified on
+the far side - and even the relay has a way through on the PowerShell station.
+Two shapes, not the tool. Say so where the beam is introduced rather than
+leaving somebody to discover it during a security review.
 
 ### The rule this replaced, and what it cost
 

@@ -9,7 +9,7 @@
 # only because it is built from `cmd/` rather than existing as Go source under
 # `station/`. One exception is an exception. Two, arriving the same way, is a
 # policy nobody wrote down. So the policy is written down: AGENTS.md, "The
-# boundary, and what it now costs to cross it".
+# boundary, and what it costs to cross it".
 #
 # WHAT LISTING ONE COSTS. "Read it before you run it" stops working the moment
 # a station needs something compiled, and it is replaced by "verify the binary
@@ -17,22 +17,32 @@
 # reproducible and the checksum is published. So a binary may be added here
 # only when all three hold:
 #
-#   1. the transport that needs it genuinely cannot be done in bash, and the
-#      argument is written in a spec, not in a commit message
+#   1. the transport or feature that needs it genuinely cannot be done in
+#      bash, and the argument is written in a spec, not in a commit message
 #   2. `packaging/reproduce.sh` builds it, so anybody can rebuild the exact
 #      bytes from the tag and check them against the published SHA256SUMS
 #   3. the station verifies it by hash before running it, and refuses on a
 #      mismatch. RELAY_SEAL_SHA256 is the shape
 #
-# AND WHAT IT DOES NOT COST. No estate loses heliograph over this. The git,
-# share, bundle and object-store transports are pure bash and always will be;
-# beacon and flare are a complete product with no binary anywhere on the far
-# side. What an estate that forbids compiled code loses is the relay, and the
-# beam when it lands - two shapes, not the tool.
+# REUSE BEFORE YOU ADD. The list is meant to stay at one entry for as long as
+# it can, and the number that matters to an estate is how many binaries it has
+# to accept, not how many features wanted one. #114 needed Ed25519 verification
+# on the far side for a trusted set, could not do it in Bash 4 with git and
+# coreutils, and reused heliograph-seal rather than adding a second binary -
+# recording the cost of the alternative as "a new thing to audit, a new
+# checksum, a second argument with every change control". Follow that.
+#
+# AND WHAT IT DOES NOT COST. No estate loses heliograph over this. A beacon or
+# a flare over git, a file share, a bundle or an object store needs no binary
+# anywhere on the far side and is a complete product. What an estate that
+# forbids compiled code gives up is the relay on a bash station, the beam when
+# it lands, and any later feature needing a signature verified on the far side.
+# Two shapes, not the tool.
 #
 # One name per line. Blank lines and # comments are ignored.
 
-# heliograph-seal - the relay transport, on a bash station.
+# heliograph-seal - cryptography a bash station cannot do, starting with the
+# relay transport.
 #
 # The relay is end-to-end encrypted so that the relay operator (us) cannot read
 # a log, which needs X25519, ChaCha20-Poly1305, Ed25519 and HKDF on the far
