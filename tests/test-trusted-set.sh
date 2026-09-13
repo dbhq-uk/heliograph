@@ -117,9 +117,12 @@ raw_request() {  # raw_request <file-contents-on-stdin>
   ( cd "$TR" && $GIT add -A && $GIT commit -qm "request" && $GIT push -q ) >/dev/null 2>&1
 }
 station() {  # one pass with a trusted set, output in OUT
-  RC=0
+  # The exit code is deliberately discarded: `--once` exits non-zero for
+  # ordinary refusals, and every assertion below is about what was PUBLISHED
+  # rather than about how the process ended. A refusal that reaches the far
+  # side is the behaviour under test; the exit code never leaves the machine.
   OUT="$( cd "$TR" && TRUST_SET=.station-trusted-set TRUST_SEAL=./heliograph-seal \
-            timeout 60 ./station.sh --once --interval 1 "$@" 2>&1 )" || RC=$?
+            timeout 60 ./station.sh --once --interval 1 "$@" 2>&1 )" || true
 }
 status_field() { sed -n "s/^$1:[[:space:]]*//p" "$TR/station/status" | head -1; }
 set_serial() { "$SEAL" trust show --set "$SET" | sed -n 's/^serial:[[:space:]]*//p' | head -1; }
