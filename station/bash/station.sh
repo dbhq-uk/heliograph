@@ -285,6 +285,42 @@ field() { printf '%s\n' "$REQ_BODY" | sed -n "s/^${1}:[[:space:]]*//p" | head -1
 ACTION_ENV="${ACTION_ENV:-APPLY=1 CONFIRM=yes DESTROY=1 FORCE=1 WRITE=1}"
 step_mode() { ./run.sh --mode "$1" 2>/dev/null | head -1; }
 step_file() { ./run.sh --file "$1" 2>/dev/null | head -1; }
+
+# The newest log this step could have written, relative to the payload, or
+# nothing.
+#
+# THE LABEL, NOT THE STEP NAME, and that distinction has now cost twice. run.sh
+# names a log for the step file's basename without its extension, so a step
+# sent as a PATH - `heliograph send steps/probe.sh`, which is the documented
+# way to send one - writes ops-logs/probe-<stamp>.txt and never
+# ops-logs/steps/probe.sh-<stamp>.txt.
+#
+# Both call sites globbed on the raw step, and the two failures did not look
+# alike. At delivery it published `log: <none>`, which is at least a thing
+# somebody can see. At the progress call site it published NOTHING AT ALL:
+# publish_progress takes the empty result and returns on its first line, so
+# every step sent by path went back to being the black box the progress path
+# exists to open, on every transport, with no error, no log line and no symptom
+# to notice. The delivery site was found and fixed; this one was not, because
+# an absence is not a symptom.
+#
+# SO IT IS DERIVED ONCE AND CALLED TWICE. The correct derivation already
+# existed, twenty lines below the call site that was not using it. A third
+# caller copying it by hand would get it wrong the same way, and nothing would
+# say so. station.ps1's Find-StepLog is this same function, with this same
+# comment, so the twins answer a request identically.
+#
+# This is the FALLBACK and the guess. run.sh records the path it actually
+# delivered, and that record is the authority wherever it exists.
+step_log() {  # step_log <step>
+  local label
+  label="$(basename -- "$1")"
+  label="${label%.sh}"
+  label="${label%.ps1}"
+  [ -n "$label" ] || return 0
+  # shellcheck disable=SC2012
+  ls -t -- ops-logs/"${label}"-*.txt 2>/dev/null | head -1
+}
 is_action_step() {
   local s="$1" a
   [ "$(step_mode "$s")" = "action" ] && return 0
@@ -692,9 +728,9 @@ while :; do
     if [ "$PROGRESS_EVERY" != "0" ]; then
       NOW="$(date +%s)"
       if [ $((NOW - LAST_PROGRESS)) -ge "$PROGRESS_EVERY" ]; then
-        # shellcheck disable=SC2012
-        RUNNING_LOG="$(ls -t ops-logs/"${STEP}"-*.txt 2>/dev/null | head -1)"
-        publish_progress "$ID" "$STEP" "$START" "$RUNNING_LOG"
+        # step_log, NOT a glob on $STEP. See step_log: globbing on the raw step
+        # published no snapshot at all for every step sent by path, silently.
+        publish_progress "$ID" "$STEP" "$START" "$(step_log "$STEP")"
         LAST_PROGRESS="$NOW"
       fi
     fi
@@ -775,9 +811,10 @@ while :; do
   # status is the only name the log will ever have.
   #
   # cap_record_delivery writes the path it actually delivered, so that is the
-  # authority. The glob stays as the fallback for a run that never reached
-  # delivery - a cancelled step, most often - and is corrected to use the same
-  # label run.sh derives, which is the basename without its extension.
+  # authority. step_log stays as the fallback for a run that never reached
+  # delivery - a cancelled step, most often. The derivation it does lives there
+  # rather than here because the progress call site needs the same answer, had
+  # the same glob, and was still wrong long after this line was fixed.
   LOGFILE="$(sed -n 's/^log:[[:space:]]*//p' "$REPO_ROOT/.station-delivery" 2>/dev/null | head -1)"
   # RELATIVE TO THE PAYLOAD, because that is what the published status has
   # always carried and what the control side reads. run.sh records the path it
@@ -787,11 +824,7 @@ while :; do
     "$REPO_ROOT"/*) LOGFILE="${LOGFILE#"$REPO_ROOT"/}" ;;
   esac
   if [ -z "$LOGFILE" ] || [ ! -f "$LOGFILE" ]; then
-    _step_label="$(basename "$STEP")"
-    _step_label="${_step_label%.sh}"
-    _step_label="${_step_label%.ps1}"
-    # shellcheck disable=SC2012
-    LOGFILE="$(ls -t ops-logs/"${_step_label}"-*.txt 2>/dev/null | head -1)"
+    LOGFILE="$(step_log "$STEP")"
   fi
   if [ "$CANCELLED" = "1" ]; then
     say "step '$STEP' CANCELLED${LOGFILE:+  (partial log: $LOGFILE)}"

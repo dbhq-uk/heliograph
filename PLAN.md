@@ -323,6 +323,46 @@ Three things fell out that had nothing to do with the relay:
   it waited for the status file to EXIST, and the loop publishes `running`
   before it starts the step
 
+## Landed 2026-09-13
+
+| PR | |
+|---|---|
+| #109 | **the bash station has published no progress snapshot since steps were sent by path** (heliograph-io/heliograph-cloud#88) - `station.sh` globbed `ops-logs/"${STEP}"-*.txt`, so a step sent as `./steps/probe.sh` looked for `ops-logs/./steps/probe.sh-*.txt`, matched nothing, and `publish_progress` returned on its first line. No error, no log line, nothing published. The 60-second partial-log push is the only live signal a long step has, and it was off for every step sent by path, on every transport. The same bug had already been found and fixed at the delivery call site twenty lines below, where it had a visible symptom (`log: <none>`); this one had none, which is why it survived. The derivation is now a `step_log` helper called by both sites, matching `station.ps1`'s `Find-StepLog` |
+
+### What the progress snapshot found
+
+**An absence is not a symptom, and a count is the only assertion that catches
+one.** `tests/test-station-progress.sh` runs a twelve-second step at
+`PROGRESS_EVERY=1` and asserts the NUMBER of snapshots on the far side: 11
+against the fix, **0** against the unfixed glob. Every weaker shape passes while
+broken - the status document still says `running` and then `idle`, and a
+finished log still arrives - because the loop publishes both of those through a
+different path. Only the count distinguishes them.
+
+**The fix made a latent control-side defect fire on every relay run.**
+`internal/transport/relay.go` let the status name a collected log only when the
+drain held exactly one log body, and a progress snapshot is a log body. So the
+first station to publish one cost its own finished log its name: `heliograph
+logs` answered `relay-000002.txt` and `relay-000004.txt`, one of them a
+truncated file. Counted over FINISHED bodies now, and a snapshot is spooled as
+`<name>.partial.txt` and hidden from `ListLogs` - the object store's convention,
+copied rather than reinvented, because two implementations of one pattern is
+what caused this whole entry.
+
+**It was already live on the PowerShell relay station**, which publishes
+progress the same way (`station/powershell/transports/relay.psm1:502`) and fires
+its first snapshot on the first in-run poll whatever `PROGRESS_EVERY` says
+(`station.ps1:1082`). Recorded as heliograph-io/heliograph-cloud#134 even though
+this PR fixes it: a finding is published once its fix has shipped, and an
+unrecorded defect cannot be published.
+
+**And the first version of two new assertions failed against correct code**, in
+both directions. One read `git log` in git's own order and reported that a
+running step's line count FELL. The other read the LAST progress snapshot, which
+is published after delivery has already committed the log, and called a status
+document arriving alone "the partial log did not travel". Both were fixed by
+changing the assertion, not the behaviour.
+
 ## The signalling toolkit (in design)
 
 A program that adds the third shape - the **beam**, a held-open live channel -
