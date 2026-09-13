@@ -108,11 +108,16 @@ func TestARealStationPublishesItsActionMode(t *testing.T) {
 // most likely to be looking at a fleet view. `payload:` was published on
 // transitions and not in progress for the same reason.
 //
-// SOURCE, NOT A ROUND TRIP, for the progress writers specifically. The bash
-// station's progress path does not fire at all today - see the defect recorded
-// in PLAN.md - and station.ps1's runs only on Windows. Neither is reachable
-// from a Linux round trip, so asserting on a run would assert nothing and say
-// PASS, which is the failure this repository has already paid for twice.
+// SOURCE, AND IT IS THE CHEAP HALF OF A PAIR. Three of the five writers are
+// round-tripped for real: station.sh's transition writer by the test above,
+// station.sh's progress writer by tests/test-station-progress.sh, and both
+// station.ps1 writers by tests/test-station-loop-ps1.sh on Windows.
+// pigeonhole.sh's needs an Azure account, and station.ps1 needs Windows, so on
+// a Linux checkout this is what covers them.
+//
+// It also catches the case none of those do: a SIXTH writer added later, in any
+// of the three loops, that nobody thinks to round-trip. That is how the field
+// would go missing, and the count below is what makes the omission loud.
 //
 // Every status document begins with `state:` padded to the same column, so
 // finding that line finds every writer without naming a function.
