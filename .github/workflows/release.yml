@@ -369,63 +369,112 @@ jobs:
     # symlink on PATH. No installer is built, no zip, no MSI: the URL in the
     # manifest is the same heliograph-windows-amd64.exe a stranger downloads
     # from the release page, and the hash winget checks before running it is
-    # the same number that is in SHA256SUMS. That is the point. An installer
-    # would be a second artefact, built by a second tool, with a second hash
-    # that packaging/reproduce.sh does not produce.
+    # the number in SHA256SUMS. That is the point. An installer would be a
+    # second artefact, built by a second tool, with a second hash that
+    # packaging/reproduce.sh does not produce.
+    #
+    # NO KOMAC, and it was the first design. `komac update` refuses a package
+    # that is not in winget-pkgs yet, and `komac new` stops at a prompt no
+    # flag suppresses, so neither could make the first submission from here.
+    # packaging/winget/manifests.sh writes the three files from SHA256SUMS
+    # and this job pushes them through the GitHub API. No clone: winget-pkgs
+    # is hundreds of thousands of files, and three PUTs are three requests.
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - name: Get komac
-        # Pinned by version and by hash, because this tool writes the file
-        # that decides what a Windows machine downloads and runs. There is no
-        # OIDC route into winget-pkgs (below), so a compromised komac release
-        # would run with the one long-lived credential this workflow holds.
-        # The hash was taken from the v2.16.0 release on 2026-09-13.
+      - uses: actions/checkout@v7
+
+      - name: Write the manifests from the release's own checksums
+        # SHA256SUMS is fetched from the release just published, the same
+        # way a stranger gets it, rather than passed from the build job. It
+        # is the file cosign signed, so the hash winget checks is the hash
+        # anybody can verify.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          curl -sSL -o komac.tgz \
-            https://github.com/russellbanks/Komac/releases/download/v2.16.0/komac-2.16.0-x86_64-unknown-linux-gnu.tar.gz
-          echo "7d2707fa6210f2789a3702de49fbd150b736dbf426ee0b9bc8e098736f9fd82d  komac.tgz" | sha256sum -c
-          tar -xzf komac.tgz komac
-          sudo install -m 0755 komac /usr/local/bin/komac
-          komac --version
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p SHA256SUMS -O SHA256SUMS
+          packaging/winget/manifests.sh "$TAG" SHA256SUMS winget
+          cat winget/manifests/h/heliograph-io/heliograph/*/heliograph-io.heliograph.installer.yaml
 
       - name: Open the pull request on winget-pkgs
         # THE ONE LONG-LIVED CREDENTIAL IN THIS FILE, and why. npm and the MCP
         # registry accept an Actions OIDC token, so those jobs hold nothing.
-        # winget-pkgs is somebody else's repository: the submission is a PR
-        # from a fork, and GitHub gives a workflow no identity that can push
-        # to a fork it does not own. komac needs a classic personal access
-        # token with `public_repo` (komac README, "GitHub Token Setup"), and
-        # a fine-grained token cannot open the PR (russellbanks/Komac#310).
+        # winget-pkgs is Microsoft's repository, the submission is a PR from a
+        # fork, and GitHub gives a workflow no identity that can push to a
+        # fork it does not own. Opening a PR on a repository you do not own
+        # needs a classic personal access token with `public_repo`; a
+        # fine-grained token cannot (russellbanks/Komac#310 is the same wall,
+        # hit by a different tool).
         #
         # `public_repo` on a person's account can write to every public
         # repository that person can, including this one. So WINGET_TOKEN
         # belongs to a separate account that owns nothing but its fork of
         # winget-pkgs and is a member of no organisation. What the token can
-        # reach if it leaks is that fork.
+        # reach if it leaks is that fork. That account signs Microsoft's CLA
+        # once, on its first PR, by replying to the bot that asks.
         #
         # Skipped, loudly, when the secret is absent. A release that reached
         # GitHub, npm, the registry and ghcr.io is not broken because winget
         # did not hear about it, and failing this job would say it was.
         env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
           TAG: ${{ github.ref_name }}
-          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${GITHUB_TOKEN:-}" ]; then
-            echo "::warning::WINGET_TOKEN is not set, so ${TAG} was not submitted to winget. Add the secret and re-run this job, or submit by hand: komac update heliograph-io.heliograph --version ${TAG#v} --urls <the two windows .exe release URLs> --submit"
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::WINGET_TOKEN is not set, so ${TAG} was not submitted to winget. Add the secret and re-run this job. The manifests are in this job's log above."
             exit 0
           fi
-          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
-          komac update heliograph-io.heliograph \
-            --version "${TAG#v}" \
-            --urls "${base}/heliograph-windows-amd64.exe" \
-                   "${base}/heliograph-windows-arm64.exe" \
-            --release-notes-url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}" \
-            --created-with "dbhq-uk/heliograph release workflow" \
-            --created-with-url "https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/.github/workflows/release.yml" \
-            --submit
+          id="heliograph-io.heliograph"
+          ver="${TAG#v}"
+          path="manifests/h/heliograph-io/heliograph/${ver}"
+          bot="$(gh api user --jq .login)"
+          branch="${id}-${ver}"
+
+          # The fork, created if the account has none, then brought level
+          # with upstream so the branch starts from today's master and the
+          # PR carries three files rather than a month of other people's.
+          gh repo fork microsoft/winget-pkgs --clone=false
+          gh api -X POST "repos/${bot}/winget-pkgs/merge-upstream" -f branch=master >/dev/null
+          base="$(gh api "repos/${bot}/winget-pkgs/git/ref/heads/master" --jq .object.sha)"
+          gh api -X DELETE "repos/${bot}/winget-pkgs/git/refs/heads/${branch}" >/dev/null 2>&1 || true
+          gh api -X POST "repos/${bot}/winget-pkgs/git/refs" -f ref="refs/heads/${branch}" -f sha="$base" >/dev/null
+
+          # New package or update decides the title winget-pkgs asks for.
+          if gh api "repos/microsoft/winget-pkgs/contents/manifests/h/heliograph-io/heliograph" >/dev/null 2>&1; then
+            title="Update: ${id} to ${ver}"
+          else
+            title="New package: ${id} version ${ver}"
+          fi
+
+          for f in "winget/${path}"/*.yaml; do
+            gh api -X PUT "repos/${bot}/winget-pkgs/contents/${path}/$(basename "$f")" \
+              -f message="$title" -f branch="$branch" -f content="$(base64 -w0 "$f")" >/dev/null
+          done
+
+          gh pr create -R microsoft/winget-pkgs --head "${bot}:${branch}" --title "$title" --body "$(cat <<EOF
+          ## Description
+
+          ${title}. A portable (bare executable) package for the heliograph CLI, generated by the release workflow of https://github.com/${GITHUB_REPOSITORY} from the release's published SHA256SUMS: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}
+
+          Generated by \`packaging/winget/manifests.sh\` at https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/packaging/winget/manifests.sh
+
+          ## Checklist
+
+          - [x] Signed the [Contributor License Agreement](https://cla.opensource.microsoft.com)
+          - [ ] Linked to an issue (if applicable)
+
+          ## Manifest Checklist
+
+          - [x] Checked that there aren't other open [pull requests](https://github.com/microsoft/winget-pkgs/pulls) for the same manifest update/change
+          - [x] This PR only modifies one (1) manifest
+          - [x] Validated manifest against the 1.12 schema
+          - [ ] Tested manifest locally with \`winget install --manifest <path>\` (generated on Linux by a release workflow; the portable installer is a bare executable)
+          - [x] Manifest conforms to the [1.12 schema](https://github.com/microsoft/winget-pkgs/tree/master/doc/manifest/schema/1.12.0)
+          EOF
+          )"
