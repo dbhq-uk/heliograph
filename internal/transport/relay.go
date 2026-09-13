@@ -316,6 +316,12 @@ func (r *Relay) collect() error {
 	type collected struct {
 		seq  uint64
 		body []byte
+		// THE SIGNED KIND, CARRIED FORWARD. Both a snapshot and a finished log
+		// arrive here as a body to be spooled, and telling them apart afterwards
+		// by looking at the bytes would be guessing. The kind is inside the
+		// signature, so it is the one fact about this message a relay cannot
+		// alter - see the naming rules below, which both depend on it.
+		kind string
 	}
 	var logs []collected
 	var statusSeq uint64
@@ -357,9 +363,9 @@ func (r *Relay) collect() error {
 				// document - so a step that printed `state: idle` could make
 				// `watch` return while it was still running, and an ordinary
 				// log erased the running state entirely.
-				logs = append(logs, collected{msg.Seq, plain})
+				logs = append(logs, collected{msg.Seq, plain, kind})
 			case "log":
-				logs = append(logs, collected{msg.Seq, plain})
+				logs = append(logs, collected{msg.Seq, plain, kind})
 			}
 			break
 		}
@@ -370,11 +376,33 @@ func (r *Relay) collect() error {
 	if err := r.spoolStatus(); err != nil {
 		return err
 	}
+	// COUNTED OVER FINISHED LOGS ONLY, and that distinction is the whole fix.
+	//
+	// This was `len(logs) == 1`, over every body in the drain. A progress
+	// snapshot is a body in the drain, so the moment a station published one -
+	// which it does on the FIRST in-run poll of every run, whatever
+	// PROGRESS_EVERY says - the count was two and the finished log stopped
+	// being allowed to take its own name. `heliograph logs` then answered with
+	// `relay-000002.txt` and `relay-000004.txt`: two meaningless names, one of
+	// them a truncated file, for a run whose log the station had named
+	// perfectly well.
+	//
+	// The ambiguity the old count guarded against is real and is unchanged: two
+	// finished logs in one drain cannot both be the one the status names. A
+	// snapshot was never a candidate for that name, so it should never have
+	// been counted towards it.
+	finished := 0
 	for _, l := range logs {
-		// The status may name this log only if it was collected in the SAME
-		// drain and SIGNED WITH A HIGHER SEQUENCE. See spoolLog.
-		named := len(logs) == 1 && statusSeq > l.seq
-		if err := r.spoolLog(l.seq, l.body, named); err != nil {
+		if l.kind == "log" {
+			finished++
+		}
+	}
+	for _, l := range logs {
+		// The status may name this log only if it is a FINISHED log, the only
+		// one in this drain, and the status was collected in the SAME drain and
+		// SIGNED WITH A HIGHER SEQUENCE. See spoolLog.
+		named := l.kind == "log" && finished == 1 && statusSeq > l.seq
+		if err := r.spoolLog(l.seq, l.body, named, l.kind); err != nil {
 			return err
 		}
 	}
@@ -428,12 +456,44 @@ func (r *Relay) spoolStatus() error {
 // the only copy there will ever be - the relay deleted it on collection - so a
 // name that is already taken means the sequence name is used instead. Nothing is
 // lost and nothing is misattributed.
-func (r *Relay) spoolLog(seq uint64, body []byte, mayUseStatusName bool) error {
+// A PARTIAL LOG IS SPOOLED UNDER ITS OWN SUFFIX, and the argument for that is
+// the object store's, copied here rather than reinvented - see
+// internal/objstore.go's ListLogs. A partial log is the in-flight snapshot of a
+// run still going. It is genuinely useful and it is not a captured log: listing
+// it beside finished ones invites reading a truncated file as the whole answer.
+//
+// So it lands as `<name>.partial.txt`, ListLogs hides it exactly as the object
+// store's does, and it can never take the name a finished log will want. The
+// two transports now spell the convention the same way, which is the point: the
+// station and the control side have already been bitten twice by two
+// implementations of one pattern drifting apart.
+func (r *Relay) spoolLog(seq uint64, body []byte, mayUseStatusName bool, kind string) error {
 	if r.spool == "" {
 		return nil
 	}
 	if err := os.MkdirAll(r.logsDir(), 0o700); err != nil {
 		return err
+	}
+	if kind == "progress" {
+		// NAMED FROM THE STATUS WHERE THERE IS ONE, so successive snapshots of
+		// the same run overwrite rather than accumulating one file per poll -
+		// again as the object store does. The status here is the one
+		// tp_put_progress published immediately before this snapshot, so it
+		// names the log this is a partial view of. Overwriting is the intent:
+		// a newer snapshot of a run supersedes an older one, and neither is
+		// evidence of a finished run.
+		name := fmt.Sprintf("relay-%06d.partial.txt", seq)
+		if r.lastStatus != nil {
+			if st, err := wire.ParseStatus(r.lastStatus); err == nil {
+				cand := filepath.Base(st.Log)
+				if strings.HasSuffix(cand, ".txt") && !strings.HasPrefix(cand, "<") {
+					if clean, cerr := safeLogName(cand); cerr == nil {
+						name = strings.TrimSuffix(clean, ".txt") + ".partial.txt"
+					}
+				}
+			}
+		}
+		return os.WriteFile(filepath.Join(r.logsDir(), name), body, 0o600)
 	}
 	name := fmt.Sprintf("relay-%06d.txt", seq)
 	if mayUseStatusName && r.lastStatus != nil {
@@ -503,9 +563,18 @@ func (r *Relay) ListLogs() ([]string, error) {
 	}
 	var names []string
 	for _, e := range ents {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".txt") {
-			names = append(names, e.Name())
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".txt") {
+			continue
 		}
+		// A partial log is the in-flight snapshot of a run still going. It is
+		// genuinely useful and it is not a captured log: listing it beside
+		// finished ones invites reading a truncated file as the whole answer.
+		// The object store's ListLogs says the same thing and means the same
+		// thing; a reader should not have to learn two conventions.
+		if strings.HasSuffix(e.Name(), ".partial.txt") {
+			continue
+		}
+		names = append(names, e.Name())
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(names)))
 	return names, nil

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -139,10 +140,19 @@ func (s *station) collect(t *testing.T, f *fakeRelay) []wire.Request {
 
 func (s *station) publish(t *testing.T, f *fakeRelay, body []byte) {
 	t.Helper()
+	s.publishKind(t, f, "status", body)
+}
+
+// The same, for the kinds a station sends that are not a status document. The
+// kind is a SIGNED field, so a test that wants to exercise the control side's
+// handling of a progress snapshot has to seal one as `progress` - relabelling
+// afterwards is exactly what the signature exists to prevent.
+func (s *station) publishKind(t *testing.T, f *fakeRelay, kind string, body []byte) {
+	t.Helper()
 	s.outSeq++
 	meta := seal.Meta{
 		Estate: s.estate, Station: s.name, Dir: "s2c", Seq: s.outSeq,
-		Kind: "status", Recipient: s.peer.Fingerprint(),
+		Kind: kind, Recipient: s.peer.Fingerprint(),
 	}
 	sealed, err := seal.Seal(s.id, s.peer, meta, body)
 	if err != nil {
@@ -167,6 +177,31 @@ func setup(t *testing.T) (*Relay, *station, *fakeRelay) {
 	}
 	r, err := NewRelay(srv.URL, "e1", "st1", "tok", control, st.Public(),
 		filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r, &station{id: st, peer: control.Public(), estate: "e1", name: "st1"}, f
+}
+
+// setup, plus the directory collected logs are kept in. A relay built without
+// a spool discards every log it collects - correct for a caller that only wants
+// the status, and it makes an assertion about log NAMES pass vacuously against
+// broken code, because there are no names. Found by watching both checks below
+// report an empty list against the fix that makes them pass.
+func setupSpooled(t *testing.T) (*Relay, *station, *fakeRelay) {
+	t.Helper()
+	f, srv := newFakeRelay(t)
+	control, err := seal.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := seal.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	r, err := NewRelayWithSpool(srv.URL, "e1", "st1", "tok", control, st.Public(),
+		filepath.Join(dir, "state.json"), filepath.Join(dir, "spool"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,6 +386,91 @@ func TestARelayNeedsAToken(t *testing.T) {
 	st, _ := seal.Generate()
 	if _, err := NewRelay("https://r", "e", "s", "", control, st.Public(), ""); err == nil {
 		t.Error("built a relay with no token")
+	}
+}
+
+// A RUN THAT PUBLISHED PROGRESS STILL GETS ITS LOG BACK UNDER ITS OWN NAME.
+//
+// The station publishes a progress snapshot on the FIRST in-run poll of every
+// run, whatever PROGRESS_EVERY is set to, so this is the ordinary shape of a
+// relay run and not an edge case. The snapshot arrives as a second log body in
+// the same drain, and the rule for "may this log take the name the status gives
+// it" counted every body rather than every FINISHED body. So the finished log
+// was denied its own name and `heliograph logs` answered with two sequence
+// names, one of them a truncated file.
+//
+// Live before this was fixed: station/powershell/transports/relay.psm1 publishes
+// progress the same way, and station.ps1 fires the first snapshot on the first
+// in-run poll. A PowerShell relay station hit this on every run.
+func TestAProgressSnapshotDoesNotCostTheFinishedLogItsName(t *testing.T) {
+	r, st, f := setupSpooled(t)
+
+	const logName = "probe-20260913T051500Z.txt"
+	running := "state:    running\nid:       r1\nlog:      ops-logs/" + logName + "\nprogress: 3 lines\n"
+	idle := "state:    idle\nid:       r1\nexit:     0\nlog:      ops-logs/" + logName + "\n"
+
+	// The order a real run produces: the progress document and its partial log,
+	// then the finished log, then the idle status naming it.
+	st.publish(t, f, []byte(running))
+	st.publishKind(t, f, "progress", []byte("a line\nand another\nhalf a th"))
+	st.publishKind(t, f, "log", []byte("a line\nand another\nhalf a third\nRESULT       : OK\n"))
+	st.publish(t, f, []byte(idle))
+
+	names, err := r.ListLogs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) != 1 || names[0] != logName {
+		t.Fatalf("the finished log did not come back under the station's own name for it: %v", names)
+	}
+
+	// AND IT IS THE FINISHED ONE. Getting the name right and the body wrong
+	// would be worse than getting both wrong, because nothing would look amiss.
+	body, err := r.ReadLog(logName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(string(body), "RESULT       : OK") {
+		t.Errorf("the log under the finished name is not the finished log:\n%s", body)
+	}
+
+	// THE SNAPSHOT IS KEPT AND HIDDEN, not discarded. It is genuinely useful -
+	// it is the only thing that exists while a long step is still running - and
+	// it is not a captured log: listing it beside finished ones invites reading
+	// a truncated file as the whole answer.
+	partial := filepath.Join(r.logsDir(), "probe-20260913T051500Z.partial.txt")
+	if _, err := os.Stat(partial); err != nil {
+		t.Errorf("the partial snapshot was not spooled at all: %v", err)
+	}
+	for _, n := range names {
+		if contains(n, ".partial.") {
+			t.Errorf("a partial snapshot is being listed as a captured log: %v", names)
+		}
+	}
+}
+
+// Two FINISHED logs in one drain is still ambiguous, and the guard that was
+// there for it must survive the change above. Neither can be proved to be the
+// one the status names, so both keep their signed sequence name rather than one
+// of them being misattributed.
+func TestTwoFinishedLogsInOneDrainBothKeepTheirSequenceName(t *testing.T) {
+	r, st, f := setupSpooled(t)
+
+	st.publishKind(t, f, "log", []byte("the first run\n"))
+	st.publishKind(t, f, "log", []byte("the second run\n"))
+	st.publish(t, f, []byte("state:    idle\nid:       r2\nexit:     0\nlog:      ops-logs/probe-20260913T052000Z.txt\n"))
+
+	names, err := r.ListLogs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) != 2 {
+		t.Fatalf("expected both logs to be kept, got %v", names)
+	}
+	for _, n := range names {
+		if !contains(n, "relay-") {
+			t.Errorf("a log was named from an ambiguous status: %v", names)
+		}
 	}
 }
 
