@@ -415,15 +415,22 @@ func hostedProvision(name, svcFlag, scope string) error {
 	if station == "" {
 		station = name
 	}
+	relayBase, assumed := prov.RelayBase(s)
 	e := estate.Estate{
-		Name: name, Transport: "relay", Dir: s.Base, Scope: station,
+		Name: name, Transport: "relay", Dir: relayBase, Scope: station,
 		RelayEstate: prov.Estate, Identity: idPath,
 	}
 	if err := e.Save(); err != nil {
 		return err
 	}
 
-	fmt.Printf("estate %s -> %s, estate %s, station %s\n", name, s.Base, prov.Estate, station)
+	fmt.Printf("estate %s -> %s, estate %s, station %s\n", name, relayBase, prov.Estate, station)
+	if assumed {
+		// SAID RATHER THAN ASSUMED SILENTLY. The relay and the broker are two
+		// products and may not share a hostname; this response carried no
+		// relay URL, so the control plane's own was used.
+		fmt.Printf("  the service sent no relay URL, so its own was used for the transport\n")
+	}
 	fmt.Printf("  identity: %s\n", idPath)
 	fmt.Printf("  fingerprint: %s\n", me.Public().Fingerprint())
 	fmt.Println("  control credential: stored here, mode 600, and not printed")

@@ -24,6 +24,24 @@ type ProvisionedEstate struct {
 	PlantingLine          string `json:"plantingLine"`
 	Says                  string `json:"says"`
 	Next                  string `json:"next"`
+
+	// RelayURL is the base URL of the relay this estate is routed on.
+	//
+	// IT IS NOT IN THE CONTRACT AS POSTED, and this field is here so that it
+	// can be without a client change. The relay and the broker are two products
+	// on the split design, so they may not share a hostname - and the estate
+	// file records a relay base URL, not a control-plane one. Until the service
+	// sends it, RelayBase falls back to the service's own URL and the CLI says
+	// which it used, rather than recording a guess silently.
+	RelayURL string `json:"relayUrl,omitempty"`
+}
+
+// RelayBase is the URL to record for this estate's transport.
+func (p ProvisionedEstate) RelayBase(s *Service) (base string, assumed bool) {
+	if p.RelayURL != "" {
+		return strings.TrimRight(p.RelayURL, "/"), false
+	}
+	return s.Base, true
 }
 
 // ProvisionEstate creates an estate under an ACCOUNT credential.

@@ -153,3 +153,26 @@ func TestNoRunYetIsNotZeroSeconds(t *testing.T) {
 		t.Errorf("the measured sentence is %q", got.Line())
 	}
 }
+
+// The relay and the broker are two products and may not share a hostname. The
+// contract as posted carries no relay URL, so this side has to be able to take
+// one the day it does - and until then say which it used rather than record a
+// guess silently.
+func TestTheRelayURLIsTheServicesWhenItSendsOneAndAnAssumptionWhenItDoesNot(t *testing.T) {
+	p := &provisionStub{}
+	s := provisionService(t, p)
+	got, err := s.ProvisionEstate(Control("account-token"), "payments")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, assumed := got.RelayBase(s)
+	if base != s.Base || !assumed {
+		t.Errorf("with no relayUrl: base %q assumed %v, want the service's own and flagged as assumed", base, assumed)
+	}
+
+	got.RelayURL = "https://relay.example.com/"
+	base, assumed = got.RelayBase(s)
+	if base != "https://relay.example.com" || assumed {
+		t.Errorf("with a relayUrl: base %q assumed %v", base, assumed)
+	}
+}
