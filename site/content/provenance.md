@@ -75,13 +75,19 @@ from a copy at a different path with no `.git` - and fails if the two disagree.
 - **Signatures.** The release workflow signs `SHA256SUMS` with Sigstore keyless
   signing, and no release has been through it yet, so there is no signature to
   verify today. The section below says what will be there.
-- **The hosted relay.** The Worker that runs at `heliograph-relay.dbhq.uk`
-  reports the commit it believes it is at `/version`, which is detection rather
-  than provenance: a version string is a claim a deployment makes about itself.
-  A reproducible bundle hash for the Worker is being worked in
-  [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay). Until
-  it lands, run [your own relay](/relay) if the deployed one being provably the
-  published source is something your estate needs.
+- **The hosted relay.** The Worker at `heliograph-relay.dbhq.uk`
+  ([how to get on it](/relay#the-hosted-relay-and-how-to-ask-for-a-token))
+  reports the commit it believes it is, which is detection rather than
+  provenance: a version string is a claim a deployment makes about itself.
+  `GET /health` now also reports the SHA-256 of the bundle serving, and
+  `edge/reproduce.sh` in
+  [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay)
+  rebuilds that bundle from the tag so the number can be checked. What it still
+  rests on is the deploy workflow's public log, because a Worker cannot read its
+  own code. If a relay being provably the published source is something your
+  estate needs rather than something it would like,
+  [run your own](/relay) - the same source, on your account, where you did the
+  deploying.
 
 ## Signatures, when there are some
 
