@@ -104,6 +104,65 @@ func cmdTrust(args []string) error {
 	}
 }
 
+// parseTrustArgs splits flags from positionals WITHOUT letting a positional
+// that begins with a hyphen be read as a flag.
+//
+// THE BUG THIS EXISTS TO FIX WAS FOUND BY DRIVING THE REAL COMMAND. A public
+// identity is base64url, so roughly one in every sixty-four of them begins with
+// `-`:
+//
+//	$ heliograph trust add alice -62pYcHnbZjMvfPoxMQH6DKNYM1RLOAdpnUSpOyE0hC...
+//	flag provided but not defined: -62pYcHnbZjMvfPoxMQH6DKNYM1RLOAdpnUSpOyE0hC...
+//
+// The shared parse() interleaves flags and positionals on purpose, so that
+// `heliograph send step -e estate` works, and that is what makes a hyphenated
+// value indistinguishable from a flag. `--` before the key would fix it and
+// nobody would know to type it: the failure lands on somebody enrolling a
+// colleague, once every sixty-four colleagues, with an error naming their
+// key as though it were a typo.
+//
+// So this walks the arguments and consults the FlagSet for what is actually a
+// flag. An unregistered `-something` is a positional, which is the only reading
+// that can be right: this command has no variadic flags and never will.
+func parseTrustArgs(fs *flag.FlagSet, args []string) ([]string, error) {
+	var flags, pos []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
+		name := strings.TrimLeft(a, "-")
+		if eq := strings.IndexByte(name, '='); eq >= 0 {
+			name = name[:eq]
+		}
+		if len(a) > 1 && a[0] == '-' && fs.Lookup(name) != nil {
+			flags = append(flags, a)
+			// A value follows unless it is a boolean, and unless it was given
+			// as --flag=value.
+			if !strings.Contains(a, "=") && !isBoolFlag(fs, name) && i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+			continue
+		}
+		pos = append(pos, a)
+	}
+	if err := fs.Parse(flags); err != nil {
+		return nil, err
+	}
+	return pos, nil
+}
+
+func isBoolFlag(fs *flag.FlagSet, name string) bool {
+	f := fs.Lookup(name)
+	if f == nil {
+		return false
+	}
+	b, ok := f.Value.(interface{ IsBoolFlag() bool })
+	return ok && b.IsBoolFlag()
+}
+
 // identityFor is the key this control node signs with, for one estate.
 //
 // GENERATED ON DEMAND, for the reason `init --transport relay` generates one:
@@ -244,7 +303,7 @@ func cmdTrustChange(args []string, op string) error {
 	fs := flag.NewFlagSet("trust "+op, flag.ExitOnError)
 	name := estateFlag(fs)
 	note := fs.String("note", "", "free text for the next human")
-	pos, err := parse(fs, args)
+	pos, err := parseTrustArgs(fs, args)
 	if err != nil {
 		return err
 	}
