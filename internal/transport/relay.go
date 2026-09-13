@@ -324,6 +324,7 @@ func (r *Relay) collect() error {
 		kind string
 	}
 	var logs []collected
+	var statuses []collected
 	var statusSeq uint64
 	changed := false
 	for _, msg := range msgs {
@@ -355,6 +356,12 @@ func (r *Relay) collect() error {
 			case "status":
 				r.lastStatus = plain
 				statusSeq = msg.Seq
+				// KEPT, not just remembered. `lastStatus` is overwritten by the
+				// next one in the same batch, and the station publishes on
+				// every transition - so `running` and `idle` for one run
+				// routinely arrive together and only the second survived.
+				// See keepStatus for why every one of them has to.
+				statuses = append(statuses, collected{msg.Seq, plain, kind})
 			case "progress":
 				// A PROGRESS MESSAGE IS A PARTIAL LOG, NOT A STATUS.
 				// tp_put_progress publishes the status document and then the
@@ -375,6 +382,11 @@ func (r *Relay) collect() error {
 	}
 	if err := r.spoolStatus(); err != nil {
 		return err
+	}
+	for _, s := range statuses {
+		if err := r.keepStatus(s.seq, s.body); err != nil {
+			return err
+		}
 	}
 	// COUNTED OVER FINISHED LOGS ONLY, and that distinction is the whole fix.
 	//
@@ -420,9 +432,41 @@ func (r *Relay) collect() error {
 // and left the relay with NO WAY TO READ A LOG AT ALL through the CLI - on the
 // transport whose entire purpose is getting a log back from a machine nobody
 // can reach.
-func (r *Relay) spoolDir() string   { return r.spool }
-func (r *Relay) logsDir() string    { return filepath.Join(r.spool, "ops-logs") }
-func (r *Relay) statusPath() string { return filepath.Join(r.spool, "status") }
+func (r *Relay) spoolDir() string    { return r.spool }
+func (r *Relay) logsDir() string     { return filepath.Join(r.spool, "ops-logs") }
+func (r *Relay) statusPath() string  { return filepath.Join(r.spool, "status") }
+func (r *Relay) statusesDir() string { return filepath.Join(r.spool, "statuses") }
+
+// keepStatus files a collected status document under the sequence its sender
+// signed, and never replaces one.
+//
+// WHY THE SPOOL HAS TO HOLD ALL OF THEM. `status` is one file, overwritten on
+// every drain, and it answers "what is the station doing now" perfectly. It
+// cannot answer anything about a RUN, because a run is keyed by the `id:`
+// inside its own status document and the spool held no other copy of that id
+// anywhere. Eleven collected logs and one status meant ten runs this side could
+// name and not identify.
+//
+// THE NAME IS THE SEQUENCE, because that is the one thing about a collected
+// message the sender signed (`internal/seal/seal.go`, Meta.Seq). Naming these
+// by arrival order would be naming evidence by something the relay controls.
+//
+// AND IT NEVER OVERWRITES, for the reason spoolLog never does: the relay
+// deleted the message on collection, so what is here is the only copy there
+// will ever be.
+func (r *Relay) keepStatus(seq uint64, body []byte) error {
+	if r.spool == "" {
+		return nil
+	}
+	if err := os.MkdirAll(r.statusesDir(), 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(r.statusesDir(), fmt.Sprintf("status-%06d.txt", seq))
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	return os.WriteFile(path, body, 0o600)
+}
 
 func (r *Relay) spoolStatus() error {
 	if r.lastStatus == nil || r.spool == "" {
