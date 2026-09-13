@@ -189,6 +189,7 @@ that is not progress.
 | - | **the build is reproducible, and the far-side binary rule is now a policy instead of an exception** - `packaging/reproduce.sh` builds every released artefact and the release workflow calls that same file, so the command a stranger is given and the command that made the artefact are one thing. Two builds of the same source, at different paths, one with no `.git`, produce identical `SHA256SUMS`. `AGENTS.md`'s absolute "never a binary on the far side" is replaced by a per-transport policy with `station/FAR-SIDE-BINARIES` as the enforced list, because `heliograph-seal` had already escaped the letter of the old rule and the CI message still said the far side never gets a binary |
 
 ### What reproducible builds found
+
 **The relay half landed at the same time**, in
 [dbhq-uk/heliograph-relay#14](https://github.com/dbhq-uk/heliograph-relay/pull/14):
 `edge/reproduce.sh` builds the Worker bundle and prints its hash, the deploy
