@@ -135,6 +135,33 @@ STATE_FILE=".station-state"        # gitignored: the last id we ran
 APPROVED=".station-approved"       # gitignored: hashes the operator has approved
 LOCK=".station.lock"
 
+# --- the trusted set: who may command this station ---------------------------
+#
+# OFF UNLESS THE OPERATOR PLANTED ONE. A station with no TRUST_SET behaves
+# exactly as it always has, which matters because every station in the field
+# today has none and upgrading one means somebody standing at a machine.
+#
+# THE FILE IS LOCAL AND GITIGNORED, for the same reason .station-approved is:
+# recorded in the transport repo it could be edited from the far side, and the
+# far side is the only side a trust root exists to distrust. What gets PUBLISHED
+# is a read-only copy, in the status and at station/trusted-set, so the estate
+# owner can audit who may command their machine without asking us.
+#
+# TRUST_SEAL is heliograph-seal, the one binary already argued for past the
+# station boundary. Ed25519 verification is not something bash and coreutils can
+# do, and the relay transport already ships it. Nothing NEW is required on the
+# far side: a station without the binary cannot use a trusted set, and refuses
+# to start with one configured rather than accepting everything quietly.
+TRUST_SET="${TRUST_SET:-}"
+TRUST_SEAL="${TRUST_SEAL:-${RELAY_SEAL:-$REPO_ROOT/heliograph-seal}}"
+TRUST_PUBLISH="station/trusted-set"
+# Every request id this station has ACTED ON. The replay defence, and it is on
+# disk precisely so it survives a restart - a station restarts when the machine
+# does, which is exactly when nobody is watching. `.station-state` holds only
+# the LAST id, so a request from the day before yesterday, replayed, ran again.
+SEEN_IDS=".station-seen-ids"
+SEEN_IDS_KEEP="${SEEN_IDS_KEEP:-2000}"
+
 # --- compat: a transport repo bootstrapped before the rename -----------------
 # This loop was called the "agent" until the vocabulary changed, and its paths
 # with it. A transport repo is a SEPARATE repo on a machine nobody here can
@@ -307,6 +334,50 @@ is_action_step() {
 #
 # It does NOT cover station.sh, which self-updates on pull. Say so in the docs
 # rather than implying a boundary that is not there.
+# --- the replay ledger: an id is used once, and that survives a restart -------
+#
+# `.station-state` records the LAST id, which is what stops the same request
+# firing on every poll. It is not replay protection: a request from two days
+# ago, put back, has an id that is not the last one, so it ran again with
+# --allow-actions and CONFIRM=yes already satisfied - and on the relay the
+# sequence counter caught that, while on git, share, blob, bundle and object
+# store nothing did.
+#
+# THE LEDGER IS A FILE, and that is the requirement. An in-memory window forgets
+# when the station restarts, and a station restarts when the machine does, which
+# is exactly when nobody is watching.
+#
+# It is LOCAL and gitignored, for the reason .station-approved is: recorded in
+# the transport repo, the far side could delete a line and replay the request it
+# named.
+seen_id() {  # seen_id <id>; true if this station has already acted on it
+  [ -f "$SEEN_IDS" ] || return 1
+  grep -qxF "$1" "$SEEN_IDS" 2>/dev/null
+}
+remember_id() {  # remember_id <id>
+  printf '%s\n' "$1" >> "$SEEN_IDS" 2>/dev/null || {
+    # A LEDGER THAT COULD NOT BE WRITTEN IS NOT A LEDGER. Said out loud rather
+    # than swallowed: a full disk or a read-only mount would otherwise leave
+    # replay protection off with nothing to say so, and the relay's sequence
+    # file taught this repository that lesson once already.
+    say "warn: could not record request id in $SEEN_IDS - replay protection is not being written down"
+    return 1
+  }
+  # Trimmed, because this grows for ever otherwise and it is read on every
+  # request. Keeping the most recent N is right: an id is a UTC stamp plus a
+  # step name, so the oldest are the least likely to be offered again, and the
+  # transports that can replay at all cannot reach back past their own
+  # retention.
+  local n
+  n="$(wc -l < "$SEEN_IDS" 2>/dev/null || echo 0)"
+  if [ "${n:-0}" -gt $((SEEN_IDS_KEEP * 2)) ]; then
+    tail -n "$SEEN_IDS_KEEP" "$SEEN_IDS" > "$SEEN_IDS.$$.tmp" 2>/dev/null &&
+      mv -f "$SEEN_IDS.$$.tmp" "$SEEN_IDS" 2>/dev/null
+    rm -f "$SEEN_IDS.$$.tmp" 2>/dev/null
+  fi
+  return 0
+}
+
 pin_hash() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
 pin_write() {
   local f n=0
@@ -363,6 +434,18 @@ publish_status() {
     echo "branch:   $BRANCH"
     echo "utc:      $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     [ -n "$PAYLOAD" ] && echo "payload:  $PAYLOAD"
+    # WHO MAY COMMAND THIS STATION, published on every transition.
+    #
+    # This is rule 4 of the trusted set, and it is the one the estate owner
+    # actually uses: they can audit the set from their own transport, with the
+    # CLI, without asking us. A key appearing that nobody authorised is then
+    # independently detectable rather than something they have to trust us to
+    # notice.
+    if [ -n "$TRUST_SET" ]; then
+      echo "trust:    $(trust_field digest)"
+      echo "trust-serial: $(trust_field serial)"
+      echo "trust-members: $(trust_members_line)"
+    fi
     [ -n "$extra" ] && echo "$extra"
   } > "$STATUS"
   tp_put_status "$(cat "$STATUS")" "station: $state ($id) ***NO_CI***" "$alsofile" || \
@@ -408,6 +491,73 @@ publish_progress() {
     say "progress push rejected (remote moved) - will retry; the final push reconciles"
 }
 
+# --- the trusted set ----------------------------------------------------------
+#
+# CHECKED AT STARTUP, WHILE SOMEBODY IS STILL LISTENING. A station configured
+# with a trusted set it cannot read would refuse every request afterwards, on a
+# machine nobody can log into, for a reason nothing had said out loud. That is
+# the exact shape of the defect RELAY_PEER had: readable was checked, usable was
+# not, and every verification failed silently for a week.
+#
+# It refuses to START rather than carrying on without one. A station that was
+# told to use a trusted set and then quietly did not is one whose owner believes
+# an assurance the mechanism is not providing.
+trust_show() { "$TRUST_SEAL" trust show --set "$TRUST_SET" 2>&1; }
+trust_field() { trust_show | sed -n "s/^$1:[[:space:]]*//p" | head -1; }
+trust_line() {
+  local sh; sh="$(trust_show)"
+  printf '%s' "$(printf '%s\n' "$sh" | sed -n 's/^\(anchor\|member\):[[:space:]]*\([^ ]*\)[[:space:]]*\([^ ]*\).*/\2=\3/p' | tr '\n' ' ')"
+}
+trust_members_line() {
+  # name=fingerprint pairs, revoked ones marked. One line, because it goes into
+  # the status document, which is `key: value` and read with sed on the far
+  # side. A newline here would forge a second key.
+  trust_show | sed -n 's/^\(anchor\|member\):[[:space:]]*\([^ ]*\)[[:space:]]*\([^ ]*\)[[:space:]]*\(.*\)$/\2=\3\4/p' \
+    | sed 's/added .*//; s/REVOKED.*/ REVOKED/; s/(changeable.*//' \
+    | tr -d '\n' | sed 's/[[:space:]]\{1,\}/ /g'
+}
+
+if [ -n "$TRUST_SET" ]; then
+  if [ ! -x "$TRUST_SEAL" ]; then
+    echo "station: TRUST_SET is set but heliograph-seal is not at $TRUST_SEAL." >&2
+    echo "         A trusted set is verified with Ed25519, which bash and coreutils" >&2
+    echo "         cannot do. Set TRUST_SEAL to the binary, or unset TRUST_SET." >&2
+    echo "         Running with a trusted set that cannot be checked is not an" >&2
+    echo "         option this station offers." >&2
+    rm -f "$LOCK"; exit 2
+  fi
+  if [ ! -r "$TRUST_SET" ]; then
+    echo "station: cannot read the trusted set at $TRUST_SET." >&2
+    echo "         Plant it here, on this machine:" >&2
+    echo "           $TRUST_SEAL trust init --set $TRUST_SET \\" >&2
+    echo "             --estate <estate> --station <station> --anchor <control public identity>" >&2
+    rm -f "$LOCK"; exit 2
+  fi
+  if ! TRUST_DIGEST="$("$TRUST_SEAL" trust digest --set "$TRUST_SET" 2>&1)"; then
+    echo "station: the trusted set at $TRUST_SET will not parse: $TRUST_DIGEST" >&2
+    echo "         Every request would be refused. Re-plant it with trust init." >&2
+    rm -f "$LOCK"; exit 2
+  fi
+fi
+
+# publish_trusted_set writes the auditable copy the estate owner reads.
+#
+# A COPY, never the authority. The authoritative set is the gitignored local
+# file; this one lives in the transport repo where the far side can edit it, and
+# editing it changes nothing at all. Publishing it is what lets an owner see a
+# key appearing that nobody authorised, without asking us and without logging
+# into the machine.
+publish_trusted_set() {
+  [ -n "$TRUST_SET" ] || return 0
+  mkdir -p "$(dirname "$TRUST_PUBLISH")" 2>/dev/null
+  {
+    echo "# Published by the station. The authority is a local file this repo"
+    echo "# cannot reach; editing this copy changes nothing. Compare it against"
+    echo "# your own with 'heliograph doctor'."
+    cat "$TRUST_SET"
+  } > "$TRUST_PUBLISH" 2>/dev/null || true
+}
+
 say "station up on $BRANCH at $(hostname -f 2>/dev/null || hostname), polling every ${INTERVAL}s"
 say "transport: $(tp_describe)"
 # Said at START rather than discovered later. A station that cannot update
@@ -435,6 +585,13 @@ if [ "$REQUIRE_PIN" = "1" ]; then
   fi
 fi
 say "request 'stop: yes' or Ctrl-C to finish, 'cancel: yes' to kill a running step"
+if [ -n "$TRUST_SET" ]; then
+  say "trusted set: $(trust_line)"
+  say "  the anchor changes only here: ./heliograph-seal trust anchor --set $TRUST_SET --anchor <key>"
+  publish_trusted_set
+else
+  say "trusted set: none configured - this station accepts whatever its transport verifies"
+fi
 LAST_ID="$(cat "$STATE_FILE" 2>/dev/null || echo)"
 [ -n "$LAST_ID" ] && say "last request handled here: $LAST_ID"
 
@@ -525,7 +682,110 @@ while :; do
     [ "$ONCE" = "1" ] && cleanup
   }
 
+  # --- a trusted-set change, which is an act and not a step -------------------
+  #
+  # IT RIDES IN THE REQUEST DOCUMENT, so it costs no new transport verb. Every
+  # transport already carries a request; a second fetch on the relay would be
+  # worse than awkward, because collection deletes and asking twice eats the
+  # queue.
+  #
+  # It is verified INDEPENDENTLY of however the request arrived. The signature
+  # is over the change, by a key in the set, so a git station with a trusted set
+  # gets the same guarantee a relay station does - the transport carried it and
+  # did not vouch for it.
+  #
+  # THE STEP PATH IS NOT REACHED. A change is one signed act; the control side
+  # refuses to write a request that carries both, and this refuses to run one.
+  if printf '%s\n' "$REQ_BODY" | grep -q '^trust-op:'; then
+    if [ -z "$TRUST_SET" ]; then
+      refuse "this station has no trusted set, so there is nothing for a trusted-set change to change. The operator plants one on the machine with 'heliograph-seal trust init'" \
+             "a trusted-set change arrived and this station has no trusted set"
+      sleep "$INTERVAL"; continue
+    fi
+    TRUST_IN="$(mktemp)" || { sleep "$INTERVAL"; continue; }
+    printf '%s\n' "$REQ_BODY" > "$TRUST_IN"
+    TRUST_OUT="$("$TRUST_SEAL" trust apply --set "$TRUST_SET" --in "$TRUST_IN" 2>&1)"
+    TRUST_RC=$?
+    rm -f "$TRUST_IN"
+    case "$TRUST_RC" in
+      0)
+        say "TRUSTED SET: $TRUST_OUT"
+        publish_trusted_set
+        publish_status "idle" "$ID" "" "reason:   trusted set updated: ${TRUST_OUT#applied }"
+        LAST_ID="$ID"; echo "$ID" > "$STATE_FILE"; remember_id "$ID"
+        [ "$ONCE" = "1" ] && cleanup
+        sleep "$INTERVAL"; continue ;;
+      *)
+        # EVERY REFUSAL IS PUBLISHED WITH THE REASON THE VERIFIER GAVE, which
+        # names the key and says what was wrong with it. "refused" alone sends
+        # somebody to re-plant a station that is working perfectly.
+        refuse "${TRUST_OUT#refused }" "trusted-set change refused: ${TRUST_OUT#refused }"
+        sleep "$INTERVAL"; continue ;;
+    esac
+  fi
+
+  # --- the signed scope: target, expiry, mode and id --------------------------
+  #
+  # A signature over "run this" is not enough, and each of these closes one gap
+  # that a signature alone left open. All four are fields of the request
+  # document, so on a sealed transport they are already inside the signature -
+  # enforcing them here is what turns that into scope.
+
+  # TARGET: a request written for one station, replayed at another. The relay
+  # binds estate and station in its envelope; every other transport had nothing,
+  # so a request lifted out of one transport repo was good in any of them.
+  TARGET="$(field target)"
+  if [ -n "$TARGET" ] && [ "$TARGET" != "$SCOPE" ]; then
+    refuse "this request names target '$TARGET' and this station is '$SCOPE'" \
+           "request $ID was written for '$TARGET', not for this station"
+    sleep "$INTERVAL"; continue
+  fi
+
+  # EXPIRY: a captured request stops being valid. Without it, one taken out of a
+  # transport repo is good for ever, and --allow-actions plus CONFIRM=yes were
+  # decided days before it.
+  #
+  # STRING COMPARISON ON RFC3339 UTC, deliberately. `date -d` is GNU-only and
+  # this runs on macOS too; a fixed-width Z-suffixed timestamp sorts
+  # lexicographically in exactly the order it sorts chronologically, which is
+  # why that format is used everywhere else in this toolkit.
+  EXPIRES="$(field expires)"
+  if [ -n "$EXPIRES" ]; then
+    NOW_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [ "$NOW_UTC" \> "$EXPIRES" ]; then
+      refuse "this request expired at $EXPIRES and it is now $NOW_UTC" \
+             "request $ID expired at $EXPIRES"
+      sleep "$INTERVAL"; continue
+    fi
+  fi
+
+  # REPLAY: an id this station has already acted on.
+  #
+  # SURVIVES A RESTART, which is the whole point. `.station-state` holds only
+  # the LAST id, so a request from two days ago, replayed, ran again with every
+  # gate already satisfied - and after a restart even the last id was the only
+  # thing remembered. The ledger is a file.
+  if seen_id "$ID"; then
+    refuse "request id '$ID' has already been acted on here, and an id is used once" \
+           "request $ID is a replay: this station has already acted on that id"
+    sleep "$INTERVAL"; continue
+  fi
+
   MODE="$(step_mode "$STEP")"
+
+  # MODE: the request says what it expected the step to be.
+  #
+  # A step file edited from read-only to action between authoring and running
+  # would otherwise carry the earlier decision's authority. The declaration in
+  # the file still decides what the gates do; this only refuses a request whose
+  # author was looking at something else.
+  WANT_MODE="$(field mode)"
+  if [ -n "$WANT_MODE" ] && [ "$WANT_MODE" != "$MODE" ]; then
+    refuse "the request was signed for a '$WANT_MODE' step and '$STEP' declares '$MODE'. The step changed after the request was written" \
+           "request $ID expected '$STEP' to be $WANT_MODE and it declares $MODE"
+    sleep "$INTERVAL"; continue
+  fi
+
   case "$MODE" in
     read-only|action) ;;
     *)
@@ -556,7 +816,18 @@ while :; do
     fi
   fi
 
-  publish_status "running" "$ID" "$STEP"
+  # WHO SIGNED THE REQUEST, if the transport could establish it. Written by
+  # `heliograph-seal open --author-out`, read here, and carried into the run so
+  # the log itself says who asked - see cap_header. An archive that can only say
+  # "the estate asked" cannot answer the first question anybody puts to it
+  # during an incident.
+  REQUEST_BY=""
+  if [ -n "$TRUST_SET" ] && [ -r "$REPO_ROOT/.station-request-author" ]; then
+    REQUEST_BY="$(tr -d '\n\r' < "$REPO_ROOT/.station-request-author" 2>/dev/null)"
+  fi
+  export HELIOGRAPH_REQUEST_BY="$REQUEST_BY"
+
+  publish_status "running" "$ID" "$STEP" "${REQUEST_BY:+by:       $REQUEST_BY}"
   RUNNING=1
   START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   # CLEARED BEFORE THE RUN, so its ABSENCE means something.
@@ -569,6 +840,12 @@ while :; do
   # or `idle` for one that produced a log nobody received, are both lies told to
   # somebody who cannot check.
   rm -f "$REPO_ROOT/.station-delivery"
+  # RECORDED BEFORE THE RUN, NOT AFTER, and the difference is a duplicate
+  # execution. If the station is killed mid-step - the machine reboots, somebody
+  # closes the terminal - the id written after `wait` was never written, so on
+  # restart the same request is new again and a state-changing step runs a
+  # second time. An id is used once, and "once" has to include the attempt.
+  remember_id "$ID"
   # run.sh owns the log, the timestamps and the log push. The station only decides
   # WHEN it runs - that separation is the same one steps and runners already have.
   #
@@ -640,6 +917,13 @@ while :; do
     #                   relay.sh passes it to BOTH `seal open` and `seal seal`
     #   SHARE_DIR       the same redirection on a share station
     #   PIGEONHOLE_*    and on a blob station
+    #   TRUST_SET       names the file that decides WHO MAY COMMAND THIS
+    #                   STATION. A request that could set it would point the
+    #                   station at a set the requester wrote, which is the
+    #                   trust-root bypass the set exists to close, reintroduced
+    #                   one variable lower down. It is reserved by the TRUST_
+    #                   prefix, the same way and for the same reason as the
+    #                   transports
     #
     # SO IT IS RESERVED BY PREFIX, NOT BY NAME. A new transport that introduces
     # a new prefix must add it here, and tests/test-station-gate.sh fails if it
@@ -656,7 +940,7 @@ while :; do
     for _assign in ${ENVARR[@]+"${ENVARR[@]}"}; do
       # RESERVED_ENV_PATTERN - read by tests/test-station-gate.sh. Keep on one line.
       case "${_assign%%=*}" in
-        TRANSPORT|PUSH|REDACT|LOG_DIR|ALLOW_ROOT|ALLOW_ACTIONS|CAP_*|RELAY_*|SHARE_*|PIGEONHOLE_*|OBJSTORE_*|BLOB_*|BUNDLE_*)
+        TRANSPORT|PUSH|REDACT|LOG_DIR|ALLOW_ROOT|ALLOW_ACTIONS|CAP_*|RELAY_*|SHARE_*|PIGEONHOLE_*|OBJSTORE_*|BLOB_*|BUNDLE_*|TRUST_*)
           say "REFUSED: the env line sets ${_assign%%=*}, which the request may not choose"
           say "  env: $ENVLINE"
           say "  Capture, delivery, redaction and identity are settled when the"
@@ -824,8 +1108,8 @@ while :; do
     # exists to remove, reinstated by a default.
     case "$DELIVERED" in
       yes)
-        publish_status "idle" "$ID" "$STEP" "$(printf 'started:  %s\nfinished: %s\nexit:     %s\nlog:      %s' \
-            "$START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "${LOGFILE:-<none>}")" ;;
+        publish_status "idle" "$ID" "$STEP" "$(printf 'started:  %s\nfinished: %s\nexit:     %s\nlog:      %s%s' \
+            "$START" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RC" "${LOGFILE:-<none>}" "${REQUEST_BY:+$(printf '\nby:       %s' "$REQUEST_BY")}")" ;;
       *)
         case "$DELIVERED" in
           no)      WHY="the transport would not take it" ;;

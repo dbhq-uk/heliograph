@@ -372,14 +372,35 @@ tp_fetch_request() {
   tmp="$(mktemp)" || return 1
   printf '%s' "$body" > "$tmp"
 
-  local out
+  # VERIFIED AGAINST THE TRUSTED SET WHEN THERE IS ONE, and against the single
+  # recorded peer when there is not.
+  #
+  # Both are passed, and heliograph-seal prefers the set. The peer stays because
+  # it is also this station's REPLY ADDRESS - what a log is sealed to - and that
+  # is a separate question from who may command the station. A set with four
+  # engineers in it does not tell the station which of them to seal a log to.
+  #
+  # THE REFUSAL WHEN A REVOKED KEY SIGNED IT IS EXIT 4, and it is said out loud
+  # rather than dropped. Everything else a relay hands over is dropped in
+  # silence, correctly - a station that stopped on rubbish is one a hostile
+  # relay could halt at will - but "carol was revoked" is a fact the operator's
+  # log should carry, and the claimed signing key is in the clear in the
+  # envelope anyway, so saying it tells the relay nothing it did not have.
+  local out setarg=() rc
+  [ -n "${TRUST_SET:-}" ] && setarg=(--set "$TRUST_SET")
+  local authorf="$REPO_ROOT/.station-request-author"
+  rm -f "$authorf" 2>/dev/null
   out="$("$RELAY_SEAL" open \
           --identity "$RELAY_IDENTITY" --peer "$RELAY_PEER" \
+          "${setarg[@]}" --author-out "$authorf" \
           --estate "$RELAY_ESTATE" --station "$RELAY_STATION" \
           --dir c2s --kind request --min-seq "$RELAY_SEEN" \
-          --in "$tmp" 2>/dev/null)"
-  local rc=$?
-  rm -f "$tmp"
+          --in "$tmp" 2>"$tmp.err")"
+  rc=$?
+  if [ "$rc" = "4" ]; then
+    say "$(sed -n 's/^heliograph-seal: //p' "$tmp.err" | head -1)"
+  fi
+  rm -f "$tmp" "$tmp.err"
   [ "$rc" = "0" ] || { printf ''; return 0; }
 
   # heliograph-seal prints the accepted sequence number on its first line and

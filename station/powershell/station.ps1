@@ -622,7 +622,7 @@ function Split-EnvLine {
 # rather than against the meaning.
 #
 # RESERVED_ENV_PATTERN - read by tests/test-station-gate.sh. Keep on one line.
-$ReservedEnvPattern = '^(TRANSPORT|PUSH|REDACT|LOG_DIR|ALLOW_ROOT|ALLOW_ACTIONS|CAP_.*|RELAY_.*|SHARE_.*|PIGEONHOLE_.*|OBJSTORE_.*|BLOB_.*|BUNDLE_.*)$'
+$ReservedEnvPattern = '^(TRANSPORT|PUSH|REDACT|LOG_DIR|ALLOW_ROOT|ALLOW_ACTIONS|CAP_.*|RELAY_.*|SHARE_.*|PIGEONHOLE_.*|OBJSTORE_.*|BLOB_.*|BUNDLE_.*|TRUST_.*)$'
 
 # --- status, published so the far side can see what is happening --------------
 function Publish-Status {

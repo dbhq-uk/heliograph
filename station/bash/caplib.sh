@@ -314,6 +314,19 @@ cap_header() {
     echo " user        : $(whoami)"
     echo " git branch  : $(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
     echo " git commit  : $(git log --oneline -1 2>/dev/null)"
+    # WHO ASKED FOR THIS RUN, when the station could establish it.
+    #
+    # For as long as there was one identity per estate, the archive could say
+    # that the estate asked and never who - so a log three months old could not
+    # answer the first question anybody asks of it during an incident. With a
+    # trusted set the station knows which key signed the request it acted on,
+    # and writes the name and fingerprint HERE, in the artefact, rather than
+    # only in a status document that gets overwritten by the next transition.
+    #
+    # Absent when the station has no trusted set, which is every station in the
+    # field today. An absent line is honest; a line saying "unknown" reads like
+    # a failure to record something that was never established.
+    [ -n "${HELIOGRAPH_REQUEST_BY:-}" ] && echo " requested by: ${HELIOGRAPH_REQUEST_BY}"
     local line
     for line in "$@"; do [ -n "$line" ] && echo " context     : $line"; done
     echo "============================================================"
