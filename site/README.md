@@ -1,6 +1,6 @@
 # site
 
-The documentation site for `heliograph.dbhq.uk`.
+The documentation site for `docs.heliograph.io`. It was `heliograph.dbhq.uk` until 2026-09-16; that name 301s here, root to the apex and every deep path to its matching page.
 
 **One canonical source, several renderings.** The 2026 consensus for developer
 documentation is not separate content for humans and machines: it is one set of

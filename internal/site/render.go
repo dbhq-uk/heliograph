@@ -346,17 +346,31 @@ func Summary(md string) string {
 // Mark is the logo, inlined.
 //
 // Inline rather than an <img> because it is in the sticky header on every page
-// and inherits currentColor, so it cannot fall out of step with the palette and
-// costs no request.
-// The glyph is the product in one line: a solid disc (the mirror, the side
-// you are on), a dash and a dot (the flash crossing the gap), and an open
-// ring (the far side - open because you cannot get into it). Keep it in step
-// with site/assets/mark.svg.
-const Mark = `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">` +
-	`<circle cx="16" cy="47" r="9.5" fill="currentColor"/>` +
-	`<path d="M28 35 L34 29" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/>` +
-	`<circle cx="40.5" cy="22.5" r="2.9" fill="currentColor"/>` +
-	`<circle cx="51" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="4.6" opacity=".8"/></svg>`
+// and costs no request.
+//
+// THE H, SINCE 2026-09-16, and the old glyph is described below because it was
+// a good drawing that lost on consistency rather than on quality.
+//
+// `docs/brand/pack/BRAND.md` in the cloud repository sets the mark: "an H whose
+// crossbar is two materials, ink uprights and stubs, a cobalt square between
+// them. Two stations, and what crosses is light." The apex and the console
+// have always drawn that. This site drew something else, which did not matter
+// while it lived on `heliograph.dbhq.uk` and started mattering the day it moved
+// to `docs.heliograph.io` and sat beside them.
+//
+// The replaced glyph, kept because why it was drawn outlives it: "a solid disc
+// (the mirror, the side you are on), a dash and a dot (the flash crossing the
+// gap), and an open ring (the far side, open because you cannot get into it)".
+//
+// The uprights take `currentColor` so the header still cannot fall out of step
+// with the palette. The square is cobalt literally, because it is the one fixed
+// colour in the system and the only thing on this site that is that blue.
+const Mark = `<svg viewBox="0 0 96 96" aria-hidden="true" focusable="false">` +
+	`<rect x="20" y="14" width="12" height="68" fill="currentColor"/>` +
+	`<rect x="64" y="14" width="12" height="68" fill="currentColor"/>` +
+	`<rect x="32" y="41" width="9" height="14" fill="currentColor"/>` +
+	`<rect x="55" y="41" width="9" height="14" fill="currentColor"/>` +
+	`<rect x="41" y="41" width="14" height="14" fill="#2F6BFF"/></svg>`
 
 // copyButton is the control on every code block. This site is a list of
 // commands to run on somebody else's machine, and selecting one by hand out

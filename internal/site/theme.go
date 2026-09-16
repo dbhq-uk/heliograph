@@ -13,10 +13,27 @@ package site
 const CSS = `
 /* ---------------------------------------------------------------- fonts */
 /* Self-hosted. A third-party font request on a docs site is a dependency
-   nobody asked for, and Instrument is the right voice twice over: a display
-   serif with real optical contrast, and a sans from the same drawing. */
-@font-face{font-family:'Archivo';src:url('/assets/fonts/Archivo.woff2')format('woff2');
-  font-weight:400 700;font-style:normal;font-display:swap}
+   nobody asked for.
+ *
+ * ALBERT SANS, NOT ARCHIVO, since 2026-09-16. This site moved from
+ * heliograph.dbhq.uk to docs.heliograph.io, so it now sits beside the apex and
+ * the console rather than on a different domain, and the brand pack names
+ * Albert Sans and JetBrains Mono. Two sites on one domain in two different
+ * sans faces reads as an accident, which is the only thing a typeface choice
+ * must never do.
+ *
+ * The comment here used to praise Instrument, which is a third face and was
+ * never loaded by either declaration. A comment describing a font the page
+ * does not serve is worse than none.
+ *
+ * Split latin and latin-ext with a unicode-range, as the apex ships them, so a
+ * reader on an English page never fetches the extended block. */
+@font-face{font-family:'Albert Sans';src:url('/assets/fonts/albert-sans-latin.woff2')format('woff2');
+  font-weight:400 700;font-style:normal;font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'Albert Sans';src:url('/assets/fonts/albert-sans-latin-ext.woff2')format('woff2');
+  font-weight:400 700;font-style:normal;font-display:swap;
+  unicode-range:U+0100-02AF,U+0304-0308,U+0329,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+2113,U+2C60-2C7F,U+A720-A7FF}
 @font-face{font-family:'JetBrains Mono';src:url('/assets/fonts/JetBrainsMono.woff2')format('woff2');
   font-weight:400 700;font-style:normal;font-display:swap}
 
@@ -57,7 +74,7 @@ const CSS = `
 html{-webkit-text-size-adjust:100%}
 body{
   margin:0;background:var(--night);color:var(--ink);
-  font:400 17px/1.65 'Archivo',ui-sans-serif,system-ui,sans-serif;
+  font:400 17px/1.65 'Albert Sans',ui-sans-serif,system-ui,sans-serif;
   font-feature-settings:'kern' 1;
   -webkit-font-smoothing:antialiased;
   overflow-x:hidden;
@@ -93,7 +110,7 @@ a:hover{color:var(--flash);text-decoration-color:var(--flash)}
   border-bottom:1px solid var(--ridge);
 }
 .brand{display:flex;align-items:center;gap:.6rem;text-decoration:none;color:var(--ink);
-  font-family:'Archivo',sans-serif;font-weight:600;font-size:1.12rem;letter-spacing:-.02em}
+  font-family:'Albert Sans',sans-serif;font-weight:600;font-size:1.12rem;letter-spacing:-.02em}
 .brand:hover{color:var(--ink)}
 .brand svg{width:26px;height:26px;color:var(--gold);flex:none}
 /* SCOPED to the header's own nav with a child combinator, not to every nav on
@@ -128,7 +145,7 @@ a:hover{color:var(--flash);text-decoration-color:var(--flash)}
   padding:clamp(3rem,9vh,5.5rem) clamp(1.1rem,4vw,2.5rem) clamp(9rem,22vh,13rem);
 }
 .hero h1{
-  font-family:'Archivo',sans-serif;font-weight:600;
+  font-family:'Albert Sans',sans-serif;font-weight:600;
   font-size:clamp(2.6rem,6.6vw,4.9rem);line-height:1.02;letter-spacing:-.035em;
   margin:0 0 1.15rem;max-width:17ch;text-wrap:balance;
 }
@@ -192,7 +209,7 @@ a:hover{color:var(--flash);text-decoration-color:var(--flash)}
 .dg-chan rect{fill:var(--dusk);stroke:var(--ridge);stroke-width:1}
 .dg-line path{stroke:var(--ridge);stroke-width:1.25;fill:none}
 .dg-line.dg-no path{stroke-dasharray:3 3}
-.dg text{font-family:'Instrument Sans',system-ui,sans-serif}
+.dg text{font-family:'Albert Sans',system-ui,sans-serif}
 .dg-label,.dg text.dg-label{fill:var(--ink);font-size:13px;font-weight:500;text-anchor:middle}
 .dg-sub,.dg text.dg-sub{fill:var(--ink-2);font-size:11px;text-anchor:middle;letter-spacing:.02em}
 .dg-note text{fill:var(--ink-2);font-size:11px;text-anchor:middle}
@@ -254,7 +271,7 @@ main:focus{outline:none}
   min-width:2.75rem;min-height:2.75rem;padding:.45rem .65rem;
   border:1px solid var(--slate,var(--ridge));border-radius:7px;
   background:var(--dusk);color:var(--ink);
-  font:600 .9rem/1 'Archivo',ui-sans-serif,system-ui,sans-serif;cursor:pointer
+  font:600 .9rem/1 'Albert Sans',ui-sans-serif,system-ui,sans-serif;cursor:pointer
 }
 .menu-button:hover,.menu-close:hover{border-color:var(--gold);color:var(--flash)}
 .menu-button svg,.menu-close svg{
@@ -284,7 +301,7 @@ main:focus{outline:none}
 }
 .nav-dialog-head h2{
   margin:0;padding:0;border:0;
-  font:600 1rem/1.2 'Archivo',ui-sans-serif,system-ui,sans-serif;letter-spacing:0
+  font:600 1rem/1.2 'Albert Sans',ui-sans-serif,system-ui,sans-serif;letter-spacing:0
 }
 .nav-dialog .side-nav{padding:1rem .75rem 2rem}
 /* A browser with no native dialog has no UA rule hiding a closed one, so
@@ -389,9 +406,9 @@ h1,h2,h3,h4{text-wrap:balance}
   .docs-shell main{max-width:none;padding:0}
   a[href^="/"]::after{content:" (" attr(href) ")";font-size:.85em;color:#555}
 }
-main h1{font-family:'Archivo',sans-serif;font-weight:600;
+main h1{font-family:'Albert Sans',sans-serif;font-weight:600;
   font-size:clamp(2.1rem,4.4vw,3rem);line-height:1.08;letter-spacing:-.032em;margin:.2em 0 .5em}
-main h2{font-family:'Archivo',sans-serif;font-weight:600;
+main h2{font-family:'Albert Sans',sans-serif;font-weight:600;
   font-size:clamp(1.4rem,2.6vw,1.8rem);line-height:1.22;letter-spacing:-.022em;
   margin:2.6em 0 .6em;padding-top:1.4rem;border-top:1px solid var(--ridge)}
 main h3{font-size:1.1rem;font-weight:600;margin:2.1em 0 .45em;letter-spacing:-.005em}
@@ -456,7 +473,7 @@ footer p{margin:0}
   display:inline-flex;align-items:center;gap:.35rem;
   padding:.3rem .6rem;border-radius:6px;cursor:pointer;
   background:var(--slate);color:var(--ink-2);border:1px solid var(--ridge);
-  font:500 .74rem/1 'Archivo',ui-sans-serif,system-ui,sans-serif;letter-spacing:.02em;
+  font:500 .74rem/1 'Albert Sans',ui-sans-serif,system-ui,sans-serif;letter-spacing:.02em;
   opacity:0;transition:opacity .18s var(--ease),color .18s var(--ease),border-color .18s var(--ease)}
 .code:hover .copy,.code .copy:focus-visible{opacity:1}
 .code .copy:hover{color:var(--flash);border-color:var(--brass)}
@@ -478,7 +495,7 @@ footer p{margin:0}
   display:inline-flex;align-items:center;gap:.4rem;
   padding:.36rem .7rem;border-radius:6px;cursor:pointer;text-decoration:none;
   background:transparent;color:var(--ink-2);border:1px solid var(--ridge);
-  font:500 .8rem/1.1 'Archivo',ui-sans-serif,system-ui,sans-serif;
+  font:500 .8rem/1.1 'Albert Sans',ui-sans-serif,system-ui,sans-serif;
   transition:color .18s var(--ease),border-color .18s var(--ease)}
 .page-actions a:hover,.page-actions button:hover{color:var(--flash);border-color:var(--brass)}
 .page-actions button[data-done]{color:var(--gold);border-color:var(--brass)}
@@ -493,36 +510,12 @@ footer p{margin:0}
 .rail nav a.here{color:var(--flash)}
 .rail nav a.here::before{background:var(--gold)}
 
-/* The DBHQ menu in the home header. A <details>, so it opens with no
-   JavaScript; the panel is absolutely positioned so opening it does not
-   push the header's own links sideways. */
-.org-menu{position:relative;display:inline-block}
-.org-menu>summary{
-  display:inline-flex;align-items:center;gap:.28rem;cursor:pointer;list-style:none;
-  color:var(--ink-2);transition:color .2s var(--ease)}
-.org-menu>summary::-webkit-details-marker{display:none}
-.org-menu>summary:hover,.org-menu[open]>summary{color:var(--flash)}
-.org-menu>summary svg{width:13px;height:13px;transition:transform .2s var(--ease)}
-.org-menu[open]>summary svg{transform:rotate(180deg)}
-.org-panel{
-  position:absolute;right:0;top:calc(100% + .7rem);z-index:40;
-  width:min(20rem,calc(100vw - 2rem));
-  display:flex;flex-direction:column;
-  background:var(--dusk);border:1px solid var(--ridge);border-radius:10px;
-  padding:.4rem;box-shadow:0 16px 44px rgba(4,7,11,.7)}
-.org-panel a{
-  display:block;padding:.55rem .65rem;border-radius:7px;text-decoration:none;
-  color:var(--ink);line-height:1.35}
-.org-panel a:hover{background:var(--slate)}
-.org-panel a b{display:block;font-weight:600;font-size:.94rem}
-.org-panel a span{display:block;color:var(--ink-3);font-size:.82rem;margin-top:.1rem}
-.org-panel .org-all{
-  margin-top:.25rem;border-top:1px solid var(--ridge);border-radius:0 0 7px 7px;
-  color:var(--gold);font-size:.88rem;font-weight:500}
-/* The panel stays anchored to the menu's RIGHT edge at every width. An
-   earlier left:0 override for narrow screens ran it off the side of a phone:
-   the menu sits near the right edge, so a panel growing rightwards from there
-   has nowhere to go. */
+/* The DBHQ menu's styles were removed on 2026-09-16 with the menu. Its one
+   hard-won note is kept because the next absolutely positioned panel in this
+   header will meet the same thing: the panel stayed anchored to its trigger's
+   RIGHT edge at every width, and an earlier left:0 override for narrow screens
+   ran it off the side of a phone, because a trigger near the right edge has
+   nowhere to grow rightwards from. */
 
 `
 
@@ -827,20 +820,16 @@ const RailJS = `
 })();
 `
 
-// OrgJS closes the DBHQ menu on an outside click or Escape. The one thing
-// <details> does not do on its own, and whose absence reads as broken.
-const OrgJS = `
-(function(){
-  var menu=document.querySelector('.org-menu');
-  if(!menu)return;
-  document.addEventListener('click',function(e){
-    if(menu.open&&!menu.contains(e.target))menu.open=false;
-  });
-  document.addEventListener('keydown',function(e){
-    if(e.key==='Escape'&&menu.open){menu.open=false;menu.querySelector('summary').focus();}
-  });
-})();
-`
+// OrgJS was the DBHQ menu's outside-click and Escape handler, removed on
+// 2026-09-16 with the menu. It is an empty string rather than a deleted symbol
+// so that a caller which still emits it ships nothing instead of failing to
+// compile, and the next build that touches the script list can drop the call.
+//
+// It is worth saying what it cost to leave behind: the menu markup went in one
+// change and this script shipped to all thirty pages afterwards, querying a
+// selector that matched nothing. Dead JavaScript on every page view is cheap
+// enough to miss and is exactly what nobody goes looking for.
+const OrgJS = ``
 
 const NavJS = `<script>
 (function(){

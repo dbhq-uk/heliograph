@@ -172,7 +172,7 @@ func TestAnalyticsIsDeniedUntilConsentAndOnlyInProduction(t *testing.T) {
 		if !strings.Contains(h, `analytics_storage: "denied"`) {
 			t.Errorf("%s: analytics_storage is not denied by default", name)
 		}
-		if !strings.Contains(h, `location.hostname === "heliograph.dbhq.uk"`) {
+		if !strings.Contains(h, `location.hostname === "docs.heliograph.io"`) {
 			t.Errorf("%s: the tag is not gated on the production hostname", name)
 		}
 		if strings.Contains(h, `<script async src="https://www.googletagmanager.com`) ||
@@ -278,7 +278,7 @@ func TestNotFoundPageIsNoindexAndCarriesTheSidebar(t *testing.T) {
 func TestSharedLinksCarryAnImage(t *testing.T) {
 	out := buildSite(t)
 	for name, h := range htmlPages(t, out) {
-		if !strings.Contains(h, `<meta property="og:image" content="https://heliograph.dbhq.uk/assets/og.png">`) {
+		if !strings.Contains(h, `<meta property="og:image" content="https://docs.heliograph.io/assets/og.png">`) {
 			t.Errorf("%s: no og:image", name)
 		}
 		if !strings.Contains(h, `<meta name="twitter:card" content="summary_large_image">`) {
@@ -487,29 +487,19 @@ func TestTheSiteHasAFaviconEverythingCanRead(t *testing.T) {
 	}
 }
 
-// The other things DBHQ makes were one line of footer byline. They are now a
-// menu on the home page, a group in every docs sidebar, and a page.
-func TestTheDBHQMenuIsReachableFromEveryPage(t *testing.T) {
-	out := buildSite(t)
-	for name, h := range htmlPages(t, out) {
-		if name == "dbhq.html" {
-			continue
-		}
-		if !strings.Contains(h, `href="/dbhq"`) {
-			t.Errorf("%s has no way to reach the DBHQ projects page", name)
-		}
-	}
-	home := htmlPages(t, out)["index.html"]
-	if !strings.Contains(home, `<details class="org-menu">`) ||
-		!strings.Contains(home, `<summary`) {
-		t.Error("the home header has no DBHQ menu")
-	}
-	for _, want := range []string{"https://bbs.dbhq.uk", "https://modem.dbhq.uk", `href="/dbhq"`} {
-		if !strings.Contains(home[:strings.Index(home, "</header>")], want) {
-			t.Errorf("the DBHQ menu does not list %s", want)
-		}
-	}
-}
+// The DBHQ menu was removed on 2026-09-16 and its test with it.
+//
+// The test asserted the opposite of what is now wanted: that every page could
+// reach the DBHQ projects page. Its own comment records the direction of
+// travel, "one line of footer byline ... now a menu on the home page, a group
+// in every docs sidebar, and a page", and the move to docs.heliograph.io
+// reversed it. A reader on the company's domain had come to the company; a
+// reader here has come to a product, mid-incident, and a header offering them
+// a bulletin board and a Bell 103 modem is the company talking about itself.
+//
+// Nothing replaces it. The named-author attribution stays in the footer and in
+// the structured data, pointing at dbhq.uk rather than at a page here, and
+// TestInternalLinksResolve is what would catch a link to the removed page.
 
 // The footer carried a byline and, from #45, a three-item "Also from DBHQ"
 // list. Both said the same thing on all 27 pages, at the point a reader has
@@ -531,32 +521,10 @@ func TestTheFooterCarriesNoDBHQBlock(t *testing.T) {
 	}
 }
 
-// The page itself: every project it names is a link, and it points at the
-// company rather than describing it second-hand.
-func TestTheDBHQPageLinksToTheProjectsItNames(t *testing.T) {
-	out := buildSite(t)
-	h, ok := htmlPages(t, out)["dbhq.html"]
-	if !ok {
-		t.Fatal("there is no dbhq page")
-	}
-	for _, want := range []string{
-		"https://dbhq.uk", "https://bbs.dbhq.uk", "https://modem.dbhq.uk",
-		"https://github.com/dbhq-uk/marketplace", "https://skills.dbhq.uk",
-	} {
-		if !strings.Contains(h, `href="`+want+`"`) {
-			t.Errorf("the DBHQ page does not link to %s", want)
-		}
-	}
-}
-
-// The client-side navigation replaces main and the rail wholesale, which
-// leaves anything bound to the old elements pointing at nodes that are no
-// longer in the document. The rail stopped marking the current section after
-// one soft navigation, and only a browser could see it: every page was
-// correct on a hard load.
-//
-// The contract is an event. swap() announces; whatever needs rebinding
-// listens, so the next thing that needs it does not have to edit swap().
+// TestTheDBHQPageLinksToTheProjectsItNames was removed on 2026-09-16 with the
+// page it tested. Nothing replaces it: the projects it linked are on dbhq.uk,
+// which is where a reader who wants them should be, rather than inside the
+// documentation of one product.
 func TestTheNavigationAnnouncesASwapAndTheRailListens(t *testing.T) {
 	if !strings.Contains(site.NavJS, `dispatchEvent(new CustomEvent('hg:swap'`) &&
 		!strings.Contains(site.NavJS, `hg:swap`) {
@@ -655,8 +623,13 @@ func TestTheFooterNamesTheHumanWhoWroteIt(t *testing.T) {
 		if !strings.Contains(foot, "Daniel Grimes") {
 			t.Errorf("%s: the footer names no human", name)
 		}
-		if !strings.Contains(foot, `href="/dbhq"`) {
-			t.Errorf("%s: the byline does not link the page that says who that is", name)
+		// dbhq.uk, not /dbhq. The page that said who that is was removed on
+		// 2026-09-16; the attribution is the part worth keeping, because a
+		// crawler and a model both want a named author, and it now points off
+		// this site rather than at a page about the company inside the
+		// product's documentation.
+		if !strings.Contains(foot, `href="https://dbhq.uk/"`) {
+			t.Errorf("%s: the byline does not link the person it names", name)
 		}
 	}
 }
@@ -876,7 +849,8 @@ func TestRedirectsCarryTheOldIntercomPath(t *testing.T) {
 // complete answer is executing the published example, which is #64's own finding.
 func TestEveryHostnameWePublishIsOneWeOwn(t *testing.T) {
 	deployed := map[string]bool{
-		"heliograph.dbhq.uk":       true, // the site itself
+		"docs.heliograph.io":       true, // the site itself, since 2026-09-16
+		"heliograph.dbhq.uk":       true, // its old name, which 301s here
 		"heliograph-relay.dbhq.uk": true, // the relay. NOT relay.heliograph.dbhq.uk
 		"bbs.dbhq.uk":              true,
 		"modem.dbhq.uk":            true,
