@@ -35,26 +35,33 @@ resource "cloudflare_dns_record" "legacy_site_redirect" {
   comment = "Redirect only. 301 to heliograph.io; 100:: is the discard prefix"
 }
 
-# The GitHub Pages binding, so the CNAME and the repository agree.
+# THE GITHUB PAGES BINDING IS GONE, and so is Pages.
 #
-# They are two halves of one fact, and setting only one of them is the failure
-# that produces a site serving somebody else's 404. The third half is
-# `.github/workflows/pages.yml`, which writes a CNAME file on every deploy and
-# so gets the last word: on 2026-09-16 it still wrote the old hostname while
-# this resource and the live site both said the new one.
-resource "github_repository_pages" "site" {
-  repository = "heliograph"
-  cname      = var.docs_hostname
-
-  # WORKFLOW, NOT LEGACY, and a `source` block must not appear here.
-  #
-  # The site is built and deployed by .github/workflows/pages.yml. Declaring a
-  # source branch flips build_type to "legacy", which makes Pages serve the
-  # repository root instead - so the first apply would have taken the live site
-  # down and served the raw markdown. The plan said "2 to change" and looked
-  # harmless.
-  build_type = "workflow"
-}
+# `github_repository_pages.site` lived here until 2026-09-16. It bound the
+# repository to `docs.heliograph.io`, alongside `.github/workflows/pages.yml`
+# which wrote a CNAME file on every deploy.
+#
+# What replaced it: a `heliograph-docs` Worker with static assets, deployed
+# from the private cloud repository on a schedule. heliograph-cloud#62.
+#
+# **The reason is the transfer, not a preference.** A Pages custom domain is
+# matched against the account that owns the repository, so moving `heliograph`
+# to the `heliograph-io` organisation would have taken the documentation site
+# down. Git redirects survive a transfer; a Pages custom domain does not. That
+# coupling is what made the transfer a blocker at all (heliograph-cloud#59),
+# and removing it is what unblocks it.
+#
+# Two things Pages could not do, which the Worker now does: serve a real 301
+# for a moved page, and set a response header. `/intercom` was an HTML stub
+# with a meta refresh because Pages does not read the generator's `_redirects`
+# file, and no page carried `X-Content-Type-Options` at all - which matters on
+# a site that serves markdown mirrors a browser could otherwise sniff as HTML.
+#
+# `docs.heliograph.io` in the heliograph.io zone is now a proxied AAAA at
+# `100::`, created and owned by the Worker's custom domain rather than declared
+# anywhere. The constraint recorded above is why it could not have been proxied
+# before: Pages cannot complete its certificate challenge through Cloudflare's
+# proxy, so a proxied record meant Pages never issued a certificate.
 
 # NOT MANAGED HERE, and each for a reason:
 #
