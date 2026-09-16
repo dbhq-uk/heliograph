@@ -16,7 +16,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Validate plugin manifest is valid JSON
         run: jq empty .claude-plugin/plugin.json
@@ -107,7 +107,7 @@ jobs:
     name: Installers actually install
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Claude install
         run: |
@@ -139,7 +139,7 @@ jobs:
     name: The station captures a run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # The one thing worth exercising end to end. A capture that loses the
       # timestamps, swallows an exit code, or writes nothing on failure is the
@@ -229,14 +229,14 @@ jobs:
     name: Station unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # The relay is the one transport whose far side is a program, and the
       # conformance suite builds heliograph-seal from this tree to talk to a
       # stub relay. Without a toolchain the driver skips the relay - correct on
       # a machine that has no Go, and exactly the wrong thing to let pass here.
       # Pinned to go.mod so the seal under test is built the way it ships.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
 
@@ -276,7 +276,7 @@ jobs:
     name: Container image builds, and its tests run unskipped
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Run tests/test-container.sh and refuse a silent skip
         run: |
@@ -308,7 +308,7 @@ jobs:
     name: PowerShell parses, and its tests run unskipped
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # .psm1 AS WELL AS .ps1, and the modules are where nearly all of it lives:
       # caplib.psm1, every transport, the cancel, the seal. `-Filter *.ps1` does
@@ -383,11 +383,11 @@ jobs:
       # Go, for the CONTROL side of the relay harness only. The station side
       # is the thing under test and has no binary; heliograph-seal is what
       # makes the keys and reads the delivery back.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '8.0'
 
@@ -456,7 +456,7 @@ jobs:
     # bad trade. Fail, and let the per-file timeouts below say which one.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: What this runner actually has
         shell: pwsh
@@ -986,14 +986,14 @@ jobs:
     name: The manifest runs on a real cluster
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # station/bash/kubernetes/heliograph.yaml shipped for months with no
       # test, and no cluster had ever run it. This is what moves it from
       # "validated" to "proven" in references/hosts.md: a kind cluster, the
       # real manifest, and a station that clones a repo, runs a step and
       # pushes the log back.
-      - uses: helm/kind-action@v1
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
         with:
           cluster_name: heliograph-ci
           wait: 180s
@@ -1016,7 +1016,7 @@ jobs:
     name: launchd keeps a Mac control node alive
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # A Mac ships bash 3.2 - the last GPLv2 release, from 2007 - and the
       # station's preflight refuses it, correctly: it uses `declare -A` and
