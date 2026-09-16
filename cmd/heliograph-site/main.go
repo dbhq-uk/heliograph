@@ -49,15 +49,21 @@ var order = []string{
 // lives somewhere it redirects away from.
 const baseURL = "https://docs.heliograph.io"
 
-// redirects keeps a published path alive after its page is renamed. Cloudflare
-// Pages reads _redirects; a reader who followed an old link gets the new page
-// rather than the 404 handler.
+// redirects keeps a published path alive after its page is renamed, so a
+// reader who followed an old link gets the new page rather than the 404
+// handler.
 //
-// GitHub Pages, which is what actually serves this site, does not read
-// _redirects at all - it is kept here anyway because it costs nothing and is
-// correct the day the host changes. The redirect GitHub Pages does serve is a
-// static stub written by .github/workflows/pages.yml after this build runs,
-// not generated from this map.
+// THE DAY THE HOST CHANGED ARRIVED ON 2026-09-16. This comment used to say
+// _redirects was "kept here anyway because it costs nothing and is correct the
+// day the host changes", and that day is past: GitHub Pages is gone and the
+// site is served by a `heliograph-docs` Worker. The Worker carries its own
+// copy of this map and serves a real 301 (heliograph-cloud#62), which is
+// something neither GitHub Pages nor the meta-refresh stub it needed could do.
+//
+// The _redirects file is still emitted because Cloudflare's static-asset
+// serving reads it and because it documents the moves in the build output.
+// **It is not the mechanism.** If a move is added here it has to be added to
+// the Worker's map too, or the file will describe a redirect nobody serves.
 var redirects = [][2]string{
 	{"/intercom", "/flare"},
 }
