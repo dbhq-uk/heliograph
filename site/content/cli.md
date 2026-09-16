@@ -299,7 +299,7 @@ and publishes the reason.
 
 Nothing in between authors anything. A service can display a set, propose a
 change and record that one happened; producing one needs a key. So a change
-lands with heliograph cloud unreachable, and compromising a service is not
+lands with Heliograph Cloud unreachable, and compromising a service is not
 equivalent to holding a key.
 
 ### Revocation is eventual, and that is worth saying out loud

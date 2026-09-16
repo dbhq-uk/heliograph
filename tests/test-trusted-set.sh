@@ -2,7 +2,7 @@
 # =============================================================================
 #  test-trusted-set.sh - who may command a station, and who may change that
 # =============================================================================
-# The claim this guards is the product's headline one: heliograph cloud cannot
+# The claim this guards is the product's headline one: Heliograph Cloud cannot
 # cause a station to run anything. That is true only if the service cannot
 # administer the trust root, because a service that could add a key could then
 # sign legitimately - nothing stolen, nothing forged, every gate passed.
@@ -346,7 +346,7 @@ assert_eq "and the ledger is on disk, not in memory" \
 # --- a change lands with no service anywhere on the path ------------------------
 # Nothing in this file has spoken to a service. The transport is a bare git repo
 # on a filesystem, the changes were signed locally, and the station verified them
-# locally. That is the property: losing heliograph cloud does not lock a customer
+# locally. That is the property: losing Heliograph Cloud does not lock a customer
 # out of their own estate, and compromising it is not equivalent to holding a key.
 assert_eq "every change above landed over a bare git repo, with no service on the path" \
   "yes" "$([ -d "$TMP/origin.git" ] && echo yes || echo no)"

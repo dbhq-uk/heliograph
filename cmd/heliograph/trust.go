@@ -39,7 +39,7 @@ const trustUsage = `heliograph trust - who may command a station
 
 A change is a signed document. It travels over the transport the estate already
 uses, is verified by the station against the set as it stands, and needs no
-service on the path: heliograph cloud can be unreachable and a change still
+service on the path: Heliograph Cloud can be unreachable and a change still
 lands. Nothing here can alter a station's anchor, which changes only on the
 machine itself.
 `
