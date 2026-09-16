@@ -13,7 +13,7 @@ jobs:
     name: Go builds, vets and tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The site's tests build the real site, and the build refuses a
           # shallow clone (its sitemap dates pages from git history). This
@@ -21,7 +21,7 @@ jobs:
           # had been given full history.
           fetch-depth: 0
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.27.1'
 
@@ -83,9 +83,9 @@ jobs:
     name: The CLI drives a real station
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.27.1'
 
@@ -194,8 +194,8 @@ jobs:
     name: The release binaries build the same twice
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.27.1'
 
@@ -230,7 +230,7 @@ jobs:
     name: The far side ships as source, and every binary is on the list
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Everything under station/ ships to the far side, where "plain bash or
       # plain PowerShell, you can read it before you run it" is the entire
       # proposition.
@@ -330,13 +330,13 @@ jobs:
     name: The site builds
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The sitemap's lastmod is the last commit that touched each page.
           # A shallow clone would date every page today, so the build refuses
           # one; this is the remedy it names.
           fetch-depth: 0
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.27.1'
       - name: build
@@ -370,11 +370,11 @@ jobs:
     name: House style
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # terraform is not on the runner by default, and the step that needs it
       # failed with "command not found" rather than anything about the config.
-      - uses: hashicorp/setup-terraform@v4
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: "1.9.8"
           terraform_wrapper: false
