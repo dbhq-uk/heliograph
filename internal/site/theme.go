@@ -445,20 +445,10 @@ footer p{margin:0}
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
     transition-duration:.001ms!important}
 }
-/* The consent banner. Fixed to the bottom corner and never modal: the page
-   stays readable, and a reader who ignores it is a reader who declined. */
-.consent{position:fixed;top:auto;left:auto;right:1rem;bottom:1rem;margin:0;z-index:50;
-  width:min(26rem,calc(100vw - 2rem));box-sizing:border-box;
-  background:var(--dusk);color:var(--ink);border:1px solid var(--ridge);border-radius:12px;
-  padding:1rem 1.1rem;font-size:.92rem;line-height:1.5;
-  box-shadow:0 12px 40px rgba(4,7,11,.65)}
-.consent:not([open]){display:none}
-.consent p{margin:0 0 .85rem}
-.consent a{color:var(--gold)}
-.consent-actions{display:flex;gap:.6rem;justify-content:flex-end}
-.consent .btn{padding:.5rem .95rem;font-size:.9rem;cursor:pointer;
-  font-family:inherit;border:1px solid transparent}
-.consent .btn-ghost{border-color:var(--slate)}
+/* The consent banner's styles were here and went with the banner on
+   2026-09-16. This site makes no third-party request and sets no cookie, so
+   there is nothing to consent to. The reason, and the three things that have
+   to exist before analytics could return, are in cmd/heliograph-site. */
 
 /* The copy button on a code block. Hidden without JS, because a control that
    cannot work is worse than no control, and most of this site's readers are

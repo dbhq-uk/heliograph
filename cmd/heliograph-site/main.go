@@ -670,7 +670,7 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 %[2]s
 %[3]s
 <main id="main-content" tabindex="-1" class="doc%[4]s">
-%[13]s
+%[11]s
 %[5]s
 </main>
 %[6]s
@@ -679,20 +679,18 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 <p><a href="https://github.com/dbhq-uk/heliograph">`+site.GitHubMark+`Source</a>%[8]s</p>
 <p>Written and maintained by <a href="https://dbhq.uk/">Daniel Grimes</a> at DBHQ</p>
 </div></footer>
-%[9]s
-<script>%[10]s
-%[11]s
-%[14]s
-%[15]s
-%[16]s</script>
+<script>%[9]s
 %[12]s
+%[13]s
+%[14]s</script>
+%[10]s
 `, header, hero, shellOpen, wide, site.RenderBody(body), shellClose, railHTML,
-		mirror, consentHTML, site.HeroJS, consentJS, navJS, crumbs, site.CopyJS, site.RailJS,
+		mirror, site.HeroJS, navJS, crumbs, site.CopyJS, site.RailJS,
 		site.OrgJS+matrixJS)
 }
 
 // head is everything before the body: the words a search result and a shared
-// link are built from, the fonts, and the analytics tag held behind consent.
+// link are built from, and the fonts. No analytics, no third-party request.
 func head(p site.Page, o pageOptions) string {
 	canonical := canonicalURL(p)
 	title := titles[p.Slug]
@@ -748,7 +746,6 @@ func head(p site.Page, o pageOptions) string {
 <link rel="stylesheet" href="/style.css">
 `)
 	b.WriteString(structuredData(p))
-	b.WriteString(analyticsJS)
 	// Flipped before first paint, so a no-JS reader never sees a control that
 	// cannot work. The drawer needs a real dialog; the sidebar does not.
 	b.WriteString("<script>document.documentElement.classList.replace('no-js','js')</script>\n")
@@ -808,8 +805,14 @@ func structuredData(p site.Page) string {
 			"applicationCategory": "DeveloperApplication",
 			"operatingSystem":     "Linux, macOS, Windows",
 			"license":             "https://opensource.org/license/mit",
+			// `isAccessibleForFree` stays; the `offers` node is gone. It read
+			// `{"@type": "Offer", "price": "0", "priceCurrency": "GBP"}`
+			// until 2026-09-16, and that is a price on a page. This site is
+			// about to carry the documentation of a product whose every
+			// metering dimension ships marked unmeasured. Free is a fact
+			// about heliograph; zero is a number, and a number published
+			// before it is measured is very hard to withdraw.
 			"isAccessibleForFree": true,
-			"offers":              map[string]any{"@type": "Offer", "price": "0", "priceCurrency": "GBP"},
 			"downloadUrl":         "https://github.com/dbhq-uk/heliograph/releases/latest",
 			"sameAs":              []string{"https://github.com/dbhq-uk/heliograph"},
 			"image":               baseURL + "/assets/og.png",
@@ -934,65 +937,34 @@ func git(dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// analyticsJS is the GA4 tag, held behind consent exactly as dbhq.uk holds
-// it, because the dbhq.uk privacy policy promises that analytics "loads only
-// after you accept". Consent Mode starts with everything denied; gtag/js is
-// not fetched until a reader accepts, and never off the production hostname,
-// so a preview or a local build reports nothing. The measurement id is the
-// dbhq.uk stream's: one web stream per site including its subdomains is
-// Google's own guidance, and the docs are separated in reports by hostname.
-const analyticsJS = `<script>
-(function () {
-  var id = "G-3H3NFGSX85";
-  window.dataLayer = window.dataLayer || [];
-  function gtag() { dataLayer.push(arguments); }
-  window.gtag = gtag;
-  gtag("consent", "default", { ad_storage: "denied", analytics_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
-  var prod = location.hostname === "docs.heliograph.io";
-  window.__hgEnableGA = function () {
-    if (!prod || window.__gaLoaded) return;
-    window.__gaLoaded = true;
-    gtag("consent", "update", { analytics_storage: "granted" });
-    gtag("js", new Date());
-    gtag("config", id);
-    var s = document.createElement("script");
-    s.async = true; s.src = "https://www.googletagmanager.com/gtag/js?id=" + id;
-    document.head.appendChild(s);
-  };
-  try { if (localStorage.getItem("dbhq-consent") === "granted") window.__hgEnableGA(); } catch (e) {}
-})();
-</script>
-`
-
-// consentHTML is the banner. Not modal, unlike dbhq.uk's: somebody arriving
-// at /install from a search result wants the command, and a dialog in front
-// of it costs more readers than the measurement is worth. Hidden until the
-// script opens it, so a no-JS reader, which is most agents, sees nothing and
-// is tracked by nothing.
-const consentHTML = `<dialog class="consent" id="consent" aria-labelledby="consent-text">
-  <p id="consent-text">We use Google Analytics to see how the docs are used. Analytics cookies are only set if you accept. See the <a href="https://dbhq.uk/privacy/">privacy policy</a>.</p>
-  <div class="consent-actions">
-    <button class="btn btn-ghost" type="button" data-consent-decline>Decline</button>
-    <button class="btn btn-primary" type="button" data-consent-accept>Accept</button>
-  </div>
-</dialog>`
-
-const consentJS = `(function () {
-  var d = document.getElementById("consent");
-  if (!d) return;
-  var choice = null;
-  try { choice = localStorage.getItem("dbhq-consent"); } catch (e) {}
-  function set(v) {
-    try { localStorage.setItem("dbhq-consent", v); } catch (e) {}
-    if (d.open) d.close();
-    if (v === "granted" && typeof window.__hgEnableGA === "function") window.__hgEnableGA();
-  }
-  d.querySelector("[data-consent-accept]").addEventListener("click", function () { set("granted"); });
-  d.querySelector("[data-consent-decline]").addEventListener("click", function () { set("denied"); });
-  // The open attribute rather than show(): show() moves focus into the
-  // banner on every page load, and a reader's keyboard belongs to the page.
-  if (!choice && location.hostname === "docs.heliograph.io") d.setAttribute("open", "");
-})();`
+// THIS SITE MAKES NO THIRD-PARTY REQUEST AND SETS NO COOKIE, and until
+// 2026-09-16 it did both.
+//
+// A GA4 tag, a Consent Mode gate and a consent banner stood here. All three
+// were correct for `heliograph.dbhq.uk`: the measurement id was the dbhq.uk
+// stream's, on Google's own one-stream-per-site-including-subdomains
+// guidance, and the banner linked the dbhq.uk privacy policy, which promises
+// analytics "loads only after you accept" and which actually covered the
+// hostname the site was served from.
+//
+// The site moved to `docs.heliograph.io` on 2026-09-16 and all three stopped
+// being correct in the same instant. `heliograph.io` is a different
+// registrable domain, so it needs its own GA4 stream, its own banner promise
+// and its own privacy policy. What was live instead was one domain's tag
+// disclosed by another domain's policy: the apex's `/health` reported
+// `"analytics":"unconfigured"` while the documentation site on the same
+// domain reported somebody else's measurement id.
+//
+// Removed rather than repointed. A measurement id nobody has created cannot
+// be written here, and a banner cannot link a policy that does not exist.
+// The cost is real and accepted: the documentation now has no usage signal
+// at all. It had somebody else's, collected under a promise that did not
+// cover the reader giving it.
+//
+// Restoring it needs three things rather than one: a heliograph.io GA4
+// property, a privacy policy on heliograph.io naming it, and a banner that
+// links that policy. `TestNoThirdPartyRequestAndNoPrice` fails on any of the
+// old strings until all three exist.
 
 // titles are written per page rather than derived from the H1.
 //
