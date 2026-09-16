@@ -64,7 +64,7 @@ var diagrams = map[string]string{
 </svg>`,
 
 	"gap": `<svg viewBox="0 0 720 210" role="img" aria-labelledby="d-gap-t" class="dg">
-<title id="d-gap-t">Two logs of the same run. Without timestamps the stall is invisible. With a timestamp on every line, a three minute gap after "Refreshing state" is measurable, and it names the operation that took the time.</title>
+<title id="d-gap-t">Two logs of the same run. Without timestamps there is nothing to say where the time went. With a timestamp on every line, a three minute gap after "Refreshing state" is measurable, and it names the operation that was running. It does not establish what that operation was doing.</title>
 <g class="dg-label"><text x="8" y="20" class="dg-sub">WITHOUT TIMESTAMPS</text></g>
 <g class="dg-mono">
 <text x="8" y="46">terraform plan</text>
@@ -72,6 +72,11 @@ var diagrams = map[string]string{
 <text x="8" y="86">Plan: 3 to add</text>
 </g>
 <text x="8" y="112" class="dg-foot">Reads perfectly. Says nothing about where the time went.</text>
+<!-- The word "stall" was in this diagram's title until 2026-09-16, and it is
+     the inference this estate forbids stating as an observation: a buffering
+     command produces a gap while working perfectly. The title now says what
+     the record establishes, which is the duration and the operation, and says
+     explicitly that it does not establish what that operation was doing. -->
 
 <g class="dg-label"><text x="380" y="20" class="dg-sub">WITH THEM</text></g>
 <g class="dg-mono">
