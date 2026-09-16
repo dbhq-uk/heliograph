@@ -501,7 +501,6 @@ func TestTheSiteHasAFaviconEverythingCanRead(t *testing.T) {
 // the structured data, pointing at dbhq.uk rather than at a page here, and
 // TestInternalLinksResolve is what would catch a link to the removed page.
 
-
 // The footer carried a byline and, from #45, a three-item "Also from DBHQ"
 // list. Both said the same thing on all 27 pages, at the point a reader has
 // already left. The menu and the page say it where somebody is looking.
