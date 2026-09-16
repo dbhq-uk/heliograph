@@ -37,7 +37,18 @@ var order = []string{
 	"dbhq",
 }
 
-const baseURL = "https://heliograph.dbhq.uk"
+// The canonical host, and it moved on 2026-09-16.
+//
+// This site was `heliograph.dbhq.uk` and is now `docs.heliograph.io`, so the
+// documentation for a product sits on that product's domain rather than on the
+// company's. The old name 301s here, root to the apex and every deep path to
+// the matching page, so no published link breaks.
+//
+// It is one constant on purpose: it is the canonical URL, the sitemap's base,
+// the Open Graph image's host and the hostname the analytics gate compares
+// against. Missing one of those is how a site ends up telling a crawler it
+// lives somewhere it redirects away from.
+const baseURL = "https://docs.heliograph.io"
 
 // redirects keeps a published path alive after its page is renamed. Cloudflare
 // Pages reads _redirects; a reader who followed an old link gets the new page
@@ -741,7 +752,16 @@ func head(p site.Page, o pageOptions) string {
 	b.WriteString("<link rel=\"alternate\" type=\"text/plain\" title=\"llms.txt\" href=\"/llms.txt\">\n")
 	// The two fonts the CSS actually names. This list once preloaded two files
 	// that had been renamed away, and every page view 404ed twice for weeks.
-	b.WriteString(`<link rel="preload" href="/assets/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin>
+	//
+	// It nearly happened a second time on 2026-09-16: the site moved to Albert
+	// Sans and this line still named Archivo, which had just been deleted. The
+	// test below is what catches it, and the lesson the first time taught is
+	// only useful if the check outlives the person who wrote the comment.
+	//
+	// Only the latin subset is preloaded. The extended block is a second file
+	// behind a unicode-range, and preloading a face most readers never need is
+	// a download charged to every page view for the benefit of a few.
+	b.WriteString(`<link rel="preload" href="/assets/fonts/albert-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/JetBrainsMono.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
 `)
@@ -940,7 +960,7 @@ const analyticsJS = `<script>
   function gtag() { dataLayer.push(arguments); }
   window.gtag = gtag;
   gtag("consent", "default", { ad_storage: "denied", analytics_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
-  var prod = location.hostname === "heliograph.dbhq.uk";
+  var prod = location.hostname === "docs.heliograph.io";
   window.__hgEnableGA = function () {
     if (!prod || window.__gaLoaded) return;
     window.__gaLoaded = true;
@@ -983,7 +1003,7 @@ const consentJS = `(function () {
   d.querySelector("[data-consent-decline]").addEventListener("click", function () { set("denied"); });
   // The open attribute rather than show(): show() moves focus into the
   // banner on every page load, and a reader's keyboard belongs to the page.
-  if (!choice && location.hostname === "heliograph.dbhq.uk") d.setAttribute("open", "");
+  if (!choice && location.hostname === "docs.heliograph.io") d.setAttribute("open", "");
 })();`
 
 // titles are written per page rather than derived from the H1.

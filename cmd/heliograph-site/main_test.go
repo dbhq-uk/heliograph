@@ -172,7 +172,7 @@ func TestAnalyticsIsDeniedUntilConsentAndOnlyInProduction(t *testing.T) {
 		if !strings.Contains(h, `analytics_storage: "denied"`) {
 			t.Errorf("%s: analytics_storage is not denied by default", name)
 		}
-		if !strings.Contains(h, `location.hostname === "heliograph.dbhq.uk"`) {
+		if !strings.Contains(h, `location.hostname === "docs.heliograph.io"`) {
 			t.Errorf("%s: the tag is not gated on the production hostname", name)
 		}
 		if strings.Contains(h, `<script async src="https://www.googletagmanager.com`) ||
@@ -278,7 +278,7 @@ func TestNotFoundPageIsNoindexAndCarriesTheSidebar(t *testing.T) {
 func TestSharedLinksCarryAnImage(t *testing.T) {
 	out := buildSite(t)
 	for name, h := range htmlPages(t, out) {
-		if !strings.Contains(h, `<meta property="og:image" content="https://heliograph.dbhq.uk/assets/og.png">`) {
+		if !strings.Contains(h, `<meta property="og:image" content="https://docs.heliograph.io/assets/og.png">`) {
 			t.Errorf("%s: no og:image", name)
 		}
 		if !strings.Contains(h, `<meta name="twitter:card" content="summary_large_image">`) {
@@ -876,7 +876,8 @@ func TestRedirectsCarryTheOldIntercomPath(t *testing.T) {
 // complete answer is executing the published example, which is #64's own finding.
 func TestEveryHostnameWePublishIsOneWeOwn(t *testing.T) {
 	deployed := map[string]bool{
-		"heliograph.dbhq.uk":       true, // the site itself
+		"docs.heliograph.io":       true, // the site itself, since 2026-09-16
+		"heliograph.dbhq.uk":       true, // its old name, which 301s here
 		"heliograph-relay.dbhq.uk": true, // the relay. NOT relay.heliograph.dbhq.uk
 		"bbs.dbhq.uk":              true,
 		"modem.dbhq.uk":            true,
