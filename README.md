@@ -7,7 +7,7 @@
 **Remote, captured, auditable execution on a machine you cannot log into**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-heliograph.dbhq.uk-4E7FB3)](https://heliograph.dbhq.uk)
+[![Docs](https://img.shields.io/badge/docs-docs.heliograph.io-4E7FB3)](https://docs.heliograph.io)
 
 A free, open-source tool by [DBHQ](https://dbhq.uk)
 
@@ -103,7 +103,7 @@ The build is reproducible: `packaging/reproduce.sh v0.4.0` rebuilds every
 released artefact from the tag and arrives at the published hashes, so "the
 binary in the path is the source you read" is something you check rather than
 something we say. Full account, including what is not yet covered, at
-[heliograph.dbhq.uk/provenance](https://heliograph.dbhq.uk/provenance).
+[docs.heliograph.io/provenance](https://docs.heliograph.io/provenance).
 
 **The agent skill** - the same loop, driven from Claude Code, Codex, Cursor
 and friends:
@@ -179,7 +179,7 @@ timestamp is reported as an **error**, not as "no gaps".
 | file share, bundle, object store | **control side only.** The CLI implements all three; the station has no transport for any of them |
 | Azure Blob | works end to end, through `drop.sh` in the station payload rather than the CLI. It is what the Azure Function host uses |
 | PowerShell station | planned: [A8](docs/specs/2026-09-08-powershell-station-and-full-documentation-design.md) |
-| documentation site | [heliograph.dbhq.uk](https://heliograph.dbhq.uk): the CLI, the transports, and the far side - the station, the runner, steps, hosts, Azure, Windows, containers, services, secrets, security and the capture contract |
+| documentation site | [docs.heliograph.io](https://docs.heliograph.io): the CLI, the transports, and the far side - the station, the runner, steps, hosts, Azure, Windows, containers, services, secrets, security and the capture contract |
 
 A transport that works on one side of the gap is not a transport, so this
 table names both sides. Git is the one the CLI drives end to end; what the

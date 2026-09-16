@@ -84,7 +84,7 @@ jobs:
       # generating on a machine, storing somewhere, rotating, and its custody
       # explaining, and every one of those is a thing to get wrong. The cost of
       # keyless is that verifying reaches Sigstore over the network, so it is
-      # not an offline check; https://heliograph.dbhq.uk/provenance says so.
+      # not an offline check; https://docs.heliograph.io/provenance says so.
       #
       # ONE SIGNATURE OVER SHA256SUMS, not one per artefact. SHA256SUMS already
       # binds every file, and `sha256sum -c` after verifying the signature is

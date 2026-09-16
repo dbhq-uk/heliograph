@@ -157,30 +157,38 @@ func unescape(s string) string {
 	return strings.NewReplacer("&amp;", "&", "&quot;", `"`, "&lt;", "<", "&gt;", ">").Replace(s)
 }
 
-// The dbhq.uk privacy policy promises analytics loads only after consent.
-// This asserts the order the promise depends on: consent denied first, the
-// config call and the tag only after, and never on a hostname that is not
-// production.
-func TestAnalyticsIsDeniedUntilConsentAndOnlyInProduction(t *testing.T) {
+// The documentation site makes no third-party request and publishes no price.
+//
+// Both were live on 2026-09-16 and neither was anybody's decision here. The
+// GA4 property is `dbhq.uk`'s, promised under a privacy policy that covers
+// `dbhq.uk` and not this domain, and left pointing at it when the site moved
+// to `docs.heliograph.io` on 2026-09-16. The JSON-LD carried
+// `"price": "0", "priceCurrency": "GBP"` on the index, which is a price on a
+// page for a product whose every metering dimension ships marked unmeasured.
+// A text capture of the page misses it, because it sits inside a `<script>`.
+//
+// The rule these hold is the private register's: no price, no tier, no
+// allowance and no launch date on any surface until it has been measured.
+// `isAccessibleForFree` stays, because heliograph is free and that is a fact
+// rather than a number.
+//
+// Watched failing first, against the tree that still carried both.
+func TestNoThirdPartyRequestAndNoPrice(t *testing.T) {
 	out := buildSite(t)
+	banned := []string{
+		"googletagmanager.com",
+		"google-analytics.com",
+		"G-3H3NFGSX85",
+		"dbhq.uk/privacy",
+		`"price"`,
+		"priceCurrency",
+		`"offers"`,
+	}
 	for name, h := range htmlPages(t, out) {
-		def := strings.Index(h, `gtag("consent", "default"`)
-		cfg := strings.Index(h, `gtag("config"`)
-		if def < 0 || cfg < 0 || def > cfg {
-			t.Errorf("%s: consent default at %d, config at %d", name, def, cfg)
-		}
-		if !strings.Contains(h, `analytics_storage: "denied"`) {
-			t.Errorf("%s: analytics_storage is not denied by default", name)
-		}
-		if !strings.Contains(h, `location.hostname === "docs.heliograph.io"`) {
-			t.Errorf("%s: the tag is not gated on the production hostname", name)
-		}
-		if strings.Contains(h, `<script async src="https://www.googletagmanager.com`) ||
-			strings.Contains(h, `<script src="https://www.googletagmanager.com`) {
-			t.Errorf("%s: the tag is loaded statically, before any consent", name)
-		}
-		if !strings.Contains(h, `G-3H3NFGSX85`) {
-			t.Errorf("%s: not the dbhq.uk measurement id", name)
+		for _, b := range banned {
+			if strings.Contains(h, b) {
+				t.Errorf("%s: contains %q", name, b)
+			}
 		}
 	}
 }

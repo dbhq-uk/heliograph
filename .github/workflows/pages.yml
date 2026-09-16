@@ -54,7 +54,14 @@ jobs:
             cp "$slug.md" "$slug/index.md" 2>/dev/null || true
           done
           # CNAME so the custom domain survives a deploy.
-          echo "heliograph.dbhq.uk" > CNAME
+          #
+          # This said `heliograph.dbhq.uk` until 2026-09-16, one day after the
+          # site moved to `docs.heliograph.io`. GitHub reads this file on every
+          # deploy and sets the custom domain from it, so the next push touching
+          # site/** would have moved the live site back to a hostname that now
+          # 301s away, and the redirect would have pointed at a site that was no
+          # longer there. Nothing warns about it: the deploy succeeds.
+          echo "docs.heliograph.io" > CNAME
           ls -la
 
       - name: redirect stub for the old /intercom URL

@@ -28,14 +28,21 @@ variable "zone_name" {
   default     = "dbhq.uk"
 }
 
-variable "site_hostname" {
+# The documentation site's hostname, and the old one that redirects to it.
+#
+# These were one variable, `site_hostname`, defaulting to `heliograph.dbhq.uk`,
+# and it drove both the Cloudflare record and the Pages custom domain. The site
+# moved on 2026-09-16 and neither followed it, so an apply would have set Pages
+# back to the old hostname and replaced the redirect with a Pages CNAME. Two
+# names now, because they are two facts and stopped being the same one.
+variable "docs_hostname" {
   description = "Where the documentation site is served."
   type        = string
-  default     = "heliograph.dbhq.uk"
+  default     = "docs.heliograph.io"
 }
 
-variable "pages_target" {
-  description = "The GitHub Pages host the site CNAME points at."
+variable "legacy_site_hostname" {
+  description = "The hostname the documentation site used to be served from, which now redirects to docs_hostname."
   type        = string
-  default     = "dbhq-uk.github.io"
+  default     = "heliograph.dbhq.uk"
 }
