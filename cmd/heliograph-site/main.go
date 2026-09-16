@@ -34,7 +34,6 @@ var order = []string{
 	"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped",
 	"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "provenance", "method",
 	"roadmap",
-	"dbhq",
 }
 
 // The canonical host, and it moved on 2026-09-16.
@@ -351,7 +350,6 @@ var groups = []struct {
 	{"The far side", []string{"station", "bootstrap", "steps", "runner", "conformance"}},
 	{"Where it runs", []string{"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped"}},
 	{"Reference", []string{"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "provenance", "method", "roadmap"}},
-	{"More from DBHQ", []string{"dbhq"}},
 }
 
 // labels are the navigation's own words, and they are a THIRD set of words for
@@ -396,7 +394,6 @@ var labels = map[string]string{
 	"provenance":  "Provenance",
 	"method":      "Debugging method",
 	"roadmap":     "Roadmap",
-	"dbhq":        "DBHQ projects",
 }
 
 func label(o site.Page) string { return labels[o.Slug] }
@@ -441,7 +438,7 @@ func headerNav(p site.Page) string {
 	// The repository, last and marked. Three words and a logo: a header that
 	// lists everything is the one nobody reads.
 	b.WriteString(`<a href="https://github.com/dbhq-uk/heliograph">` +
-		site.GitHubMark + `Source</a>` + orgMenu + `</nav>`)
+		site.GitHubMark + `Source</a>` + `</nav>`)
 	return b.String()
 }
 
@@ -493,29 +490,14 @@ func sidebarItems(p site.Page, all []site.Page, prefix string) string {
 	return b.String()
 }
 
-// orgMenu is the other things DBHQ makes, on the home header.
+// The DBHQ menu that used to sit here was removed on 2026-09-16.
 //
-// A <details> rather than a scripted dropdown, so it works with no JavaScript
-// and gets keyboard behaviour from the browser. The script only closes it
-// when the reader clicks elsewhere or presses Escape, which is the one thing
-// <details> does not do and whose absence reads as broken.
-//
-// It lists two siblings and the page. The page carries the rest: a menu that
-// lists everything is a menu nobody opens twice.
-const orgMenu = `<details class="org-menu">` +
-	`<summary aria-label="Other things DBHQ makes">DBHQ` +
-	`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" ` +
-	`aria-hidden="true" focusable="false"><path d="m4 6.5 4 4 4-4"/></svg></summary>` +
-	`<div class="org-panel">` +
-	`<a href="https://bbs.dbhq.uk"><b>bbs</b><span>The web, as a bulletin board</span></a>` +
-	`<a href="https://modem.dbhq.uk"><b>modem</b><span>A real Bell 103 connection, over the air</span></a>` +
-	// skills.dbhq.uk, not dbhq.uk/skills. The skills moved to their own
-	// hostname on 10 Sep 2026 - a page each, because one page could not carry
-	// nine distinct titles - and dbhq.uk/skills is a 301 to it now. Pointing at
-	// the redirect still works and still costs the reader a hop.
-	`<a href="https://skills.dbhq.uk"><b>Skills</b><span>Free skills for Claude Code and Codex</span></a>` +
-	`<a class="org-all" href="/dbhq">All DBHQ projects</a>` +
-	`</div></details>`
+// It listed the company's other projects in the header of the product's own
+// documentation, which made sense while this site was `heliograph.dbhq.uk` and
+// a reader arriving had come to a company's domain. On `docs.heliograph.io`
+// they have come to a product, and a header offering them a bulletin board and
+// a Bell 103 modem is a company talking about itself on a page somebody opened
+// mid-incident.
 
 // pageHead is the breadcrumb and the two markdown controls, above the title.
 //
@@ -695,7 +677,7 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 %[7]s
 <footer><div class="inner">
 <p><a href="https://github.com/dbhq-uk/heliograph">`+site.GitHubMark+`Source</a>%[8]s</p>
-<p>Written and maintained by <a href="/dbhq">Daniel Grimes</a> at DBHQ</p>
+<p>Written and maintained by <a href="https://dbhq.uk/">Daniel Grimes</a> at DBHQ</p>
 </div></footer>
 %[9]s
 <script>%[10]s
@@ -797,8 +779,14 @@ func description(p site.Page) string {
 // what failed - attributed to a company and to no person at all. A search
 // engine and a model both want to know who, and both want somewhere to check
 // him. So the company publishes and a named person writes, with a profile in
-// sameAs. The site said this on one page already, in the last sidebar group:
-// site/content/dbhq.md, "DBHQ is Daniel Grimes".
+// sameAs.
+//
+// It used to say this on a page of its own too, site/content/dbhq.md, which
+// was removed on 2026-09-16 along with the DBHQ menu. The attribution stays,
+// because a crawler and a model both still want a named author; what went is
+// the company talking about its other projects inside the product's
+// documentation. The footer now links to dbhq.uk rather than to a page on this
+// site.
 func structuredData(p site.Page) string {
 	canonical := canonicalURL(p)
 	org := map[string]any{"@type": "Organization", "name": "DBHQ", "url": "https://dbhq.uk"}
