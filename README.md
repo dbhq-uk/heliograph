@@ -258,6 +258,8 @@ were looking at. `dbhq-uk/heliograph-skill` was merged in on 2026-09-08 with
 its full history; the reasoning is in
 [`docs/specs/2026-09-08-station-and-skill-merge.md`](docs/specs/2026-09-08-station-and-skill-merge.md).
 
+**That repository was deleted on 2026-09-17** and the name is not in use. It stayed public and archived after the merge, and an archived repository is read-only rather than unreachable: it still cloned, its `install.sh` still ran, and the station in it had no request-env guard at all (heliograph-cloud#274). Its history is kept privately; this repository's own history carries the merge.
+
 ## Development
 
 [`PLAN.md`](PLAN.md) is where the work stands: what has landed, what is next,
