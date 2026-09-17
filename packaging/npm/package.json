@@ -18,7 +18,7 @@
     "type": "git",
     "url": "git+https://github.com/heliograph-io/heliograph.git"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "DBHQ",
   "type": "module",
   "bin": {

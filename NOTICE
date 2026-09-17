@@ -1,0 +1,50 @@
+heliograph
+Copyright (c) 2026 DBHQ Consulting Ltd
+
+This product is licensed under the Apache License, Version 2.0. See LICENSE.
+
+THE RELICENCE, AND WHAT IT DOES NOT TAKE AWAY
+---------------------------------------------
+
+This repository was published under the MIT licence until 2026-09-17. Every
+commit up to and including b689f9c998805198443edde9ca170c738ea89460 is
+available under MIT, permanently, and nothing here withdraws that. A fork of
+any of those commits stays MIT. The change applies from the commit that
+replaced LICENSE onwards.
+
+The relicence is unencumbered: `git shortlog -sne --all` on 2026-09-16 shows
+one author under three addresses, a CI identity and dependabot. There is no
+third-party contributor whose permission was needed and not obtained.
+
+WHY APACHE 2.0 RATHER THAN MIT
+------------------------------
+
+MIT has no patent language, so patent rights are at best implied. Apache
+grants them expressly in section 3 and terminates the grant for a contributor
+who brings a patent claim. That is a question an enterprise legal team asks
+about an infrastructure dependency, and it sharpens with the beam, which pulls
+in Noise, ICE and WebRTC.
+
+Two smaller reasons point the same way. Section 6 states that the licence
+conveys no trademark rights, which pairs directly with trademark being the
+actual boundary here. Section 4(b) obliges a fork to state that it modified
+the work.
+
+Permissive to permissive, one copyright holder, and everybody gains a patent
+grant they did not have.
+
+WHAT IS NOT UNDER THIS LICENCE
+------------------------------
+
+The prose in `site/content/` is CC BY 4.0, not Apache 2.0. It is documentation
+rather than code, and Apache's patent grant and NOTICE machinery read oddly
+stretched over prose. See `site/content/LICENSE`.
+
+Third-party code vendored into this repository keeps its own licence and its
+own notice. `station/powershell/lib/seal/vendor/Chaos.NaCl/` is MIT, with
+`LICENSE.md` and `ORIGIN.md` beside it, and this relicence does not touch it.
+
+The relay is a separate repository and a separate licence:
+`heliograph-io/heliograph-relay` is FSL-1.1-ALv2, converting to Apache 2.0 two
+years after each release ships. Heliograph Cloud is proprietary. The boundary
+between the three is documented at https://heliograph.io.

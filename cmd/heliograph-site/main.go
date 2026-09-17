@@ -684,6 +684,7 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 <footer><div class="inner">
 <p><a href="https://github.com/heliograph-io/heliograph">`+site.GitHubMark+`Source</a>%[8]s</p>
 <p>Written and maintained by <a href="https://dbhq.uk/">Daniel Grimes</a> at DBHQ</p>
+<p>Text on this site is <a href="https://creativecommons.org/licenses/by/4.0/" rel="license">CC BY 4.0</a>. The code is <a href="https://github.com/heliograph-io/heliograph/blob/main/LICENSE">Apache 2.0</a>.</p>
 </div></footer>
 <script>%[9]s
 %[12]s

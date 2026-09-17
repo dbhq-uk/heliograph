@@ -69,12 +69,30 @@ pkg="$root/packaging/npm/package.json"
 description="$(jq -r .description "$pkg")"
 homepage="$(jq -r .homepage "$pkg")"
 bugs="$(jq -r .bugs "$pkg")"
-copyright="$(sed -n 3p "$root/LICENSE")"
+# THE COPYRIGHT COMES FROM `NOTICE`, NOT FROM `LICENSE`, and the Apache
+# relicence is why. Under MIT the copyright line was `LICENSE:3` and this read
+# it from there. Apache's text has no copyright line at all - the whole point
+# of a NOTICE file is that the licence text stays pristine and the attribution
+# lives beside it - so `sed -n 3p LICENSE` returned
+# "Version 2.0, January 2004" and every winget manifest would have credited it
+# as the author.
+copyright="$(grep -m1 '^Copyright (c) ' "$root/NOTICE" || true)"
+if [ -z "$copyright" ]; then
+  echo "manifests.sh: NOTICE has no 'Copyright (c) ' line, and a manifest must name a publisher" >&2
+  exit 2
+fi
 author="${copyright#Copyright (c) [0-9][0-9][0-9][0-9] }"
-case "$(sed -n 1p "$root/LICENSE")" in
+
+# THE LICENCE NAME IS MATCHED AFTER STRIPPING LEADING WHITESPACE. Apache's text
+# opens with a blank line and centres its title with 33 spaces, so both
+# `sed -n 1p` and an unanchored prefix match fail on it. Read the first
+# non-empty line and trim it.
+first="$(awk 'NF { $1=$1; print; exit }' "$root/LICENSE")"
+case "$first" in
   "MIT License")           license="MIT" ;;
   "Apache License"*)       license="Apache-2.0" ;;
-  *) echo "manifests.sh: LICENSE line 1 is not a licence this script knows, so it will not guess an SPDX id" >&2; exit 2 ;;
+  "Functional Source License"*) license="LicenseRef-FSL-1.1-ALv2" ;;
+  *) echo "manifests.sh: LICENSE opens with '$first', which is not a licence this script knows, so it will not guess an SPDX id" >&2; exit 2 ;;
 esac
 
 dir="$out/manifests/h/heliograph-io/heliograph/$ver"
@@ -125,7 +143,7 @@ PackageUrl: $homepage
 License: $license
 LicenseUrl: https://github.com/${repo}/blob/${tag}/LICENSE
 Copyright: $copyright
-CopyrightUrl: https://github.com/${repo}/blob/${tag}/LICENSE
+CopyrightUrl: https://github.com/${repo}/blob/${tag}/NOTICE
 ShortDescription: Run commands on a machine you cannot SSH into.
 Description: $description
 Moniker: heliograph

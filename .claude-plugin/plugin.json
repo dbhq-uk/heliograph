@@ -8,7 +8,7 @@
   },
   "homepage": "https://heliograph.dbhq.uk",
   "repository": "https://github.com/heliograph-io/heliograph",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": [
     "remote-debugging",
     "air-gapped",

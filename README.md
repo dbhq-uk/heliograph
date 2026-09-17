@@ -6,7 +6,7 @@
 
 **Remote, captured, auditable execution on a machine you cannot log into**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-docs.heliograph.io-4E7FB3)](https://docs.heliograph.io)
 
 A free, open-source tool by [DBHQ](https://dbhq.uk)
@@ -270,4 +270,7 @@ edits.
 
 ## Licence
 
-[MIT](LICENSE) (c) 2026 DBHQ Consulting Ltd
+[Apache 2.0](LICENSE) (c) 2026 DBHQ Consulting Ltd, and the prose under `site/content/` is
+[CC BY 4.0](site/content/LICENSE). Relicensed from MIT on 2026-09-17; every commit
+up to and including `b689f9c` stays available under MIT for ever. [`NOTICE`](NOTICE)
+says why Apache rather than MIT, and what the change does not take away.

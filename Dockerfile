@@ -88,6 +88,6 @@ CMD ["mcp"]
 
 LABEL org.opencontainers.image.title="heliograph" \
       org.opencontainers.image.description="The control side of heliograph: CLI and MCP server. Run commands on a machine you cannot SSH into." \
-      org.opencontainers.image.url="https://heliograph.dbhq.uk" \
+      org.opencontainers.image.url="https://heliograph.io" \
       org.opencontainers.image.source="https://github.com/heliograph-io/heliograph" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="Apache-2.0"

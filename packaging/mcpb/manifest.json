@@ -13,7 +13,7 @@
   "homepage": "https://heliograph.dbhq.uk",
   "documentation": "https://heliograph.dbhq.uk/mcp",
   "support": "https://github.com/heliograph-io/heliograph/issues",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": [
     "mcp",
     "devops",
