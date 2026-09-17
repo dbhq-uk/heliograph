@@ -819,6 +819,25 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          # `set +e` IS LOAD-BEARING AND THE WHOLE STEP DEPENDED ON IT.
+          #
+          # GitHub runs `shell: bash` as `bash --noprofile --norc -e -o
+          # pipefail {0}`. The `-e` is the runner's, not ours, and the
+          # `set -uo pipefail` above does not clear it. So the first failing
+          # pipeline killed the step outright and every `rc=1` guard below -
+          # the entire design of this step - was unreachable.
+          #
+          # What that cost: a failure under `powershell` meant `pwsh` was never
+          # run, while the step's own name said both had passed. Watched on
+          # run 35191330707, which reported a single failed assertion under
+          # 5.1 and contains no `--- pwsh` line and no `finished in` line at
+          # all. PowerShell 7 had never actually been tested on any red run.
+          # heliograph-cloud#265.
+          #
+          # `rc` is returned at the end, so a genuine failure still fails the
+          # job. What changes is that BOTH editions are tried first, which is
+          # exactly when the second one's result is most worth having.
+          set +e
           rc=0
           for ps in powershell pwsh; do
             command -v "$ps" >/dev/null 2>&1 || {
