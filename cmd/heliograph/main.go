@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -27,10 +28,71 @@ import (
 	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
-// version is set at build time with -ldflags. "dev" means somebody built this
+// version is set at build time with -ldflags by `packaging/reproduce.sh`,
+// which is what the release workflow runs. "dev" means somebody built this
 // from source, which is worth saying rather than printing a version that is
 // not one.
+//
+// `go install` DOES NOT RUN THAT SCRIPT, and that is the whole reason
+// `buildVersion` exists below. Until 2026-09-17 this variable was the only
+// source, so the published
+// `go install github.com/heliograph-io/heliograph/cmd/heliograph@v0.4.3`
+// produced a binary reporting `heliograph dev` while the identical binary from
+// the release reported `heliograph v0.4.3`.
+//
+// That is worse here than in most projects. `site/content/provenance.md` asks
+// a reader to check their binary against a release's SHA256SUMS and its
+// Sigstore bundle, and every one of those procedures starts by knowing which
+// release you have. One of three published install paths could not answer.
 var version = "dev"
+
+// buildVersion is what the binary reports, and it prefers the ldflags value.
+//
+// Go records the module version in the binary for a `go install module@version`
+// build, so the answer is already there for the path ldflags cannot reach.
+// Reading it costs nothing and covers install routes nobody has thought of yet,
+// which stamping harder never would: ldflags can only ever fix the builds we
+// run ourselves, and `go install` is by definition not one of them.
+//
+// The order matters. ldflags wins because a release build is the case where we
+// know the answer exactly.
+//
+// WHAT THE OTHER THREE BUILDS ACTUALLY REPORT, measured rather than assumed:
+//
+//	go build -buildvcs=false ...  -X main.version=v0.4.4   v0.4.4
+//	go install module@v0.4.3                               v0.4.3
+//	go build            (a git checkout, VCS stamped)      v0.4.4-0.2026...-d3204fe+dirty
+//	go build -buildvcs=false                               dev
+//
+// The third was the surprise. Go stamps VCS by default, so a checkout build
+// gets a pseudo-version rather than "(devel)", and it is KEPT: it names the
+// base version, the commit and whether the tree was dirty, which is strictly
+// more useful than "dev" in the bug report it will end up in. It cannot be
+// mistaken for a release either, because no release is ever shaped like that.
+//
+// `(devel)` is still mapped to "dev" for the fourth case, because two words
+// for one state is how a support conversation goes wrong.
+func buildVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		return resolveVersion(version, info.Main.Version)
+	}
+	return version
+}
+
+// resolveVersion is the precedence, split out so a test can drive it. The
+// values it takes are the only two sources there are.
+func resolveVersion(ldflags, module string) string {
+	if ldflags != "dev" {
+		return ldflags
+	}
+	if module != "" && module != "(devel)" {
+		return module
+	}
+	return ldflags
+}
 
 // initTransports is what `init --transport` accepts, in ONE place.
 //
@@ -127,7 +189,7 @@ func main() {
 	case "mcp":
 		err = cmdMCP(os.Args[2:])
 	case "version", "--version":
-		fmt.Printf("heliograph %s\n", version)
+		fmt.Printf("heliograph %s\n", buildVersion())
 		return
 	case "-h", "--help", "help":
 		fmt.Print(usage)

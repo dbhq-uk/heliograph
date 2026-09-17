@@ -58,7 +58,7 @@ func clientLabel() string {
 	if err != nil || host == "" {
 		host = "an unnamed host"
 	}
-	return fmt.Sprintf("heliograph %s on %s (%s)", version, host, runtime.GOOS)
+	return fmt.Sprintf("heliograph %s on %s (%s)", buildVersion(), host, runtime.GOOS)
 }
 
 // cmdLogin acquires an account credential through a browser.
