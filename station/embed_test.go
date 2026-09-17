@@ -3,6 +3,7 @@ package station_test
 import (
 	"fmt"
 	"io/fs"
+	"os"
 	"strings"
 	"testing"
 
@@ -185,4 +186,64 @@ func TestEmbeddedPayloadCarriesWhatAStationNeeds(t *testing.T) {
 			}
 		}
 	}
+}
+
+// A step that accumulates `rc` and exits with it is declaring that it runs
+// everything before deciding. That only works if `-e` is off, and `-e` is not
+// ours to leave off: GitHub runs `shell: bash` as
+// `bash --noprofile --norc -e -o pipefail {0}`, and a `set -uo pipefail`
+// inside the script does not clear it.
+//
+// WATCHED FAILING BEFORE IT WAS KEPT, and it did not need planting. Run
+// 35191330707's "The capture passes conformance on Windows PowerShell 5.1 AND
+// on 7" reported one failed assertion under `powershell` and then stopped: the
+// log contains no `--- pwsh` line and no `finished in` line. Every `rc=1`
+// guard after the first failure was unreachable, so PowerShell 7 had never
+// been tested on any red run while the step's name said both passed.
+// heliograph-cloud#265.
+//
+// The other `rc` step in the same file already had `set +e`, which is what
+// makes this worth a test rather than a fix: the pattern was known and applied
+// once, and nothing said the second copy was missing it.
+func TestWorkflowStepsThatAccumulateRCDisableErrExit(t *testing.T) {
+	b, err := os.ReadFile("../.github/workflows/station.yml")
+	if err != nil {
+		t.Fatalf("cannot read station.yml: %v", err)
+	}
+	steps := strings.Split(string(b), "      - name: ")
+	checked := 0
+	for _, step := range steps[1:] {
+		if !strings.Contains(step, "exit $rc") {
+			continue
+		}
+		name := strings.SplitN(step, "\n", 2)[0]
+		checked++
+		if !strings.Contains(withoutComments(step), "set +e") {
+			t.Errorf("station.yml step %q accumulates rc and exits with it, but never clears -e.\n"+
+				"GitHub's `shell: bash` adds -e, so the first failure kills the step and every rc=1 "+
+				"guard after it is unreachable. Add `set +e`.", name)
+		}
+	}
+	if checked == 0 {
+		t.Error("no step in station.yml exits with $rc, so this test asserted nothing")
+	}
+}
+
+// withoutComments drops whole-line `#` comments before matching.
+//
+// The first version of the test above did not do this and PASSED WITH THE FIX
+// DELETED, because the step still carried the comment explaining why `set +e`
+// was there. That is the second time in one day a guard in this repository was
+// satisfied by prose about the thing it checks - see
+// `TestWorkflowsThatTestTheSiteCloneFullHistory`. A test that a comment can
+// satisfy reads as coverage and is worse than no test.
+func withoutComments(body string) string {
+	var keep []string
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		keep = append(keep, line)
+	}
+	return strings.Join(keep, "\n")
 }
