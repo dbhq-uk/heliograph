@@ -23,6 +23,23 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # FULL HISTORY, because the site generator reads it. Every page's
+          # `lastmod` is the commit date of its own source file, so on a
+          # shallow clone every page would claim it changed today and the
+          # sitemap would be uniformly wrong. `cmd/heliograph-site/main.go`
+          # refuses to build rather than emit that, and the test gate below
+          # runs `go test ./...`, which includes the site tests.
+          #
+          # This was missing and the release job could not run its own tests.
+          # It was introduced with the site's lastmod work in 397c8f3, after
+          # v0.3.2, and no tag was pushed between then and v0.4.0 - so the
+          # first release to exercise it was the first one to fail, with
+          # thirteen site tests reporting "the checkout is shallow" and every
+          # publishing job skipped behind them. `validate.yml:22` had
+          # fetch-depth: 0 the whole time, which is why nothing on a pull
+          # request ever said so.
+          fetch-depth: 0
 
       # PINNED TO THE PATCH, and check-latest dropped with it. '1.27' with
       # check-latest resolves to whatever 1.27.x exists on the morning the job

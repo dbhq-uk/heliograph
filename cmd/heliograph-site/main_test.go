@@ -930,3 +930,86 @@ func TestNoPageOffersTheHostedRelayWithoutTheWayIn(t *testing.T) {
 		t.Error("no page outside relay.html names the hosted relay, so this test asserted nothing")
 	}
 }
+
+// Every workflow that builds this site must clone with full history, because
+// `lastmod` is the commit date of each page's own source file. `main.go`
+// refuses to build on a shallow clone rather than emit a sitemap claiming
+// every page changed today.
+//
+// WATCHED FAILING BEFORE IT WAS KEPT, and it did not need planting: v0.4.0's
+// release run failed with thirteen site tests reporting "the checkout is
+// shallow" and every publishing job skipped behind them. `release.yml` had no
+// `fetch-depth` at all, and had not since the lastmod work landed in 397c8f3,
+// after v0.3.2. `validate.yml` had it the whole time, which is exactly why no
+// pull request ever said so: the gate that would have caught it was the one
+// workflow that could not.
+//
+// IT IS SCOPED TO THE JOB AND IT IGNORES COMMENTS, because the first version
+// of this test did neither and passed on a file with the fix deleted. It
+// searched the whole file for the string, and the whole file included the
+// comment explaining the fix. A test satisfied by prose about the thing it
+// checks is worse than no test.
+func TestWorkflowsThatTestTheSiteCloneFullHistory(t *testing.T) {
+	for _, wf := range []string{"release.yml", "validate.yml"} {
+		path := filepath.Join("..", "..", ".github", "workflows", wf)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("cannot read %s: %v", wf, err)
+			continue
+		}
+		checked := 0
+		for name, body := range jobs(string(b)) {
+			if !strings.Contains(stripComments(body), "go test ./...") {
+				continue
+			}
+			checked++
+			if !strings.Contains(stripComments(body), "fetch-depth: 0") {
+				t.Errorf("%s job %q runs `go test ./...`, which builds this site, but its "+
+					"checkout does not set fetch-depth: 0. Every site test refuses on a shallow "+
+					"clone, and in a release workflow that means every publishing job skips "+
+					"behind them.", wf, name)
+			}
+		}
+		if checked == 0 {
+			t.Errorf("%s: no job in it runs `go test ./...`, so this test asserted nothing about it", wf)
+		}
+	}
+}
+
+// jobs splits a workflow into its top-level job blocks, keyed by job id. Two
+// spaces of indent then a name then a colon is a job; anything deeper belongs
+// to the one above it.
+func jobs(body string) map[string]string {
+	out := map[string]string{}
+	head := regexp.MustCompile(`^  ([a-zA-Z0-9_-]+):\s*$`)
+	name, cur := "", []string{}
+	for _, line := range strings.Split(body, "\n") {
+		if m := head.FindStringSubmatch(line); m != nil {
+			if name != "" {
+				out[name] = strings.Join(cur, "\n")
+			}
+			name, cur = m[1], nil
+			continue
+		}
+		if name != "" {
+			cur = append(cur, line)
+		}
+	}
+	if name != "" {
+		out[name] = strings.Join(cur, "\n")
+	}
+	return out
+}
+
+// stripComments drops whole-line YAML comments. A comment naming the setting
+// is not the setting.
+func stripComments(body string) string {
+	var keep []string
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		keep = append(keep, line)
+	}
+	return strings.Join(keep, "\n")
+}
