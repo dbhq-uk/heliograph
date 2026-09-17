@@ -11,9 +11,9 @@ yet cover.
 ## Reproduce a released binary
 
 ```bash
-git clone --depth 1 --branch v0.4.2 https://github.com/heliograph-io/heliograph
+git clone --depth 1 --branch v0.4.3 https://github.com/heliograph-io/heliograph
 cd heliograph
-packaging/reproduce.sh v0.4.2
+packaging/reproduce.sh v0.4.3
 ```
 
 You need bash, git and any Go 1.21 or newer. The script pins the toolchain
@@ -23,14 +23,14 @@ checksum database. If you would rather not trust your own Go installation at
 all, the same script runs in the pinned container:
 
 ```bash
-docker run --rm -v "$PWD:/src" -w /src golang:1.27.1 packaging/reproduce.sh v0.4.2
+docker run --rm -v "$PWD:/src" -w /src golang:1.27.1 packaging/reproduce.sh v0.4.3
 ```
 
 Then compare against what was published:
 
 ```bash
 curl -sSLo /tmp/published \
-  https://github.com/heliograph-io/heliograph/releases/download/v0.4.2/SHA256SUMS
+  https://github.com/heliograph-io/heliograph/releases/download/v0.4.3/SHA256SUMS
 cd dist && sha256sum --ignore-missing -c /tmp/published
 ```
 
@@ -72,9 +72,10 @@ from a copy at a different path with no `.git` - and fails if the two disagree.
   carries a [build provenance attestation](https://github.com/heliograph-io/heliograph/attestations)
   instead, which proves which workflow and which commit produced the image
   without proving the bytes can be arrived at twice.
-- **Signatures are no longer on this list.** `v0.4.2` is signed and the
-  signature verifies; the section below is now an instruction rather than a
-  plan. What remains uncovered is every release before it, which carries none.
+- **Signatures are no longer on this list.** `v0.4.2` was the first signed
+  release, every release since is signed too, and the signatures verify. The
+  section below is an instruction now rather than a plan. What is still
+  uncovered is every release *before* `v0.4.2`, which carries none at all.
 - **The hosted relay.** The Worker at `heliograph-relay.dbhq.uk`
   ([how to get on it](/relay#the-hosted-relay-and-how-to-ask-for-a-token))
   reports the commit it believes it is, which is detection rather than
@@ -104,13 +105,14 @@ file, `SHA256SUMS.sigstore.json`, published beside `SHA256SUMS` on the release.
 ```bash
 cosign verify-blob \
   --bundle SHA256SUMS.sigstore.json --new-bundle-format \
-  --certificate-identity "https://github.com/heliograph-io/heliograph/.github/workflows/release.yml@refs/tags/v0.4.2" \
+  --certificate-identity "https://github.com/heliograph-io/heliograph/.github/workflows/release.yml@refs/tags/v0.4.3" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   SHA256SUMS
 ```
 
 Needs cosign v3 or newer. Run against `v0.4.2` from a clean download it
-answers `Verified OK`.
+answered `Verified OK`, which is how the recipe above was checked rather than
+assumed.
 
 Earlier instructions here named a detached `SHA256SUMS.sig` and `SHA256SUMS.pem`
 pair, which is what cosign v2 produced. **No release ever carried them.**

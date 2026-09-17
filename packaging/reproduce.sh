@@ -2,8 +2,8 @@
 # =============================================================================
 #  reproduce.sh - build the released artefacts, byte for byte
 # =============================================================================
-#     packaging/reproduce.sh v0.4.2             # into dist/
-#     packaging/reproduce.sh v0.4.2 /tmp/out    # somewhere else
+#     packaging/reproduce.sh v0.4.3             # into dist/
+#     packaging/reproduce.sh v0.4.3 /tmp/out    # somewhere else
 #
 #  THE RELEASE WORKFLOW RUNS THIS FILE. That is the whole point of it being a
 #  file. The build loop used to live inline in release.yml, so the command the
@@ -47,15 +47,15 @@
 #
 #  Verify against a release:
 #
-#    packaging/reproduce.sh v0.4.2
-#    gh release download v0.4.2 -R heliograph-io/heliograph -p SHA256SUMS -O /tmp/published
+#    packaging/reproduce.sh v0.4.3
+#    gh release download v0.4.3 -R heliograph-io/heliograph -p SHA256SUMS -O /tmp/published
 #    cd dist && sha256sum --ignore-missing -c /tmp/published
 #
 #  Full account: https://heliograph.dbhq.uk/provenance
 # =============================================================================
 set -euo pipefail
 
-tag="${1:?usage: reproduce.sh <tag, e.g. v0.4.2> [outdir]}"
+tag="${1:?usage: reproduce.sh <tag, e.g. v0.4.3> [outdir]}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 out="${2:-$root/dist}"

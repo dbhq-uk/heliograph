@@ -223,7 +223,26 @@ jobs:
         # is no API and no secret to add - the whole point of OIDC is that
         # there is nothing here to change.
         working-directory: packaging/npm
-        run: npm publish --access public
+        run: |
+          set -euo pipefail
+          ver="${GITHUB_REF_NAME#v}"
+          # ALREADY PUBLISHED IS A SUCCESS, NOT A CONFLICT, and this exists so
+          # that a release can be re-run. npm versions are immutable, so if
+          # this exact version is already on the registry there is nothing a
+          # second publish could do but fail with EPUBLISHCONFLICT and take
+          # every job that needs this one down with it.
+          #
+          # v0.4.2 is why. Its publish SUCCEEDED and the step after it timed
+          # out waiting for propagation, so the job was red with the package
+          # live. Re-running could never go green: the first thing it did was
+          # try to publish a version that now existed. The MCP registry job
+          # `needs` this one, so an entry nobody could publish was stuck
+          # behind a step that had already done its work.
+          if npm view "@dbhq/heliograph@${ver}" version >/dev/null 2>&1; then
+            echo "@dbhq/heliograph@${ver} is already on the registry, so this is a re-run. Not republishing."
+          else
+            npm publish --access public
+          fi
 
       - name: It installs from the registry
         # Publishing is not the same as working. This installs the package the
@@ -244,17 +263,26 @@ jobs:
           # It still fails in the end: a version that never becomes installable
           # is a broken release, and the difference between that and slow is
           # only how long you are willing to wait for it.
-          for attempt in $(seq 1 20); do
-            if npm install "@dbhq/heliograph@${ver}" 2>/dev/null; then
-              echo "installed on attempt ${attempt}"
-              break
-            fi
-            if [ "$attempt" = "20" ]; then
-              echo "::error::@dbhq/heliograph@${ver} was published but is still not installable after 5 minutes"
+          #
+          # FIFTEEN MINUTES, NOT FIVE. v0.4.2 published successfully and was
+          # still not installable when the twentieth attempt ran out, so the
+          # job went red over a package that was live. Installing it by hand a
+          # few minutes later worked first time, including the binary download
+          # and its checksum verification. Five minutes was a guess; this is a
+          # measured correction rather than a larger guess, and the number is
+          # now big enough that exceeding it means something is actually wrong.
+          deadline=$(( SECONDS + 900 ))
+          attempt=0
+          until npm install "@dbhq/heliograph@${ver}" 2>/dev/null; do
+            attempt=$(( attempt + 1 ))
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::@dbhq/heliograph@${ver} was published but is still not installable after 15 minutes and ${attempt} attempts"
               exit 1
             fi
+            echo "not installable yet, ${attempt} attempts, $(( deadline - SECONDS ))s left"
             sleep 15
           done
+          echo "installed after ${attempt} failed attempts"
           ./node_modules/.bin/heliograph version
           printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' \
             | ./node_modules/.bin/heliograph mcp \
