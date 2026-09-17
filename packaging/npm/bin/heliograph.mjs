@@ -13,7 +13,7 @@ try {
   bin = await resolve();
 } catch (err) {
   process.stderr.write(`heliograph: ${err.message}\n`);
-  process.stderr.write('  Releases: https://github.com/dbhq-uk/heliograph/releases\n');
+  process.stderr.write('  Releases: https://github.com/heliograph-io/heliograph/releases\n');
   process.exit(1);
 }
 

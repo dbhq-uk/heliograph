@@ -4,13 +4,13 @@ Thanks for your interest - contributions are welcome.
 
 ## Ways to help
 
-- Report a bug or request a feature via [issues](https://github.com/dbhq-uk/heliograph/issues)
+- Report a bug or request a feature via [issues](https://github.com/heliograph-io/heliograph/issues)
 - Add a generic step, a `lib/` helper, or a hard-won lesson to `references/method.md`, via a pull request
 
 ## Local development
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph.git
+git clone https://github.com/heliograph-io/heliograph.git
 cd heliograph
 ./install.sh          # symlinks into ~/.claude/skills (edits are live)
 ```
@@ -86,4 +86,26 @@ binary is not in scope for that exception at all.
 
 ## Licence
 
-By contributing you agree your work is licensed under the [MIT licence](LICENSE).
+By contributing you agree your work is licensed under the [Apache 2.0 licence](LICENSE),
+or [CC BY 4.0](site/content/LICENSE) if it is documentation under `site/content/`.
+
+Inbound equals outbound. There is no CLA and no copyright assignment: you keep
+your copyright, and the project gets the same licence everybody else gets.
+
+Sign your commits off with the [Developer Certificate of
+Origin](https://developercertificate.org/), which is `git commit -s` and adds
+one line:
+
+```
+Signed-off-by: Your Name <you@example.com>
+```
+
+That is a statement about provenance - that you wrote it, or have the right to
+submit it - and it is why no CLA is needed here.
+
+**Nothing currently enforces this.** No CI job checks for the trailer and no
+existing commit carries one, because until 2026-09-17 this repository had one
+contributor and a DCO between somebody and themselves is theatre. It is written
+down now because the relicence is the moment it starts to matter, and a rule
+recorded after the first outside pull request is a rule applied retroactively.
+The check goes in with that pull request.

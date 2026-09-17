@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dbhq-uk/heliograph/internal/wire"
+	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
 // THE SPOOL IS READ AND NEVER WRITTEN, and that is the posture of this file

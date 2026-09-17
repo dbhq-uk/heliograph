@@ -56,9 +56,9 @@ import (
 // property: a compromised service can display a set and propose a change and
 // cannot produce one.
 var authorshipForbidden = []string{
-	"github.com/dbhq-uk/heliograph/internal/seal",
-	"github.com/dbhq-uk/heliograph/internal/transport",
-	"github.com/dbhq-uk/heliograph/internal/trust",
+	"github.com/heliograph-io/heliograph/internal/seal",
+	"github.com/heliograph-io/heliograph/internal/transport",
+	"github.com/heliograph-io/heliograph/internal/trust",
 }
 
 // 1. The dependency graph, transitively.
@@ -79,7 +79,7 @@ func TestThePushPathCannotReachTheCodeThatSignsARequest(t *testing.T) {
 	// is how a mutation test's passes become silence.
 	found := false
 	for _, d := range deps {
-		if d == "github.com/dbhq-uk/heliograph/internal/wire" {
+		if d == "github.com/heliograph-io/heliograph/internal/wire" {
 			found = true
 		}
 		for _, bad := range authorshipForbidden {

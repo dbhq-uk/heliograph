@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/wire"
+	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
 // ObjStore is the transport for an estate that has object storage and nothing

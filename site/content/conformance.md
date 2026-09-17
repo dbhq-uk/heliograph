@@ -71,7 +71,7 @@ implementation*. A correct redactor a second implementation forgets to call is
 exactly the drift this suite is for, and a unit test of the function cannot see
 it. Over-masking is asserted too.
 
-The cases live in [`tests/fixtures/redaction-corpus.txt`](https://github.com/dbhq-uk/heliograph/blob/main/tests/fixtures/redaction-corpus.txt),
+The cases live in [`tests/fixtures/redaction-corpus.txt`](https://github.com/heliograph-io/heliograph/blob/main/tests/fixtures/redaction-corpus.txt),
 one file both implementations are measured against. Neither redactor is the
 specification; that file is.
 

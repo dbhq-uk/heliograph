@@ -16,8 +16,8 @@ anything is a change request.
 ## 1. Clone
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph.git ~/dbhq-uk/heliograph
-cd ~/dbhq-uk/heliograph
+git clone https://github.com/heliograph-io/heliograph.git ~/heliograph-io/heliograph
+cd ~/heliograph-io/heliograph
 ```
 
 ## 2. Install (symlink)
@@ -104,7 +104,7 @@ stops being obeyed.
 
 ## Working across machines
 
-Editing anything under `~/dbhq-uk/heliograph` is live immediately in Claude Code -
+Editing anything under `~/heliograph-io/heliograph` is live immediately in Claude Code -
 the skill directory is symlinked whole. For Codex, re-run `./install-codex.sh`
 after a `SKILL.md` edit. If you develop on more than one machine, `git pull`
 before you start and `git push` when done.

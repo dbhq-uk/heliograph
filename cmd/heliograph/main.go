@@ -15,16 +15,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/bootstrap"
-	"github.com/dbhq-uk/heliograph/internal/cloud"
-	"github.com/dbhq-uk/heliograph/internal/logfile"
-	"github.com/dbhq-uk/heliograph/internal/plant"
-	"github.com/dbhq-uk/heliograph/internal/seal"
-	"github.com/dbhq-uk/heliograph/station"
+	"github.com/heliograph-io/heliograph/internal/bootstrap"
+	"github.com/heliograph-io/heliograph/internal/cloud"
+	"github.com/heliograph-io/heliograph/internal/logfile"
+	"github.com/heliograph-io/heliograph/internal/plant"
+	"github.com/heliograph-io/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/station"
 
-	"github.com/dbhq-uk/heliograph/internal/estate"
-	"github.com/dbhq-uk/heliograph/internal/transport"
-	"github.com/dbhq-uk/heliograph/internal/wire"
+	"github.com/heliograph-io/heliograph/internal/estate"
+	"github.com/heliograph-io/heliograph/internal/transport"
+	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
 // version is set at build time with -ldflags. "dev" means somebody built this

@@ -53,7 +53,7 @@ That is the whole list, and it is close to the entire proposition - on a
 locked-down box, installing anything is its own change request.
 
 **Which compiled things a station may need is a written policy, not a habit.**
-[`station/FAR-SIDE-BINARIES`](https://github.com/dbhq-uk/heliograph/blob/main/station/FAR-SIDE-BINARIES)
+[`station/FAR-SIDE-BINARIES`](https://github.com/heliograph-io/heliograph/blob/main/station/FAR-SIDE-BINARIES)
 is the list, CI reads that file, and a program under `cmd/` referenced anywhere
 under `station/` and absent from the list fails the build. No Go source may
 appear under `station/` either; the only Go permitted there is

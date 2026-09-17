@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/site"
+	"github.com/heliograph-io/heliograph/internal/site"
 )
 
 // order fixes the navigation. Alphabetical would put the CLI reference before
@@ -443,7 +443,7 @@ func headerNav(p site.Page) string {
 	}
 	// The repository, last and marked. Three words and a logo: a header that
 	// lists everything is the one nobody reads.
-	b.WriteString(`<a href="https://github.com/dbhq-uk/heliograph">` +
+	b.WriteString(`<a href="https://github.com/heliograph-io/heliograph">` +
 		site.GitHubMark + `Source</a>` + `</nav>`)
 	return b.String()
 }
@@ -682,8 +682,9 @@ func render(p site.Page, all []site.Page, o pageOptions) string {
 %[6]s
 %[7]s
 <footer><div class="inner">
-<p><a href="https://github.com/dbhq-uk/heliograph">`+site.GitHubMark+`Source</a>%[8]s</p>
+<p><a href="https://github.com/heliograph-io/heliograph">`+site.GitHubMark+`Source</a>%[8]s</p>
 <p>Written and maintained by <a href="https://dbhq.uk/">Daniel Grimes</a> at DBHQ</p>
+<p>Text on this site is <a href="https://creativecommons.org/licenses/by/4.0/" rel="license">CC BY 4.0</a>. The code is <a href="https://github.com/heliograph-io/heliograph/blob/main/LICENSE">Apache 2.0</a>.</p>
 </div></footer>
 <script>%[9]s
 %[12]s
@@ -819,8 +820,8 @@ func structuredData(p site.Page) string {
 			// about heliograph; zero is a number, and a number published
 			// before it is measured is very hard to withdraw.
 			"isAccessibleForFree": true,
-			"downloadUrl":         "https://github.com/dbhq-uk/heliograph/releases/latest",
-			"sameAs":              []string{"https://github.com/dbhq-uk/heliograph"},
+			"downloadUrl":         "https://github.com/heliograph-io/heliograph/releases/latest",
+			"sameAs":              []string{"https://github.com/heliograph-io/heliograph"},
 			"image":               baseURL + "/assets/og.png",
 			"author":              person,
 			"publisher":           org,
@@ -1069,7 +1070,7 @@ const heroHTML = `<section class="hero">
     back as a log with every line timestamped in UTC, whether it passed or failed.</p>
     <div class="cta">
       <a class="btn btn-primary" href="/quickstart">Quick start</a>
-      <a class="btn btn-ghost" href="https://github.com/dbhq-uk/heliograph">` + site.GitHubMark + `Source</a>
+      <a class="btn btn-ghost" href="https://github.com/heliograph-io/heliograph">` + site.GitHubMark + `Source</a>
     </div>
   </div>
 </section>
@@ -1104,8 +1105,8 @@ func llms(pages []site.Page) string {
 		fmt.Fprintf(&b, "- [%s](%s/%s.md): %s\n", p.Title, baseURL, p.Slug, site.Summary(p.Body))
 	}
 	b.WriteString("\n## Source\n\n")
-	b.WriteString("- [heliograph](https://github.com/dbhq-uk/heliograph): the control CLI and transports\n")
-	b.WriteString("- [station/bash](https://github.com/dbhq-uk/heliograph/tree/main/station/bash): the far-side station, plain bash, in this repository\n")
+	b.WriteString("- [heliograph](https://github.com/heliograph-io/heliograph): the control CLI and transports\n")
+	b.WriteString("- [station/bash](https://github.com/heliograph-io/heliograph/tree/main/station/bash): the far-side station, plain bash, in this repository\n")
 	return b.String()
 }
 

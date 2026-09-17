@@ -44,7 +44,7 @@ who cannot install a binary, and it is a procedure for a human rather than for
 an agent:
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph
+git clone https://github.com/heliograph-io/heliograph
 ./heliograph/station/bootstrap.sh ~/transport/payments
 ./heliograph/station/bootstrap.sh ~/transport/payments --flavour powershell
 ```
@@ -59,7 +59,7 @@ PowerShell station - the plant may not be the one step that assumes a shell the
 machine does not have.
 
 ```powershell
-git clone https://github.com/dbhq-uk/heliograph
+git clone https://github.com/heliograph-io/heliograph
 .\heliograph\station\bootstrap.ps1 C:\ops\payments
 ```
 

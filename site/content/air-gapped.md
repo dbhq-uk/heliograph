@@ -41,7 +41,7 @@ Windows box with no bash, `station/bootstrap.ps1` does the same job with only
 the PowerShell already installed:
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph          # near side
+git clone https://github.com/heliograph-io/heliograph          # near side
 # carry the directory across
 ./heliograph/station/bootstrap.sh ~/transport/payments    # far side
 ```

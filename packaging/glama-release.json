@@ -1,6 +1,6 @@
 {
   "_comment": "What the Glama listing was last released with. Glama scores the tool definitions and publishes that score against a release version, so when these change the listing describes tools that no longer exist. cmd/heliograph/glama_snapshot_test.go fails when they drift and says what to do. Creating a Glama release needs a person: the admin route redirects to /sign-up even with a valid API key.",
-  "listing": "https://glama.ai/mcp/servers/dbhq-uk/heliograph",
+  "listing": "https://glama.ai/mcp/servers/heliograph-io/heliograph",
   "releasedVersion": "0.3.2",
   "tools": [
     {

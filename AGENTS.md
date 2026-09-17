@@ -52,7 +52,7 @@ PowerShell station needs none even then: its seal is managed C# shipped as
 source and compiled by `Add-Type` at startup.
 
 **The price of listing one is a reproducible build**, and that phrasing is
-[#93](https://github.com/dbhq-uk/heliograph/issues/93)'s rather than this
+[#93](https://github.com/heliograph-io/heliograph/issues/93)'s rather than this
 file's:
 
 > Open-sourcing it is **not sufficient**. The component needs **reproducible
@@ -188,7 +188,7 @@ survive logout; `service.ps1` does the same with a scheduled task. See
 read content and it may not cause a station to run anything. A relay able to
 forge a request would be code execution inside every estate at once. The
 relay server stays its own repository,
-[dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay),
+[heliograph-io/heliograph-relay](https://github.com/heliograph-io/heliograph-relay),
 precisely so it is publicly, obviously incapable of either.
 
 **No bespoke cryptography.** age primitives and Ed25519, through vetted

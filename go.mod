@@ -1,4 +1,4 @@
-module github.com/dbhq-uk/heliograph
+module github.com/heliograph-io/heliograph
 
 go 1.27.1
 

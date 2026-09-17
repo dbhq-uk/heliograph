@@ -7,7 +7,7 @@
 // learn that anything happened.
 package transport
 
-import "github.com/dbhq-uk/heliograph/internal/wire"
+import "github.com/heliograph-io/heliograph/internal/wire"
 
 // Transport is what a control side can do to a station.
 //

@@ -7,8 +7,8 @@
     "email": "dan@dbhq.uk"
   },
   "homepage": "https://heliograph.dbhq.uk",
-  "repository": "https://github.com/dbhq-uk/heliograph",
-  "license": "MIT",
+  "repository": "https://github.com/heliograph-io/heliograph",
+  "license": "Apache-2.0",
   "keywords": [
     "remote-debugging",
     "air-gapped",

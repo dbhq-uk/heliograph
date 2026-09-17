@@ -5,7 +5,7 @@
 A single static binary, no runtime.
 
 ```bash
-curl -sSL https://github.com/dbhq-uk/heliograph/releases/latest/download/heliograph-linux-amd64 \
+curl -sSL https://github.com/heliograph-io/heliograph/releases/latest/download/heliograph-linux-amd64 \
   -o /usr/local/bin/heliograph && chmod +x /usr/local/bin/heliograph
 ```
 
@@ -17,7 +17,7 @@ hashes to the published number - [provenance](/provenance) is the command.
 From source, if you would rather:
 
 ```bash
-go install github.com/dbhq-uk/heliograph/cmd/heliograph@latest
+go install github.com/heliograph-io/heliograph/cmd/heliograph@latest
 ```
 
 ## The agent skill
@@ -31,7 +31,7 @@ install through skills.sh below, and anything that speaks MCP can use
 /plugin marketplace add dbhq-uk/marketplace
 /plugin install heliograph@dbhq         # Claude Code
 ./install-codex.sh                      # Codex, from a clone
-npx skills add dbhq-uk/heliograph       # any agent, via skills.sh
+npx skills add heliograph-io/heliograph       # any agent, via skills.sh
 ```
 
 The skill drives the binary above, so install both.
@@ -43,7 +43,7 @@ credentials of its own - and `heliograph bootstrap` plants the copy the binary
 was built with into your transport repo. A Windows estate with no bash and no
 permission to install any gets `--flavour powershell` instead, which needs only
 the Windows PowerShell already on the box; see [Windows](/windows). The source is
-[`station/bash/`](https://github.com/dbhq-uk/heliograph/tree/main/station/bash),
+[`station/bash/`](https://github.com/heliograph-io/heliograph/tree/main/station/bash),
 readable before you run it.
 
 That is not a convenience, it is the proposition. On a locked-down box,

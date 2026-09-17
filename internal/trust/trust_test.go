@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/seal"
 )
 
 func at(s string) time.Time {

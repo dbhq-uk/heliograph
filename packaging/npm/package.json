@@ -13,12 +13,12 @@
     "ssh-alternative"
   ],
   "homepage": "https://heliograph.dbhq.uk",
-  "bugs": "https://github.com/dbhq-uk/heliograph/issues",
+  "bugs": "https://github.com/heliograph-io/heliograph/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dbhq-uk/heliograph.git"
+    "url": "git+https://github.com/heliograph-io/heliograph.git"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "DBHQ",
   "type": "module",
   "bin": {
@@ -34,5 +34,5 @@
   "engines": {
     "node": ">=18"
   },
-  "mcpName": "io.github.dbhq-uk/heliograph"
+  "mcpName": "io.github.heliograph-io/heliograph"
 }

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/wire"
+	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
 // fakeS3 is enough of an object store to hold the transport to its contract,

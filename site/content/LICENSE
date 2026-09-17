@@ -1,0 +1,38 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright (c) 2026 DBHQ Consulting Ltd
+
+The prose in this directory - everything under `site/content/`, and the pages
+it generates at https://heliograph.io and https://docs.heliograph.io - is
+licensed under CC BY 4.0.
+
+  Deed:        https://creativecommons.org/licenses/by/4.0/
+  Legal code:  https://creativecommons.org/licenses/by/4.0/legalcode
+
+You may share and adapt this material for any purpose, including commercially,
+provided you give appropriate credit, link to the licence, and say whether you
+changed anything.
+
+WHY THIS IS NOT THE REPOSITORY'S LICENCE
+----------------------------------------
+
+The code in this repository is Apache 2.0. Apache is written for code: its
+patent grant and NOTICE machinery read oddly stretched over prose, and CC BY
+4.0 is the convention for documentation.
+
+The split is deliberate rather than an oversight, and it holds in the other
+direction too. Heliograph Cloud is proprietary and its documentation is public
+and CC BY 4.0 as well, in `heliograph-io/heliograph-cloud-docs`. The security
+pages are the ones a buyer reads adversarially, and their whole argument is
+that each claim is checkable without trusting us. A security page whose source
+is private and takes no corrections is weaker for no gain.
+
+WHAT THIS DOES NOT COVER
+------------------------
+
+Code samples in these pages are Apache 2.0, the same as the rest of the
+repository. Copy them without attribution obligations under CC BY.
+
+The heliograph name and marks are not licensed by either. Apache 2.0 section 6
+reserves trademark expressly, and CC BY 4.0 section 2(b)(2) says the same:
+"No trademark or patent rights are granted under this Public License."

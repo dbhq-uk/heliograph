@@ -196,7 +196,7 @@ matters.
 Content is end-to-end encrypted with keys the relay never holds, and every
 message is signed and verified before it is acted on. Nothing bespoke: age
 primitives plus Ed25519. The relay server is [its own
-repository](https://github.com/dbhq-uk/heliograph-relay) precisely so it is
+repository](https://github.com/heliograph-io/heliograph-relay) precisely so it is
 publicly, obviously incapable of either. Details: [the relay](/relay).
 
 ## Who may command a station, and who may change that
@@ -287,7 +287,7 @@ their estate.
 ## Reporting something
 
 Security issues go to the address in
-[`SECURITY.md`](https://github.com/dbhq-uk/heliograph/blob/main/SECURITY.md),
+[`SECURITY.md`](https://github.com/heliograph-io/heliograph/blob/main/SECURITY.md),
 not to a public issue.
 
 ## What we cannot honestly claim

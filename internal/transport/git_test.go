@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbhq-uk/heliograph/internal/wire"
+	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
 // No mocking. What breaks here is git's behaviour under two writers on one

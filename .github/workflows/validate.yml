@@ -69,13 +69,21 @@ jobs:
           set -euo pipefail
           allowed="golang.org/x/crypto golang.org/x/sys"
           bad=0
+          # The module's own packages are read from `go.mod` rather than typed
+          # here. The path was typed here until the transfer to
+          # `heliograph-io`, and then this line and `go.mod:1` were two copies
+          # of one fact: renaming the module made every own package look like
+          # an undeclared dependency and this job failed on all of them at
+          # once. Loud rather than silent, but still a second edit nobody
+          # would predict from the first.
+          self="$(go list -m)"
           while read -r pkg; do
             root="$(echo "$pkg" | cut -d/ -f1-3)"
             case " $allowed " in
               *" $root "*) ;;
               *) echo "::error::undeclared dependency linked into the binary: $pkg"; bad=1 ;;
             esac
-          done < <(go list -deps ./... | grep '\.' | grep -v '^github.com/dbhq-uk/heliograph' | grep -v '^crypto/internal/' | grep -v '^vendor/')
+          done < <(go list -deps ./... | grep '\.' | grep -v "^$self" | grep -v '^crypto/internal/' | grep -v '^vendor/')
           [ "$bad" = "0" ] || exit 1
           echo "linked dependencies: $allowed"
 

@@ -77,7 +77,7 @@ jobs:
       # once, and the certificate expires in ten minutes; the binding is
       # recorded in Rekor, the public transparency log. What a verifier checks
       # is therefore an IDENTITY - "signed by the release workflow of
-      # dbhq-uk/heliograph" - rather than "signed by a key some person holds".
+      # heliograph-io/heliograph" - rather than "signed by a key some person holds".
       #
       # That is the honest answer to "document the signing key's provenance":
       # there is no key to have provenance. A long-lived key would need
@@ -225,6 +225,13 @@ jobs:
       # 403 naming the personal namespace. An Actions OIDC token proves the
       # repository, and the repository is the organisation's, so the namespace
       # follows from it. No PAT, and nothing to rotate.
+      #
+      # THE OLD NAME IS LEFT IN THAT SENTENCE ON PURPOSE. It is what was
+      # refused, in 2026-09, when the repository was `dbhq-uk/heliograph`. The
+      # namespace this workflow publishes today is
+      # `io.github.heliograph-io/heliograph`, and it followed the transfer for
+      # exactly the reason the sentence gives: OIDC proves the repository, so
+      # nobody had to choose it.
       id-token: write
       contents: read
     steps:
@@ -274,7 +281,7 @@ jobs:
             # a word somebody else may publish under, and the 19th-century
             # mirror gives them every reason to.
             got="$(curl -sS 'https://registry.modelcontextprotocol.io/v0/servers?search=heliograph' \
-              | jq -r '[.servers[].server | select(.name == "io.github.dbhq-uk/heliograph")][0].version // ""')"
+              | jq -r '[.servers[].server | select(.name == "io.github.heliograph-io/heliograph")][0].version // ""')"
             if [ "$got" = "$want" ]; then
               echo "the registry serves $got"
               exit 0
@@ -321,8 +328,8 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
           tags: |
-            ghcr.io/dbhq-uk/heliograph:${{ github.ref_name }}
-            ghcr.io/dbhq-uk/heliograph:latest
+            ghcr.io/heliograph-io/heliograph:${{ github.ref_name }}
+            ghcr.io/heliograph-io/heliograph:latest
           labels: |
             org.opencontainers.image.version=${{ github.ref_name }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -331,7 +338,7 @@ jobs:
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
-          subject-name: ghcr.io/dbhq-uk/heliograph
+          subject-name: ghcr.io/heliograph-io/heliograph
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
@@ -344,7 +351,7 @@ jobs:
           out="$(printf '%s\n' \
             '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
             '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-            | docker run -i --rm "ghcr.io/dbhq-uk/heliograph:${GITHUB_REF_NAME}")"
+            | docker run -i --rm "ghcr.io/heliograph-io/heliograph:${GITHUB_REF_NAME}")"
           echo "$out"
           n="$(printf '%s' "$out" | grep -c '"name":"heliograph_' || true)"
           if [ "$n" -lt 1 ]; then

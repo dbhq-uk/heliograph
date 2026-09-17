@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbhq-uk/heliograph/internal/estate"
-	"github.com/dbhq-uk/heliograph/internal/transport"
+	"github.com/heliograph-io/heliograph/internal/estate"
+	"github.com/heliograph-io/heliograph/internal/transport"
 )
 
 // The unit tests exercise the transport. These exercise the CLI's own wiring,

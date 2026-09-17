@@ -149,7 +149,7 @@ func TestNoControlPlanePathAuthorsAChange(t *testing.T) {
 // calling the function.
 func TestTheDocumentMoversCannotEvenNameAChange(t *testing.T) {
 	root := repoRoot(t)
-	const trustPkg = `"github.com/dbhq-uk/heliograph/internal/trust"`
+	const trustPkg = `"github.com/heliograph-io/heliograph/internal/trust"`
 
 	var offenders []string
 	eachGoFile(t, root, func(rel string, src []byte, f *ast.File, fset *token.FileSet) {

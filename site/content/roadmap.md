@@ -105,9 +105,9 @@ nothing else. A machine with no git can still drive an estate.
 
 The reasoning behind every row, including the sources and the open questions
 each candidate still has, is in
-[the survey](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-10-new-transports-and-stations-design.md).
+[the survey](https://github.com/heliograph-io/heliograph/blob/main/docs/specs/2026-09-10-new-transports-and-stations-design.md).
 What is being built now is in
-[PLAN.md](https://github.com/dbhq-uk/heliograph/blob/main/PLAN.md).
+[PLAN.md](https://github.com/heliograph-io/heliograph/blob/main/PLAN.md).
 
 If your estate is a **maybe** and you need it, say so in an issue. A named
 engagement is exactly what moves a row up this page, and it is more useful than

@@ -11,7 +11,7 @@ on the wrong side of a change-control policy, it cannot run anything at all.
 ## Install the skill
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph
+git clone https://github.com/heliograph-io/heliograph
 cd heliograph && ./install-codex.sh
 ```
 
@@ -48,7 +48,7 @@ binary is missing the skill says so and prints the install command rather than
 improvising around it:
 
 ```bash
-curl -sSL https://github.com/dbhq-uk/heliograph/releases/latest/download/heliograph-linux-amd64 \
+curl -sSL https://github.com/heliograph-io/heliograph/releases/latest/download/heliograph-linux-amd64 \
   -o /usr/local/bin/heliograph && chmod +x /usr/local/bin/heliograph
 ```
 

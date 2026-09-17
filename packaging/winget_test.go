@@ -151,13 +151,16 @@ func TestWingetRefusesAMissingHash(t *testing.T) {
 }
 
 func TestWingetLicenceMatchesTheLicenceFile(t *testing.T) {
-	// LICENSE:1 is the fact; the manifest's License field is a claim about
-	// it. When the relicence lands, this fails until the manifest agrees.
+	// The LICENSE file is the fact; the manifest's License field is a claim
+	// about it. This failed on the Apache relicence and caught the reason:
+	// it read LICENSE line 1, and Apache's text opens with a BLANK line and
+	// then centres its title under 33 spaces. "first line" and "the licence
+	// name" are the same thing only under MIT.
 	b, err := os.ReadFile("../LICENSE")
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := strings.SplitN(string(b), "\n", 2)[0]
+	first := firstNonEmptyTrimmed(string(b))
 	dir, _ := generate(t, "v9.9.9", windowsArtefacts(t))
 	locale := readManifest(t, filepath.Join(dir, "heliograph-io.heliograph.locale.en-US.yaml"))
 	m := regexp.MustCompile(`(?m)^License: (.+)$`).FindStringSubmatch(locale)
@@ -167,8 +170,65 @@ func TestWingetLicenceMatchesTheLicenceFile(t *testing.T) {
 	switch {
 	case first == "MIT License" && m[1] == "MIT":
 	case strings.HasPrefix(first, "Apache License") && m[1] == "Apache-2.0":
+	case strings.HasPrefix(first, "Functional Source License") && m[1] == "LicenseRef-FSL-1.1-ALv2":
 	default:
-		t.Errorf("LICENSE:1 is %q and the manifest says License: %s. The package would claim a licence the binary is not under.", first, m[1])
+		t.Errorf("LICENSE opens with %q and the manifest says License: %s. The package would claim a licence the binary is not under.", first, m[1])
+	}
+}
+
+// firstNonEmptyTrimmed is what `manifests.sh` does with awk, kept in step with
+// it deliberately: if the two disagree about which line names the licence,
+// this test passes on one reading and the shipped manifest carries the other.
+func firstNonEmptyTrimmed(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
+// TestWingetPublisherComesFromNotice holds the other half of the same
+// relicence. The publisher was read from LICENSE line 3, which was the
+// copyright line under MIT and is "Version 2.0, January 2004" under Apache.
+// Nothing would have failed: the manifest would simply have credited the
+// Apache Software Foundation's version string as the author.
+func TestWingetPublisherComesFromNotice(t *testing.T) {
+	b, err := os.ReadFile("../NOTICE")
+	if err != nil {
+		t.Fatalf("NOTICE is where the copyright lives now, and it is not readable: %v", err)
+	}
+	var copyright string
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "Copyright (c) ") {
+			copyright = line
+			break
+		}
+	}
+	if copyright == "" {
+		t.Fatal("NOTICE has no 'Copyright (c) ' line, so manifests.sh has no publisher to name")
+	}
+	dir, _ := generate(t, "v9.9.9", windowsArtefacts(t))
+	locale := readManifest(t, filepath.Join(dir, "heliograph-io.heliograph.locale.en-US.yaml"))
+	m := regexp.MustCompile(`(?m)^Copyright: (.+)$`).FindStringSubmatch(locale)
+	if m == nil {
+		t.Fatal("the locale manifest has no Copyright line")
+	}
+	if m[1] != copyright {
+		t.Errorf("the manifest Copyright is %q and NOTICE says %q", m[1], copyright)
+	}
+	a := regexp.MustCompile(`(?m)^Author: (.+)$`).FindStringSubmatch(locale)
+	if a == nil {
+		t.Fatal("the locale manifest has no Author line")
+	}
+	if !strings.Contains(copyright, a[1]) {
+		t.Errorf("the manifest Author is %q and NOTICE says %q. The package would name somebody who does not hold the copyright.", a[1], copyright)
+	}
+	// And the reader has to be able to get to the notice it came from. Under
+	// MIT this pointed at LICENSE, which held the copyright line. Apache's
+	// does not.
+	if !strings.Contains(locale, "CopyrightUrl") || !regexp.MustCompile(`(?m)^CopyrightUrl: .*/NOTICE$`).MatchString(locale) {
+		t.Error("CopyrightUrl does not point at NOTICE, which is the file the copyright is now in")
 	}
 }
 

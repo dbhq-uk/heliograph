@@ -58,7 +58,7 @@ async function get(url) {
 // a failed or interrupted download cannot leave a partial file that a later run
 // would find and execute.
 async function download(dest, tag, asset) {
-  const base = `https://github.com/dbhq-uk/heliograph/releases/download/${tag}`;
+  const base = `https://github.com/heliograph-io/heliograph/releases/download/${tag}`;
 
   const sums = await (await get(`${base}/SHA256SUMS`)).text();
   const line = sums.split('\n').find((l) => l.trim().endsWith(asset));
@@ -94,7 +94,7 @@ export async function resolve({ quiet = false } = {}) {
     throw new Error(
       `no released binary for ${key}.\n` +
       `Supported: ${Object.keys(PLATFORMS).join(', ')}.\n` +
-      `From source: go install github.com/dbhq-uk/heliograph/cmd/heliograph@${tag}`
+      `From source: go install github.com/heliograph-io/heliograph/cmd/heliograph@${tag}`
     );
   }
 
