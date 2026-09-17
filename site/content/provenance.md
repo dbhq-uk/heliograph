@@ -72,9 +72,9 @@ from a copy at a different path with no `.git` - and fails if the two disagree.
   carries a [build provenance attestation](https://github.com/heliograph-io/heliograph/attestations)
   instead, which proves which workflow and which commit produced the image
   without proving the bytes can be arrived at twice.
-- **Signatures.** The release workflow signs `SHA256SUMS` with Sigstore keyless
-  signing, and no release has been through it yet, so there is no signature to
-  verify today. The section below says what will be there.
+- **Signatures are no longer on this list.** `v0.4.2` is signed and the
+  signature verifies; the section below is now an instruction rather than a
+  plan. What remains uncovered is every release before it, which carries none.
 - **The hosted relay.** The Worker at `heliograph-relay.dbhq.uk`
   ([how to get on it](/relay#the-hosted-relay-and-how-to-ask-for-a-token))
   reports the commit it believes it is, which is detection rather than
@@ -89,7 +89,7 @@ from a copy at a different path with no `.git` - and fails if the two disagree.
   [run your own](/relay) - the same source, on your account, where you did the
   deploying.
 
-## Signatures, when there are some
+## Signatures
 
 There is no signing key, deliberately. The release workflow uses Sigstore
 keyless signing: `cosign` gets a certificate valid for ten minutes, bound to the
@@ -109,12 +109,19 @@ cosign verify-blob \
   SHA256SUMS
 ```
 
-Needs cosign v3 or newer. Earlier instructions here named a detached
-`SHA256SUMS.sig` and `SHA256SUMS.pem` pair, which is what cosign v2 produced.
-**No release ever carried them.** Signing had never run before `v0.4.2`, and
-when it first did, cosign v3 refused the detached form outright: the new bundle
-format is the default and asking for the old pair fails the whole invocation.
-So this is the only shape any signature here has had.
+Needs cosign v3 or newer. Run against `v0.4.2` from a clean download it
+answers `Verified OK`.
+
+Earlier instructions here named a detached `SHA256SUMS.sig` and `SHA256SUMS.pem`
+pair, which is what cosign v2 produced. **No release ever carried them.**
+Signing had never run at all before `v0.4.2`, and when it first did, cosign v3
+refused the detached form outright: the new bundle format is the default, and
+asking for the old pair fails the whole invocation. So the bundle is the only
+shape any signature here has ever had.
+
+**`v0.4.2` is the first signed release, and nothing before it is signed.** That
+is a statement about this project rather than about Sigstore: the step existed
+for weeks and no tag was pushed through it, so it had never run.
 
 The trade is worth stating: there is no key to steal, to rotate or to explain
 the custody of, and in exchange verification is an online check against
