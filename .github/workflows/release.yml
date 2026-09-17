@@ -171,6 +171,19 @@ jobs:
         # No NODE_AUTH_TOKEN: the CLI detects the OIDC environment and uses it.
         # Provenance is attached by default under trusted publishing, so the
         # package carries a signed statement of which workflow built it.
+        #
+        # TRUSTED PUBLISHING IS BOUND TO A REPOSITORY, AND THIS REPOSITORY
+        # MOVED. The trusted publisher for `@dbhq/heliograph` is configured on
+        # npmjs.com against a GitHub owner, repository and workflow file, and
+        # the OIDC token's `repository` claim is checked against it. That claim
+        # said `dbhq-uk/heliograph` until the 2026-09-16 transfer and says
+        # `heliograph-io/heliograph` now.
+        #
+        # If this step fails on an auth error for v0.4.0, that is why, and the
+        # fix is on npmjs.com rather than here: Package settings, Trusted
+        # publisher, change the repository to `heliograph-io/heliograph`. There
+        # is no API and no secret to add - the whole point of OIDC is that
+        # there is nothing here to change.
         working-directory: packaging/npm
         run: npm publish --access public
 
@@ -359,6 +372,38 @@ jobs:
             exit 1
           fi
           echo "the published image serves its tools"
+
+      - name: A STRANGER can pull it, which the step above does not prove
+        # The introspection test runs `docker run` inside this job, which is
+        # still logged in from `docker/login-action`. It therefore passes just
+        # as happily on a PRIVATE package, and a private package is the DEFAULT
+        # for a container GitHub Packages has not seen before.
+        #
+        # That matters now rather than in the abstract. The 2026-09-16 transfer
+        # to `heliograph-io` did NOT bring the package with it: on 2026-09-17
+        # `ghcr.io/dbhq-uk/heliograph` still answered an anonymous manifest
+        # request with 200 and `ghcr.io/heliograph-io/heliograph` answered 403,
+        # because the latter did not exist. So the first release under the new
+        # org creates a new package, and nothing else here would notice if it
+        # came out private.
+        #
+        # Every `docker run` in the README, the Dockerfile header and
+        # `site/content/containers.md` is written for somebody who has not
+        # logged in to ghcr.io and never will. This asks the question they ask.
+        run: |
+          set -euo pipefail
+          img="heliograph-io/heliograph"
+          tok="$(curl -sS "https://ghcr.io/token?scope=repository:${img}:pull&service=ghcr.io" | jq -r '.token // empty')"
+          code="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${tok}" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json' \
+            -H 'Accept: application/vnd.docker.distribution.manifest.list.v2+json' \
+            "https://ghcr.io/v2/${img}/manifests/${GITHUB_REF_NAME}")"
+          if [ "$code" != "200" ]; then
+            echo "::error::ghcr.io/${img}:${GITHUB_REF_NAME} is not anonymously pullable (HTTP ${code}). The package is private, so every documented docker run fails for everybody but us. Make it public: https://github.com/orgs/heliograph-io/packages/container/heliograph/settings - there is no REST endpoint for package visibility, so this one is a person."
+            exit 1
+          fi
+          echo "anonymous pull of ghcr.io/${img}:${GITHUB_REF_NAME} returns 200"
 
   winget:
     name: Submit to winget
