@@ -1,5 +1,5 @@
 {
-  "_comment": "What the Glama listing was last released with. Glama scores the tool definitions and publishes that score against a release version, so when these change the listing describes tools that no longer exist. cmd/heliograph/glama_snapshot_test.go fails when they drift and says what to do. Creating a Glama release needs a person: the admin route redirects to /sign-up even with a valid API key.",
+  "_comment": "What the Glama listing was last released with, and what the tools are NOW. Glama scores the tool definitions and publishes that score against a release version, so when these change the listing describes tools that no longer exist. cmd/heliograph/glama_snapshot_test.go fails when they drift and says what to do. Creating a Glama release needs a person: the admin route redirects to /sign-up even with a valid API key.",
   "listing": "https://glama.ai/mcp/servers/heliograph-io/heliograph",
   "releasedVersion": "0.3.2",
   "tools": [
@@ -29,8 +29,9 @@
     },
     {
       "name": "heliograph_status",
-      "description": "What the station is doing now. State is one of running, idle, cancelled, refused or stopped. An empty state means the station has published nothing yet, which usually means it has not been started. `refused` is not a failure: it means the station would not run the step, and the reason names the flag that would permit it."
+      "description": "What the station is doing now. State is one of starting, running, idle, cancelled, refused, stopped or undelivered. Five of those are terminal: idle, cancelled, refused, stopped and undelivered. `starting` and `running` mean the run is still going. An empty state means the station has published nothing yet, which usually means it has not been started. A state you do not recognise is neither finished nor alive: a newer station may publish one, so keep polling rather than giving up. `refused` is not a failure: it means the station would not run the step, and the reason names the flag that would permit it. `undelivered` means the run finished and the log is complete but the transport would not take it, so waiting for more is exactly wrong."
     }
   ],
-  "toolsDigest": "d21b5eb6b6f329e567a06eaf1eba1bd2c353b77b5dfbc220c4222cdf870a52b1"
+  "toolsDigest": "ca382b61aae9dda26268fd3b69e6f852ab9db52a7823926a6be3294b68f04805",
+  "_listingIsBehind": "The listing was released at 0.3.2 and describes 0.3.2's heliograph_status. That description was WRONG - it named five states where status.go has seven, and told a caller to poll until one of four terminal states, omitting `undelivered`, which status.go:121 makes terminal and whose comment says waiting is exactly the wrong response. The correction could not wait for a Glama session, so `toolsDigest` and `tools` here are the CURRENT definitions and drift detection still catches the next change. THE OUTSTANDING HUMAN STEP is a Build and Release at https://glama.ai/mcp/servers/heliograph-io/heliograph/admin/dockerfile, after which `releasedVersion` becomes that version and this field goes. heliograph-cloud#267."
 }
