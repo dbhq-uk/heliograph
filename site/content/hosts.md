@@ -148,7 +148,7 @@ nothing to mount:
 docker run --rm \
   -e TRANSPORT=share -e SHARE_DIR=/mnt/ops -e SHARE_SCOPE=dns-timeouts \
   -v /mnt/ops:/mnt/ops \
-  ghcr.io/dbhq-uk/heliograph-toolkit:latest
+  ghcr.io/dbhq-uk/heliograph-toolkit:1.0.0-rc2
 ```
 
 `REPO_URL` alongside a non-git `TRANSPORT` is **refused**, not ignored: it means
