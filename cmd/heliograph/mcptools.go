@@ -129,15 +129,21 @@ func tools() []mcp.Tool {
 				return "", err
 			}
 			return fmt.Sprintf("sent %s\nstep: %s\nenv: %s\n\nThe station picks this up within its poll interval. "+
-				"Poll heliograph_status until state is idle, cancelled, refused or stopped.",
+				"Poll heliograph_status until state is idle, cancelled, refused, stopped or undelivered.",
 				req.ID, step, req.Env), nil
 		},
 	}, {
 		Name: "heliograph_status",
-		Description: "What the station is doing now. State is one of running, idle, cancelled, " +
-			"refused or stopped. An empty state means the station has published nothing yet, " +
-			"which usually means it has not been started. `refused` is not a failure: it means " +
-			"the station would not run the step, and the reason names the flag that would permit it.",
+		Description: "What the station is doing now. State is one of starting, running, idle, " +
+			"cancelled, refused, stopped or undelivered. Five of those are terminal: idle, " +
+			"cancelled, refused, stopped and undelivered. `starting` and `running` mean the run " +
+			"is still going. An empty state means the station has published nothing yet, which " +
+			"usually means it has not been started. A state you do not recognise is neither " +
+			"finished nor alive: a newer station may publish one, so keep polling rather than " +
+			"giving up. `refused` is not a failure: it means the station would not run the step, " +
+			"and the reason names the flag that would permit it. `undelivered` means the run " +
+			"finished and the log is complete but the transport would not take it, so waiting " +
+			"for more is exactly wrong.",
 		// The `actions` line this returns is deliberately NOT described here.
 		// Glama scores the tool DEFINITIONS and publishes that score against a
 		// release version, so any wording change here needs a human to make a
