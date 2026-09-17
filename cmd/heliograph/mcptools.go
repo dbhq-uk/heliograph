@@ -44,7 +44,7 @@ func cmdMCP(args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("mcp takes no arguments: it speaks JSON-RPC on stdin and stdout")
 	}
-	s := mcp.NewServer("heliograph", version, tools())
+	s := mcp.NewServer("heliograph", buildVersion(), tools())
 	return s.Serve(os.Stdin, os.Stdout)
 }
 
