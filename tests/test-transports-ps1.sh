@@ -257,6 +257,32 @@ for url in \
     "invalid" "$TP_OUT"
 done
 
+# A FAILING GIT BEFOREHAND MUST NOT CHANGE THE ANSWER, and it did.
+#
+# `$url = (& git ... | Select-Object -First 1)` stops the pipeline as soon as it
+# has its line, and a stopped pipeline NEVER SETS $LASTEXITCODE. So the check
+# after it read the exit code of whatever native command ran before, in the same
+# process. `git remote remove origin` on a repo with no origin is exactly such a
+# call, and this file makes one a few lines up.
+#
+# It presented as a flake that moved between assertions, because whether it
+# fired depended on the PREVIOUS git. It is not a flake: with a failing git in
+# front of it, it was deterministic. heliograph-cloud#268.
+#
+# This is a product bug rather than a test one. Test-TpPreflight runs after
+# other git calls, so a Windows station on the git transport could report
+# "no remote named 'origin'", or refuse to start with "not a git checkout",
+# while looking straight at a good checkout.
+tp "if (Import-Tp) { & git -C '$(winpath "$GITREPO")' rev-parse --verify no-such-ref 2>\$null | Out-Null; Get-TpDescribe }" \
+  TRANSPORT=git "REPO_ROOT=$(winpath "$GITREPO")"
+assert_contains "a failing git before Get-TpDescribe does not invent a missing remote" \
+  "github.invalid" "$TP_OUT"
+
+tp "if (Import-Tp) { & git -C '$(winpath "$GITREPO")' rev-parse --verify no-such-ref 2>\$null | Out-Null; if (Initialize-Tp) { 'initialised' } else { 'refused' } }" \
+  TRANSPORT=git "REPO_ROOT=$(winpath "$GITREPO")"
+assert_contains "and a failing git before Initialize-Tp does not make a checkout vanish" \
+  "initialised" "$TP_OUT"
+
 # --- the credential never reaches argv ---------------------------------------
 # `git -c http.extraHeader=...` puts the token in the process table, where every
 # other user on the box can read it out of `ps`. GIT_CONFIG_* is how the bash

@@ -34,6 +34,45 @@ function Get-LastExit {
     return 0
 }
 
+function Invoke-GitLine {
+    <#
+      .SYNOPSIS
+      Run git, return its first line, and leave $LASTEXITCODE meaning THIS git.
+      .DESCRIPTION
+      NEVER PIPE A NATIVE COMMAND INTO `Select-Object -First 1` AND THEN CHECK
+      $LASTEXITCODE. That was the shape at four call sites here and all four
+      were wrong.
+
+      `Select-Object -First 1` stops the pipeline as soon as it has its item,
+      which halts the upstream command, and a halted pipeline NEVER SETS
+      $LASTEXITCODE. So the check that follows reads the exit code of whatever
+      native command ran before it, in the same process, however long ago.
+
+      Reproduced deterministically on pwsh 7.6.5, against a repository that has
+      an origin:
+
+        git rev-parse --verify nope    # fails, leaves LASTEXITCODE=128
+        $url = (& git remote get-url origin | Select-Object -First 1)
+        # $url is correct, LASTEXITCODE is STILL 128, and the guard fires
+
+      That is not a test problem. `Test-TpPreflight` runs after other git
+      calls, so a Windows station on the git transport could report
+      "no remote named 'origin'" or refuse to start with "not a git checkout"
+      while looking straight at a perfectly good checkout. It presented as a
+      CI flake that moved between assertions because it depends on whether the
+      PREVIOUS git happened to fail - and `git remote remove origin` on a repo
+      with no origin is exactly such a call. heliograph-cloud#268.
+
+      Assigning the whole output first has no pipeline to stop, so
+      $LASTEXITCODE is git's own. Callers read it through Get-LastExit exactly
+      as before.
+    #>
+    param([Parameter(Mandatory = $true)][string[]] $GitArgs)
+    $out = & git @GitArgs 2>$null
+    if ($null -eq $out) { return $null }
+    return (@($out)[0])
+}
+
 function Get-TpCapabilities { return 'request status progress live self history' }
 
 function Initialize-Tp {
@@ -44,7 +83,7 @@ function Initialize-Tp {
         return $false
     }
 
-    $script:Branch = (& git -C $script:RepoRoot rev-parse --abbrev-ref HEAD 2>$null | Select-Object -First 1)
+    $script:Branch = Invoke-GitLine @('-C', $script:RepoRoot, 'rev-parse', '--abbrev-ref', 'HEAD')
     if ((Get-LastExit) -ne 0 -or -not $script:Branch) {
         Write-CapTpError "$($script:RepoRoot) is not a git checkout, so the git transport has nothing to push to. Clone the transport repo, or set TRANSPORT to another channel"
         return $false
@@ -73,7 +112,7 @@ function Get-TpDescribe {
       URL is the commonest way one ends up in a repository for ever, so the URL
       is masked here rather than at each call site.
     #>
-    $url = (& git -C $script:RepoRoot remote get-url origin 2>$null | Select-Object -First 1)
+    $url = Invoke-GitLine @('-C', $script:RepoRoot, 'remote', 'get-url', 'origin')
     if ((Get-LastExit) -ne 0 -or -not $url) { $url = '(no remote named origin)' }
     return "git $(Hide-GitCredential $url) on $($script:Branch)"
 }
@@ -146,7 +185,7 @@ function Test-GitEnvConfig {
       preflight says a credential is configured. caplib.sh checks the same
       version for the same reason.
     #>
-    $v = (& git --version 2>$null | Select-Object -First 1)
+    $v = Invoke-GitLine @('--version')
     if ((Get-LastExit) -ne 0 -or -not $v) { return $false }
     if ($v -notmatch 'git version (\d+)\.(\d+)') { return $false }
     $maj = [int]$Matches[1]; $min = [int]$Matches[2]
@@ -699,7 +738,7 @@ function Test-TpPreflight {
     $out = @()
     $out += @{ Status = 'ok'; Label = 'branch'; Detail = $script:Branch }
 
-    $url = (& git -C $script:RepoRoot remote get-url origin 2>$null | Select-Object -First 1)
+    $url = Invoke-GitLine @('-C', $script:RepoRoot, 'remote', 'get-url', 'origin')
     if ((Get-LastExit) -ne 0 -or -not $url) {
         $out += @{ Status = 'FAIL'; Label = 'remote'; Detail = "no remote named 'origin'. Git is the transport, so there is nowhere to push a log. Add one: git remote add origin <url>" }
         return $out
