@@ -33,7 +33,7 @@ var order = []string{
 	"station", "bootstrap", "steps", "runner", "conformance",
 	"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped",
 	"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "provenance", "method",
-	"roadmap",
+	"licence", "roadmap",
 }
 
 // The canonical host, and it moved on 2026-09-16.
@@ -355,7 +355,7 @@ var groups = []struct {
 	{"Drive it from an agent", []string{"claude-code", "codex", "mcp"}},
 	{"The far side", []string{"station", "bootstrap", "steps", "runner", "conformance"}},
 	{"Where it runs", []string{"hosts", "containers", "service", "azure", "pipelines", "windows", "air-gapped"}},
-	{"Reference", []string{"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "provenance", "method", "roadmap"}},
+	{"Reference", []string{"transports", "matrix", "relay", "flare", "cli", "secrets", "security", "provenance", "method", "licence", "roadmap"}},
 }
 
 // labels are the navigation's own words, and they are a THIRD set of words for
@@ -399,6 +399,7 @@ var labels = map[string]string{
 	"security":    "Security",
 	"provenance":  "Provenance",
 	"method":      "Debugging method",
+	"licence":     "Licensing",
 	"roadmap":     "Roadmap",
 }
 
@@ -991,6 +992,7 @@ func git(dir string, args ...string) (string, error) {
 // was in this repository until 2026-09-12 and should not have been.
 var titles = map[string]string{
 	"index":       "heliograph - run commands on a server without SSH",
+	"licence":     "Licensing - Apache 2.0, fair source, and what did not change",
 	"install":     "Install heliograph - a single binary, and nothing on the far side",
 	"quickstart":  "Quick start - from nothing to a captured log in five steps",
 	"compared":    "heliograph vs AWS SSM Run Command and Azure Run Command",
@@ -1025,6 +1027,7 @@ var titles = map[string]string{
 // descriptions are the search-result sentence for each page. See description().
 var descriptions = map[string]string{
 	"index":       "Run a command on a machine you cannot SSH into and get back a log with every line timestamped in UTC. Free and open source: CLI, MCP server, Claude Code skill.",
+	"licence":     "heliograph is Apache 2.0 and the relay is fair source under FSL-1.1-ALv2, converting to Apache 2.0 after two years. Every commit published under MIT stays MIT.",
 	"install":     "Install the heliograph CLI on Linux, macOS or Windows from a single static binary, or as a Claude Code plugin. Nothing is ever installed on the far side.",
 	"quickstart":  "From nothing to a captured, timestamped log in five steps: plant a station on the far side, push a step, and read the whole run back, passed or failed.",
 	"compared":    "How heliograph differs from AWS SSM Run Command and Azure Run Command: nothing installed on the target, no cloud account over it, and the whole log back.",

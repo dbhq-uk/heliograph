@@ -274,3 +274,12 @@ edits.
 [CC BY 4.0](site/content/LICENSE). Relicensed from MIT on 2026-09-17; every commit
 up to and including `b689f9c` stays available under MIT for ever. [`NOTICE`](NOTICE)
 says why Apache rather than MIT, and what the change does not take away.
+
+The relay is a separate repository and a separate licence:
+[heliograph-relay](https://github.com/heliograph-io/heliograph-relay) is
+FSL-1.1-ALv2, fair source, converting to Apache 2.0 two years after each
+release. **No shape is ever gated**: beacon, flare and beam all work on a relay
+you host yourself.
+
+Full statement, including the professional-services grant and its honest limit:
+**<https://docs.heliograph.io/licence>**

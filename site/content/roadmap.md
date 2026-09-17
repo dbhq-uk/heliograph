@@ -112,3 +112,14 @@ What is being built now is in
 If your estate is a **maybe** and you need it, say so in an issue. A named
 engagement is exactly what moves a row up this page, and it is more useful than
 a vote.
+
+## What changed on 17 September 2026
+
+The project moved to the `heliograph-io` organisation and the licences changed:
+heliograph is Apache 2.0, this documentation is CC BY 4.0, and the relay is fair
+source under FSL-1.1-ALv2. **Every commit published under MIT is still available
+under MIT, permanently.** Old links redirect, and nothing about what the tool
+does changed.
+
+The whole statement, including why each licence and what is expressly
+permitted, is on [licensing](/licence).
