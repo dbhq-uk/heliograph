@@ -114,20 +114,41 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -euo pipefail
+          # ONE SIGSTORE BUNDLE, NOT A DETACHED .sig AND .pem, and cosign v3
+          # left no choice. This step asked for the v2 pair and v3.0.6 refused
+          # the whole invocation:
+          #
+          #   Error: signing dist/SHA256SUMS: create bundle file: open : no
+          #   such file or directory
+          #
+          # `--new-bundle-format` defaults to true in v3, which makes
+          # `--output-certificate` a no-op and `--bundle` required. Setting
+          # `--new-bundle-format=false` does not get the old behaviour back
+          # either - v3.0.6 then refuses with "must provide
+          # --new-bundle-format or --bundle where applicable". Checked against
+          # the real binary rather than the release notes.
+          #
+          # This was v0.4.1's failure and it is the FIRST TIME THIS STEP HAS
+          # EVER RUN. Nothing had been signed before, so nothing regressed:
+          # the step was written against v2 semantics and the installer moved
+          # to v3 underneath it while no tag was being pushed.
+          #
+          # The bundle carries the signature, the certificate and the
+          # transparency-log entry in one file, which is also one fewer thing
+          # for a verifier to fetch in the right order.
           cosign sign-blob --yes \
-            --output-signature dist/SHA256SUMS.sig \
-            --output-certificate dist/SHA256SUMS.pem \
+            --bundle dist/SHA256SUMS.sigstore.json \
             dist/SHA256SUMS
           # Verified here, before publishing, because a signature nobody has
           # checked is a file. The identity asserted is this workflow at this
           # tag, which is exactly what a reader is told to check for.
           cosign verify-blob \
-            --signature dist/SHA256SUMS.sig \
-            --certificate dist/SHA256SUMS.pem \
+            --bundle dist/SHA256SUMS.sigstore.json \
+            --new-bundle-format \
             --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             dist/SHA256SUMS
-          echo "SHA256SUMS signed and the signature verifies against this workflow's identity"
+          echo "SHA256SUMS signed and the bundle verifies against this workflow's identity"
 
       - name: Publish
         if: startsWith(github.ref, 'refs/tags/')
@@ -196,7 +217,7 @@ jobs:
         # said `dbhq-uk/heliograph` until the 2026-09-16 transfer and says
         # `heliograph-io/heliograph` now.
         #
-        # If this step fails on an auth error for v0.4.0, that is why, and the
+        # If this step fails on an auth error, that is why, and the
         # fix is on npmjs.com rather than here: Package settings, Trusted
         # publisher, change the repository to `heliograph-io/heliograph`. There
         # is no API and no secret to add - the whole point of OIDC is that

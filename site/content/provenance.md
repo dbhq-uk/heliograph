@@ -98,13 +98,23 @@ transparency log. So what a verifier checks is an identity - "signed by the
 release workflow of `heliograph-io/heliograph`, at this tag" - rather than "signed by
 a key somebody holds".
 
+The signature, the certificate and the transparency-log entry arrive as one
+file, `SHA256SUMS.sigstore.json`, published beside `SHA256SUMS` on the release.
+
 ```bash
 cosign verify-blob \
-  --signature SHA256SUMS.sig --certificate SHA256SUMS.pem \
+  --bundle SHA256SUMS.sigstore.json --new-bundle-format \
   --certificate-identity "https://github.com/heliograph-io/heliograph/.github/workflows/release.yml@refs/tags/v0.4.1" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   SHA256SUMS
 ```
+
+Needs cosign v3 or newer. Earlier instructions here named a detached
+`SHA256SUMS.sig` and `SHA256SUMS.pem` pair, which is what cosign v2 produced.
+**No release ever carried them.** Signing had never run before `v0.4.1`, and
+when it first did, cosign v3 refused the detached form outright: the new bundle
+format is the default and asking for the old pair fails the whole invocation.
+So this is the only shape any signature here has had.
 
 The trade is worth stating: there is no key to steal, to rotate or to explain
 the custody of, and in exchange verification is an online check against
