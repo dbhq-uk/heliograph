@@ -438,7 +438,7 @@ jobs:
             -H 'Accept: application/vnd.docker.distribution.manifest.list.v2+json' \
             "https://ghcr.io/v2/${img}/manifests/${GITHUB_REF_NAME}")"
           if [ "$code" != "200" ]; then
-            echo "::error::ghcr.io/${img}:${GITHUB_REF_NAME} is not anonymously pullable (HTTP ${code}). The package is private, so every documented docker run fails for everybody but us. Make it public: https://github.com/orgs/heliograph-io/packages/container/heliograph/settings - there is no REST endpoint for package visibility, so this one is a person."
+            echo "::error::ghcr.io/${img}:${GITHUB_REF_NAME} is not anonymously pullable (HTTP ${code}). The package is private, so every documented docker run fails for everybody but us. Make it public at https://github.com/organizations/heliograph-io/settings/packages - Package creation, tick Public. NOT the package own settings page: that greys Public out with 'Setting is disabled by organization administrators' because the org forbids public packages, and no amount of typing the package name into its confirm box changes that. Neither setting has a REST endpoint, so this one is a person."
             exit 1
           fi
           echo "anonymous pull of ghcr.io/${img}:${GITHUB_REF_NAME} returns 200"
