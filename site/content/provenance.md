@@ -11,9 +11,9 @@ yet cover.
 ## Reproduce a released binary
 
 ```bash
-git clone --depth 1 --branch v0.4.0 https://github.com/heliograph-io/heliograph
+git clone --depth 1 --branch v0.4.1 https://github.com/heliograph-io/heliograph
 cd heliograph
-packaging/reproduce.sh v0.4.0
+packaging/reproduce.sh v0.4.1
 ```
 
 You need bash, git and any Go 1.21 or newer. The script pins the toolchain
@@ -23,14 +23,14 @@ checksum database. If you would rather not trust your own Go installation at
 all, the same script runs in the pinned container:
 
 ```bash
-docker run --rm -v "$PWD:/src" -w /src golang:1.27.1 packaging/reproduce.sh v0.4.0
+docker run --rm -v "$PWD:/src" -w /src golang:1.27.1 packaging/reproduce.sh v0.4.1
 ```
 
 Then compare against what was published:
 
 ```bash
 curl -sSLo /tmp/published \
-  https://github.com/heliograph-io/heliograph/releases/download/v0.4.0/SHA256SUMS
+  https://github.com/heliograph-io/heliograph/releases/download/v0.4.1/SHA256SUMS
 cd dist && sha256sum --ignore-missing -c /tmp/published
 ```
 
@@ -38,7 +38,7 @@ Every line should say `OK`. If one does not, the binary in the release is not
 the source in the tag, and that is worth telling us about at
 [security@dbhq.uk](mailto:security@dbhq.uk).
 
-**This holds from v0.4.0 onwards.** Earlier releases were built by a workflow
+**This holds from v0.4.1 onwards.** Earlier releases were built by a workflow
 that did not pin the Go patch version and did not disable Go's VCS stamping, so
 their hashes are not reproducible and nothing here claims they are.
 
@@ -101,7 +101,7 @@ a key somebody holds".
 ```bash
 cosign verify-blob \
   --signature SHA256SUMS.sig --certificate SHA256SUMS.pem \
-  --certificate-identity "https://github.com/heliograph-io/heliograph/.github/workflows/release.yml@refs/tags/v0.4.0" \
+  --certificate-identity "https://github.com/heliograph-io/heliograph/.github/workflows/release.yml@refs/tags/v0.4.1" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   SHA256SUMS
 ```
