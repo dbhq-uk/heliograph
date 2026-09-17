@@ -2,7 +2,7 @@
 
 Run commands on a machine you cannot SSH into.
 
-<!-- mcp-name: io.github.dbhq-uk/heliograph -->
+<!-- mcp-name: io.github.heliograph-io/heliograph -->
 
 ```bash
 npx -y @dbhq/heliograph mcp     # as an MCP server

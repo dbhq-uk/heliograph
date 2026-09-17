@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dbhq-uk/heliograph/internal/seal"
-	"github.com/dbhq-uk/heliograph/internal/wire"
+	"github.com/heliograph-io/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
 // fakeRelay is a queue that does what the real one does, and can also be told

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/seal"
 )
 
 // The refusals, as sentinels, because the station publishes the reason and a

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbhq-uk/heliograph/internal/estate"
-	"github.com/dbhq-uk/heliograph/internal/mcp"
+	"github.com/heliograph-io/heliograph/internal/estate"
+	"github.com/heliograph-io/heliograph/internal/mcp"
 )
 
 // call finds a shipped tool by name and runs it. Going through the real tool

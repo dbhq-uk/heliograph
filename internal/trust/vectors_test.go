@@ -40,7 +40,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/seal"
 )
 
 var update = flag.Bool("update", false, "rewrite the committed vector file")

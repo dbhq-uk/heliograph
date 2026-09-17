@@ -29,10 +29,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/estate"
-	"github.com/dbhq-uk/heliograph/internal/logfile"
-	"github.com/dbhq-uk/heliograph/internal/mcp"
-	"github.com/dbhq-uk/heliograph/internal/wire"
+	"github.com/heliograph-io/heliograph/internal/estate"
+	"github.com/heliograph-io/heliograph/internal/logfile"
+	"github.com/heliograph-io/heliograph/internal/mcp"
+	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
 // cmdMCP serves the tools over stdio until the client closes it.

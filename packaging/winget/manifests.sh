@@ -45,7 +45,7 @@ root="$(cd "$here/../.." && pwd)"
 id="heliograph-io.heliograph"
 ver="${tag#v}"
 schema="1.12.0"
-repo="${GITHUB_REPOSITORY:-dbhq-uk/heliograph}"
+repo="${GITHUB_REPOSITORY:-heliograph-io/heliograph}"
 date="${RELEASE_DATE:-$(date -u +%F)}"
 base="https://github.com/${repo}/releases/download/${tag}"
 

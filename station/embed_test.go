@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbhq-uk/heliograph/station"
+	"github.com/heliograph-io/heliograph/station"
 )
 
 // The payload is small. A station is a directory of scripts, and the whole

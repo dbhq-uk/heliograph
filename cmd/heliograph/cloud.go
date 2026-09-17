@@ -25,9 +25,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/cloud"
-	"github.com/dbhq-uk/heliograph/internal/estate"
-	"github.com/dbhq-uk/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/cloud"
+	"github.com/heliograph-io/heliograph/internal/estate"
+	"github.com/heliograph-io/heliograph/internal/seal"
 )
 
 // serviceURL resolves which service to talk to.

@@ -12,7 +12,7 @@
   },
   "homepage": "https://heliograph.dbhq.uk",
   "documentation": "https://heliograph.dbhq.uk/mcp",
-  "support": "https://github.com/dbhq-uk/heliograph/issues",
+  "support": "https://github.com/heliograph-io/heliograph/issues",
   "license": "MIT",
   "keywords": [
     "mcp",

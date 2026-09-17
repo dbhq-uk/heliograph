@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbhq-uk/heliograph/internal/estate"
-	"github.com/dbhq-uk/heliograph/internal/transport"
+	"github.com/heliograph-io/heliograph/internal/estate"
+	"github.com/heliograph-io/heliograph/internal/transport"
 )
 
 // `station add` does three things that have to happen together: create and push

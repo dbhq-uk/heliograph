@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.dbhq-uk/heliograph",
+  "name": "io.github.heliograph-io/heliograph",
   "description": "Run commands on a machine you cannot SSH into. Air-gapped, bastion-only, change-controlled.",
   "repository": {
-    "url": "https://github.com/dbhq-uk/heliograph",
+    "url": "https://github.com/heliograph-io/heliograph",
     "source": "github"
   },
   "version": "0.3.2",

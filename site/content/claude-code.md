@@ -18,7 +18,7 @@ on the wrong side of a change-control policy, it cannot run anything at all.
 Or from a clone, which is what you want if you intend to edit the skill:
 
 ```bash
-git clone https://github.com/dbhq-uk/heliograph
+git clone https://github.com/heliograph-io/heliograph
 cd heliograph && ./install.sh
 ```
 
@@ -30,7 +30,7 @@ the skill's own directory, which is what makes a pure symlink install possible;
 For any other agent - Cursor, Copilot, Windsurf, Gemini, Cline:
 
 ```bash
-npx skills add dbhq-uk/heliograph
+npx skills add heliograph-io/heliograph
 ```
 
 **The skill drives the `heliograph` binary**, so [install that too](/install).
@@ -98,7 +98,7 @@ Claude Code's own permission system, and skipping that changes nothing here:
 ## The pieces
 
 The skill is one component. The full set, all in
-[one repository](https://github.com/dbhq-uk/heliograph):
+[one repository](https://github.com/heliograph-io/heliograph):
 
 | | |
 |---|---|

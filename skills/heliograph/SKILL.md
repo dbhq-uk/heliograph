@@ -43,14 +43,14 @@ command -v heliograph >/dev/null || echo "MISSING"
 **If it is missing, install it and do not improvise around it:**
 
 ```bash
-curl -sSL https://github.com/dbhq-uk/heliograph/releases/latest/download/heliograph-linux-amd64 \
+curl -sSL https://github.com/heliograph-io/heliograph/releases/latest/download/heliograph-linux-amd64 \
   -o /usr/local/bin/heliograph && chmod +x /usr/local/bin/heliograph
-# or: go install github.com/dbhq-uk/heliograph/cmd/heliograph@latest
+# or: go install github.com/heliograph-io/heliograph/cmd/heliograph@latest
 ```
 
 If you cannot install it (no network, no permission), stop and say so. The
 no-CLI fallback is a procedure for a person, not for you: clone
-[dbhq-uk/heliograph](https://github.com/dbhq-uk/heliograph) and run
+[heliograph-io/heliograph](https://github.com/heliograph-io/heliograph) and run
 `station/bootstrap.sh` by hand - the station is plain text and stands on its
 own, and `--flavour powershell` plants the twin for a box with no bash. Do not reimplement `send`, `watch` or the gates by editing files: one
 driver is the point.

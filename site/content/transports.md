@@ -78,7 +78,7 @@ Blob also works end to end, through `drop.sh` in the station payload rather
 than through the `heliograph` binary - it is the transport the Azure Function
 host uses, and it is deployed. The rest are at the stage the table says and no
 further; what each still needs is in
-[the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
+[the roadmap](https://github.com/heliograph-io/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
 This page describes each one as designed, so that the design can be reviewed -
 not as though you could reach for it this afternoon.
 
@@ -457,7 +457,7 @@ Run your own:
 ```bash
 docker run -p 8080:8080 \
   -e HELIOGRAPH_RELAY_ESTATES="payments:$CTL:$STN" \
-  ghcr.io/dbhq-uk/heliograph-relay:latest
+  ghcr.io/heliograph-io/heliograph-relay:latest
 ```
 
 Or use the one DBHQ hosts at `heliograph-relay.dbhq.uk`. It is free, it has no

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbhq-uk/heliograph/internal/wire"
+	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
 // The parser tests prove this side can read the field. They cannot prove any
@@ -55,7 +55,7 @@ func TestARealStationPublishesItsActionMode(t *testing.T) {
 			sh(t, work, "git", "push", "-q", "-u", "origin", "main")
 
 			bin := filepath.Join(base, "heliograph")
-			sh(t, ".", "go", "build", "-o", bin, "github.com/dbhq-uk/heliograph/cmd/heliograph")
+			sh(t, ".", "go", "build", "-o", bin, "github.com/heliograph-io/heliograph/cmd/heliograph")
 			hg := func(args ...string) string {
 				t.Helper()
 				cmd := exec.Command(bin, args...)

@@ -9,7 +9,7 @@ HTTPS and meet at a server neither of them trusts.
 | | |
 |---|---|
 | station side | complete. Fetches requests, publishes status and progress, delivers the finished log |
-| relay server | [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay), **deployed at `heliograph-relay.dbhq.uk`**. Free to use, and you have to [ask for a token](#the-hosted-relay-and-how-to-ask-for-a-token) |
+| relay server | [heliograph-io/heliograph-relay](https://github.com/heliograph-io/heliograph-relay), **deployed at `heliograph-relay.dbhq.uk`**. Free to use, and you have to [ask for a token](#the-hosted-relay-and-how-to-ask-for-a-token) |
 | control side | `heliograph init --transport relay`, and a round trip in CI drives all three halves |
 
 **It works end to end, over the deployed relay.** On 2026-09-09 a sealed
@@ -27,13 +27,13 @@ independently of this repository, which they can and which is silent.
 ## The hosted relay, and how to ask for a token
 
 `heliograph-relay.dbhq.uk` is a relay DBHQ runs, built from the source in
-[dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay). Every
+[heliograph-io/heliograph-relay](https://github.com/heliograph-io/heliograph-relay). Every
 block on this page that names it needs an estate on it first, and **there is no
 sign-up page**. Provisioning is a person editing an environment variable, so
 somebody issues you the two tokens by hand.
 
 Ask at the address in
-[`SECURITY.md`](https://github.com/dbhq-uk/heliograph/blob/main/SECURITY.md) -
+[`SECURITY.md`](https://github.com/heliograph-io/heliograph/blob/main/SECURITY.md) -
 it is a one-person company and that is the mailbox - saying which estate id you
 would like. What comes back is the estate id, a control token and a station
 token. Nothing else is created anywhere: an estate on this relay is three
@@ -106,7 +106,7 @@ CTL=$(head -c 32 /dev/urandom | base64)
 STN=$(head -c 32 /dev/urandom | base64)
 docker run -p 8080:8080 \
   -e HELIOGRAPH_RELAY_ESTATES="payments:$CTL:$STN" \
-  ghcr.io/dbhq-uk/heliograph-relay:latest
+  ghcr.io/heliograph-io/heliograph-relay:latest
 ```
 
 Put it behind something that terminates TLS. `heliograph init` refuses a plain
@@ -270,7 +270,7 @@ The same server, one container, no keys:
 ```bash
 docker run -p 8080:8080 \
   -e HELIOGRAPH_RELAY_ESTATES="payments:$CONTROL_PUB:$STATION_PUB" \
-  ghcr.io/dbhq-uk/heliograph-relay:latest
+  ghcr.io/heliograph-io/heliograph-relay:latest
 ```
 
 It holds public identities so it can route, and nothing it could decrypt
@@ -344,5 +344,5 @@ timings, which estate is active and when. Traffic analysis is not addressed and
 is not claimed to be.
 
 The full account is in
-[`docs/specs/2026-09-06-relay-encryption-design.md`](https://github.com/dbhq-uk/heliograph/blob/main/docs/specs/2026-09-06-relay-encryption-design.md),
+[`docs/specs/2026-09-06-relay-encryption-design.md`](https://github.com/heliograph-io/heliograph/blob/main/docs/specs/2026-09-06-relay-encryption-design.md),
 including what was corrected in it and why.

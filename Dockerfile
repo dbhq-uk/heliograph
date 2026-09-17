@@ -1,8 +1,8 @@
 # =============================================================================
-#  ghcr.io/dbhq-uk/heliograph - the CONTROL side, as a container
+#  ghcr.io/heliograph-io/heliograph - the CONTROL side, as a container
 # =============================================================================
-#     docker run -i --rm ghcr.io/dbhq-uk/heliograph mcp     # as an MCP server
-#     docker run --rm ghcr.io/dbhq-uk/heliograph estates    # as the CLI
+#     docker run -i --rm ghcr.io/heliograph-io/heliograph mcp     # as an MCP server
+#     docker run --rm ghcr.io/heliograph-io/heliograph estates    # as the CLI
 #
 #  This is the whole `heliograph` binary, not an MCP-only build. `mcp` is the
 #  default command because that is what a directory or an MCP client starts it
@@ -38,12 +38,12 @@
 #  To actually drive a station from the container, mount the configuration:
 #
 #    docker run -i --rm -v ~/.config/heliograph:/home/nonroot/.config/heliograph \
-#      ghcr.io/dbhq-uk/heliograph mcp
+#      ghcr.io/heliograph-io/heliograph mcp
 #
 #  or, if you would rather be explicit than rely on where HOME points:
 #
 #    docker run -i --rm -e XDG_CONFIG_HOME=/config -v ~/.config:/config \
-#      ghcr.io/dbhq-uk/heliograph mcp
+#      ghcr.io/heliograph-io/heliograph mcp
 #
 #  Both were checked against a real estate file, not assumed from the paths.
 #
@@ -89,5 +89,5 @@ CMD ["mcp"]
 LABEL org.opencontainers.image.title="heliograph" \
       org.opencontainers.image.description="The control side of heliograph: CLI and MCP server. Run commands on a machine you cannot SSH into." \
       org.opencontainers.image.url="https://heliograph.dbhq.uk" \
-      org.opencontainers.image.source="https://github.com/dbhq-uk/heliograph" \
+      org.opencontainers.image.source="https://github.com/heliograph-io/heliograph" \
       org.opencontainers.image.licenses="MIT"

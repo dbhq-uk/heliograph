@@ -17,8 +17,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/dbhq-uk/heliograph/internal/seal"
-	"github.com/dbhq-uk/heliograph/internal/trust"
+	"github.com/heliograph-io/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/trust"
 )
 
 var version = "dev"

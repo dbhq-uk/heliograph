@@ -136,7 +136,7 @@ first boot.
 has no code to read it, so the combination cannot work at all.
 
 What each still needs is in
-[the roadmap](https://github.com/dbhq-uk/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
+[the roadmap](https://github.com/heliograph-io/heliograph/blob/main/docs/plans/2026-09-08-powershell-and-docs-roadmap.md).
 
 ### In a container
 

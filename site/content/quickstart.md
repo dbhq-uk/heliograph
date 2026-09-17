@@ -18,7 +18,7 @@ git remote add origin <private-url> && git push -u origin HEAD
 
 The binary plants the station payload it was built with. No CLI on this
 machine? `station/bootstrap.sh` in a clone of
-[the repo](https://github.com/dbhq-uk/heliograph) lays down the same files.
+[the repo](https://github.com/heliograph-io/heliograph) lays down the same files.
 
 ## 2. Tell the CLI about it
 

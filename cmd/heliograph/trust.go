@@ -24,10 +24,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/estate"
-	"github.com/dbhq-uk/heliograph/internal/seal"
-	"github.com/dbhq-uk/heliograph/internal/trust"
-	"github.com/dbhq-uk/heliograph/internal/wire"
+	"github.com/heliograph-io/heliograph/internal/estate"
+	"github.com/heliograph-io/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/trust"
+	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
 const trustUsage = `heliograph trust - who may command a station

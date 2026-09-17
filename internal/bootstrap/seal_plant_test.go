@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dbhq-uk/heliograph/station"
+	"github.com/heliograph-io/heliograph/station"
 )
 
 // The Go planter is the third way a payload reaches a machine, and the only one

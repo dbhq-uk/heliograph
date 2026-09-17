@@ -53,6 +53,14 @@ provider "cloudflare" {
 }
 
 provider "github" {
-  owner = "dbhq-uk"
+  # `dbhq-uk` until the 2026-09-16 transfer. The provider's owner is where it
+  # looks a repository up, and the repository moved, so an apply against the
+  # old value manages an address nothing is at any more. Git redirects a clone
+  # and does not redirect an API lookup.
+  #
+  # THE STATE HAS TO MOVE WITH IT. Every `github_*` resource in state carries
+  # the old full name, so the first apply after this change plans a destroy and
+  # a create rather than a no-op. Re-import rather than apply that plan.
+  owner = "heliograph-io"
   token = var.github_token
 }

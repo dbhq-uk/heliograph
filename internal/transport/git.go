@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/wire"
+	"github.com/heliograph-io/heliograph/internal/wire"
 )
 
 // Git carries the documents in a git repository, which is the transport the

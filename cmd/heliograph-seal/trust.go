@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/seal"
-	"github.com/dbhq-uk/heliograph/internal/trust"
+	"github.com/heliograph-io/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/trust"
 )
 
 const trustUsage = `heliograph-seal trust - the set of keys this station accepts a request from

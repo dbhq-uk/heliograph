@@ -107,7 +107,7 @@ func TestCLIDrivesAStockStation(t *testing.T) {
 	// Build and run the real binary, not the functions behind it. Argument
 	// parsing and printing are where a CLI usually goes wrong.
 	bin := filepath.Join(base, "heliograph")
-	sh(t, ".", "go", "build", "-o", bin, "github.com/dbhq-uk/heliograph/cmd/heliograph")
+	sh(t, ".", "go", "build", "-o", bin, "github.com/heliograph-io/heliograph/cmd/heliograph")
 
 	hg := func(args ...string) string {
 		t.Helper()
@@ -191,7 +191,7 @@ func TestGapsFindsARealStall(t *testing.T) {
 	sh(t, work, "git", "push", "-q", "-u", "origin", "main")
 
 	bin := filepath.Join(base, "heliograph")
-	sh(t, ".", "go", "build", "-o", bin, "github.com/dbhq-uk/heliograph/cmd/heliograph")
+	sh(t, ".", "go", "build", "-o", bin, "github.com/heliograph-io/heliograph/cmd/heliograph")
 	hg := func(args ...string) string {
 		t.Helper()
 		cmd := exec.Command(bin, args...)
@@ -258,7 +258,7 @@ func TestCLIDrivesAShareStation(t *testing.T) {
 	}
 
 	bin := filepath.Join(base, "heliograph")
-	sh(t, ".", "go", "build", "-o", bin, "github.com/dbhq-uk/heliograph/cmd/heliograph")
+	sh(t, ".", "go", "build", "-o", bin, "github.com/heliograph-io/heliograph/cmd/heliograph")
 	hg := func(args ...string) string {
 		t.Helper()
 		cmd := exec.Command(bin, args...)

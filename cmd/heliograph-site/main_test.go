@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbhq-uk/heliograph/internal/site"
+	"github.com/heliograph-io/heliograph/internal/site"
 )
 
 // buildSite builds the real content into a temporary directory once per test.
@@ -378,7 +378,7 @@ func TestOneH1PerPage(t *testing.T) {
 // and the sentence already says where it goes.
 func TestTheChromeLinksToGitHubCarryTheMark(t *testing.T) {
 	out := buildSite(t)
-	re := regexp.MustCompile(`(?s)<a[^>]*href="https://github\.com/dbhq-uk/heliograph"[^>]*>(.*?)</a>`)
+	re := regexp.MustCompile(`(?s)<a[^>]*href="https://github\.com/heliograph-io/heliograph"[^>]*>(.*?)</a>`)
 	region := func(h, open, close string) string {
 		i := strings.Index(h, open)
 		if i < 0 {

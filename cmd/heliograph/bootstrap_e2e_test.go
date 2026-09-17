@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dbhq-uk/heliograph/internal/bootstrap"
-	"github.com/dbhq-uk/heliograph/station"
+	"github.com/heliograph-io/heliograph/internal/bootstrap"
+	"github.com/heliograph-io/heliograph/station"
 )
 
 // THREE WAYS TO PLANT A STATION, AND THEY MUST PRODUCE ONE TREE.

@@ -48,7 +48,7 @@
 #  Verify against a release:
 #
 #    packaging/reproduce.sh v0.4.0
-#    gh release download v0.4.0 -R dbhq-uk/heliograph -p SHA256SUMS -O /tmp/published
+#    gh release download v0.4.0 -R heliograph-io/heliograph -p SHA256SUMS -O /tmp/published
 #    cd dist && sha256sum --ignore-missing -c /tmp/published
 #
 #  Full account: https://heliograph.dbhq.uk/provenance

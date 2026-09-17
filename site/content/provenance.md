@@ -11,7 +11,7 @@ yet cover.
 ## Reproduce a released binary
 
 ```bash
-git clone --depth 1 --branch v0.4.0 https://github.com/dbhq-uk/heliograph
+git clone --depth 1 --branch v0.4.0 https://github.com/heliograph-io/heliograph
 cd heliograph
 packaging/reproduce.sh v0.4.0
 ```
@@ -30,7 +30,7 @@ Then compare against what was published:
 
 ```bash
 curl -sSLo /tmp/published \
-  https://github.com/dbhq-uk/heliograph/releases/download/v0.4.0/SHA256SUMS
+  https://github.com/heliograph-io/heliograph/releases/download/v0.4.0/SHA256SUMS
 cd dist && sha256sum --ignore-missing -c /tmp/published
 ```
 
@@ -68,8 +68,8 @@ from a copy at a different path with no `.git` - and fails if the two disagree.
   modes are fixed, but zip compression is whatever the local zlib does, and
   builds of Python that link zlib-ng compress differently. The reproducible
   artefact is the binary inside the bundle.
-- **The container images** are not byte-reproducible. `ghcr.io/dbhq-uk/heliograph`
-  carries a [build provenance attestation](https://github.com/dbhq-uk/heliograph/attestations)
+- **The container images** are not byte-reproducible. `ghcr.io/heliograph-io/heliograph`
+  carries a [build provenance attestation](https://github.com/heliograph-io/heliograph/attestations)
   instead, which proves which workflow and which commit produced the image
   without proving the bytes can be arrived at twice.
 - **Signatures.** The release workflow signs `SHA256SUMS` with Sigstore keyless
@@ -81,7 +81,7 @@ from a copy at a different path with no `.git` - and fails if the two disagree.
   provenance: a version string is a claim a deployment makes about itself.
   `GET /health` now also reports the SHA-256 of the bundle serving, and
   `edge/reproduce.sh` in
-  [dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay)
+  [heliograph-io/heliograph-relay](https://github.com/heliograph-io/heliograph-relay)
   rebuilds that bundle from the tag so the number can be checked. What it still
   rests on is the deploy workflow's public log, because a Worker cannot read its
   own code. If a relay being provably the published source is something your
@@ -95,13 +95,13 @@ There is no signing key, deliberately. The release workflow uses Sigstore
 keyless signing: `cosign` gets a certificate valid for ten minutes, bound to the
 workflow's own OIDC identity, and the binding is written to the public Rekor
 transparency log. So what a verifier checks is an identity - "signed by the
-release workflow of `dbhq-uk/heliograph`, at this tag" - rather than "signed by
+release workflow of `heliograph-io/heliograph`, at this tag" - rather than "signed by
 a key somebody holds".
 
 ```bash
 cosign verify-blob \
   --signature SHA256SUMS.sig --certificate SHA256SUMS.pem \
-  --certificate-identity "https://github.com/dbhq-uk/heliograph/.github/workflows/release.yml@refs/tags/v0.4.0" \
+  --certificate-identity "https://github.com/heliograph-io/heliograph/.github/workflows/release.yml@refs/tags/v0.4.0" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   SHA256SUMS
 ```
@@ -138,7 +138,7 @@ number yourself, which is what this page is for.
 and an object store are pure bash on the station side, and a
 [beacon or a flare](/matrix) over any of them is a complete product. The list of
 compiled programs a station may ever be given lives in
-[`station/FAR-SIDE-BINARIES`](https://github.com/dbhq-uk/heliograph/blob/main/station/FAR-SIDE-BINARIES),
+[`station/FAR-SIDE-BINARIES`](https://github.com/heliograph-io/heliograph/blob/main/station/FAR-SIDE-BINARIES),
 adding to it is a deliberate edit that CI enforces, and reproducible builds are
 the price of being on it. An estate that permits no compiled code loses two
 shapes, not the tool - and even the relay has a way through, because the

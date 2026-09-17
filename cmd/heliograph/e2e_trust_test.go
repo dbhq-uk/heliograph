@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/seal"
 )
 
 func TestATrustedSetWorksOverTheRelay(t *testing.T) {
@@ -50,9 +50,9 @@ func TestATrustedSetWorksOverTheRelay(t *testing.T) {
 	}
 
 	sealBin := filepath.Join(work, "heliograph-seal")
-	sh(t, ".", "go", "build", "-o", sealBin, "github.com/dbhq-uk/heliograph/cmd/heliograph-seal")
+	sh(t, ".", "go", "build", "-o", sealBin, "github.com/heliograph-io/heliograph/cmd/heliograph-seal")
 	bin := filepath.Join(base, "heliograph")
-	sh(t, ".", "go", "build", "-o", bin, "github.com/dbhq-uk/heliograph/cmd/heliograph")
+	sh(t, ".", "go", "build", "-o", bin, "github.com/heliograph-io/heliograph/cmd/heliograph")
 
 	hg := func(env []string, args ...string) string {
 		t.Helper()
@@ -217,7 +217,7 @@ func TestATrustedSetWorksOverTheRelay(t *testing.T) {
 	bobID := filepath.Join(base, "bob.json")
 	sh(t, base, sealBin, "keygen", "--out", bobID)
 	forged := filepath.Join(base, "forged-change")
-	sh(t, ".", "go", "build", "-o", filepath.Join(base, "forge"), "github.com/dbhq-uk/heliograph/tests/forge")
+	sh(t, ".", "go", "build", "-o", filepath.Join(base, "forge"), "github.com/heliograph-io/heliograph/tests/forge")
 	prev := strings.TrimSpace(runOut(t, work, sealBin, "trust", "digest", "--set", setPath))
 	bobPub := strings.TrimSpace(runOut(t, base, sealBin, "public", "--identity", bobID))
 	body := runOut(t, base, filepath.Join(base, "forge"),

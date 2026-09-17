@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/cloud"
-	"github.com/dbhq-uk/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/cloud"
+	"github.com/heliograph-io/heliograph/internal/seal"
 )
 
 // The round trip that proves `push` forwards a real spool.
@@ -234,10 +234,10 @@ func TestPushForwardsARealSpoolAndAuthorsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	sealBin := filepath.Join(work, "heliograph-seal")
-	sh(t, ".", "go", "build", "-o", sealBin, "github.com/dbhq-uk/heliograph/cmd/heliograph-seal")
+	sh(t, ".", "go", "build", "-o", sealBin, "github.com/heliograph-io/heliograph/cmd/heliograph-seal")
 
 	bin := filepath.Join(base, "heliograph")
-	sh(t, ".", "go", "build", "-o", bin, "github.com/dbhq-uk/heliograph/cmd/heliograph")
+	sh(t, ".", "go", "build", "-o", bin, "github.com/heliograph-io/heliograph/cmd/heliograph")
 	run := func(env []string, args ...string) (string, error) {
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = base

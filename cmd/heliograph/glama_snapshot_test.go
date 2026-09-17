@@ -119,7 +119,7 @@ listing now describes tools that are not these, which is a directory telling
 people something false about this server.
 
 To fix, in this order:
-  1. https://glama.ai/mcp/servers/dbhq-uk/heliograph/admin/dockerfile
+  1. https://glama.ai/mcp/servers/heliograph-io/heliograph/admin/dockerfile
      Build and Release, with the version this project is actually at.
   2. Update %s:
        "releasedVersion": "<that version>"

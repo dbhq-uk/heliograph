@@ -89,11 +89,11 @@ box where installing anything is its own change request.
 
 ```bash
 # Linux and macOS, from a release
-curl -sSL https://github.com/dbhq-uk/heliograph/releases/latest/download/heliograph-linux-amd64 \
+curl -sSL https://github.com/heliograph-io/heliograph/releases/latest/download/heliograph-linux-amd64 \
   -o /usr/local/bin/heliograph && chmod +x /usr/local/bin/heliograph
 
 # or from source
-go install github.com/dbhq-uk/heliograph/cmd/heliograph@latest
+go install github.com/heliograph-io/heliograph/cmd/heliograph@latest
 ```
 
 A single static binary, no runtime. Checksums are published with each
@@ -113,7 +113,7 @@ and friends:
 /plugin install heliograph@dbhq         # Claude Code
 ./install-codex.sh                      # Codex, from a clone
 ./install.sh                            # Claude Code, from a clone
-npx skills add dbhq-uk/heliograph       # any agent, via skills.sh
+npx skills add heliograph-io/heliograph       # any agent, via skills.sh
 ```
 
 ## Use
@@ -175,7 +175,7 @@ timestamp is reported as an **error**, not as "no gaps".
 | `--gaps` | works |
 | MCP server (`heliograph mcp`) | works |
 | bash station | in use over git: the loop, the gates, the capture, Azure hosts, Kubernetes, the Windows launcher |
-| relay | **half a transport.** The station side is written and complete - it fetches requests, publishes status and delivers the finished log - and the [relay server](https://github.com/dbhq-uk/heliograph-relay) is deployed. No CLI command can select it |
+| relay | **half a transport.** The station side is written and complete - it fetches requests, publishes status and delivers the finished log - and the [relay server](https://github.com/heliograph-io/heliograph-relay) is deployed. No CLI command can select it |
 | file share, bundle, object store | **control side only.** The CLI implements all three; the station has no transport for any of them |
 | Azure Blob | works end to end, through `drop.sh` in the station payload rather than the CLI. It is what the Azure Function host uses |
 | PowerShell station | planned: [A8](docs/specs/2026-09-08-powershell-station-and-full-documentation-design.md) |
@@ -203,7 +203,7 @@ Ed25519. The full account, including what DBHQ can and cannot honestly claim,
 is in
 [`docs/specs/2026-09-06-relay-encryption-design.md`](docs/specs/2026-09-06-relay-encryption-design.md).
 The relay server is its own repository,
-[dbhq-uk/heliograph-relay](https://github.com/dbhq-uk/heliograph-relay),
+[heliograph-io/heliograph-relay](https://github.com/heliograph-io/heliograph-relay),
 because it holds no keys and must be publicly, obviously incapable of reading
 anything it carries.
 

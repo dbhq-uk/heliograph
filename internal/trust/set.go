@@ -47,7 +47,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/seal"
 )
 
 // Version is the document version this build writes and the only one it reads.

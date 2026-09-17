@@ -7,7 +7,7 @@
     "email": "dan@dbhq.uk"
   },
   "homepage": "https://heliograph.dbhq.uk",
-  "repository": "https://github.com/dbhq-uk/heliograph",
+  "repository": "https://github.com/heliograph-io/heliograph",
   "license": "MIT",
   "keywords": [
     "remote-debugging",

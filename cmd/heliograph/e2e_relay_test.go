@@ -14,14 +14,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dbhq-uk/heliograph/internal/seal"
+	"github.com/heliograph-io/heliograph/internal/seal"
 )
 
 // The relay round trip: the real binary, a real station, and a real key
 // exchange, over the relay's documented HTTP API.
 //
 // WHY A LOCAL RELAY RATHER THAN THE DEPLOYED ONE. The server lives in
-// dbhq-uk/heliograph-relay, holds no keys, and has its own conformance suite
+// heliograph-io/heliograph-relay, holds no keys, and has its own conformance suite
 // asserted over HTTP against both of its implementations. What is unproven in
 // THIS repository is different: that our two halves - the control CLI and the
 // bash station - interoperate through that API at all. Neither half had ever
@@ -156,10 +156,10 @@ func TestCLIDrivesARelayStation(t *testing.T) {
 	// transport that needs it. Built here rather than stubbed: the sealing is
 	// the part of this round trip that can be subtly wrong.
 	sealBin := filepath.Join(work, "heliograph-seal")
-	sh(t, ".", "go", "build", "-o", sealBin, "github.com/dbhq-uk/heliograph/cmd/heliograph-seal")
+	sh(t, ".", "go", "build", "-o", sealBin, "github.com/heliograph-io/heliograph/cmd/heliograph-seal")
 
 	bin := filepath.Join(base, "heliograph")
-	sh(t, ".", "go", "build", "-o", bin, "github.com/dbhq-uk/heliograph/cmd/heliograph")
+	sh(t, ".", "go", "build", "-o", bin, "github.com/heliograph-io/heliograph/cmd/heliograph")
 	hg := func(env []string, args ...string) string {
 		t.Helper()
 		cmd := exec.Command(bin, args...)

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dbhq-uk/heliograph/internal/estate"
+	"github.com/heliograph-io/heliograph/internal/estate"
 )
 
 // The credential store, and why it is a file rather than an environment

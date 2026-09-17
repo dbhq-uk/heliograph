@@ -90,7 +90,11 @@ three bootstraps.
 | #76 | **content gap 5, and two H2s that are questions** (#70) - `/method` answers "run a command on a remote machine" the way that SERP is written: the `ssh`, `Invoke-Command`, PsExec and cloud-agent answers first, then the case where each has been refused. One question-form H2 each on `/claude-code` and `/mcp`, and nowhere else |
 
 **The MCP registry lists heliograph** as of 2026-09-11, at
-`io.github.dbhq-uk/heliograph`. Published by hand once; the release workflow
+`io.github.dbhq-uk/heliograph`, which is the name the hand publish used and is
+therefore the name that entry still carries. The 2026-09-16 transfer makes the
+publishable namespace `io.github.heliograph-io/heliograph`, a new entry rather
+than a rename: the old one stays resolvable for anybody holding it. Published
+by hand once; the release workflow
 republishes it from now on, so the advertised version cannot drift from the
 package. Two things had to be fixed first, and both fail only at publish time:
 the description was 106 characters against a limit of 100, and the `$schema`
@@ -261,7 +265,7 @@ revocation at its next poll and an already-running step is not interrupted.
 ### What reproducible builds found
 
 **The relay half landed at the same time**, in
-[dbhq-uk/heliograph-relay#14](https://github.com/dbhq-uk/heliograph-relay/pull/14):
+[heliograph-io/heliograph-relay#14](https://github.com/heliograph-io/heliograph-relay/pull/14):
 `edge/reproduce.sh` builds the Worker bundle and prints its hash, the deploy
 workflow runs that same script to compute the number it stamps in, and
 `GET /health` reports the version serving and the hash of what is serving in
@@ -724,7 +728,7 @@ holds the evidence, measurements and sources. Both are published as
 - **HTTPS is enforced on the Pages site** as of 2026-09-11. Plain HTTP served
   the whole site with no redirect until then, which for a `curl | chmod`
   install page is worse than untidy. The setting is
-  `gh api -X PUT repos/dbhq-uk/heliograph/pages -F https_enforced=true`, and
+  `gh api -X PUT repos/heliograph-io/heliograph/pages -F https_enforced=true`, and
   it survives a deploy. GitHub adds HSTS with it
 
 - **A relay station in a container was driven against the deployed relay on
