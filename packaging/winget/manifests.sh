@@ -2,7 +2,7 @@
 # =============================================================================
 #  manifests.sh - write the winget manifests for one release, from SHA256SUMS
 # =============================================================================
-#     packaging/winget/manifests.sh v0.4.1 dist/SHA256SUMS out
+#     packaging/winget/manifests.sh v0.4.2 dist/SHA256SUMS out
 #
 #  Writes three files under
 #     out/manifests/h/heliograph-io/heliograph/0.4.0/
@@ -36,7 +36,7 @@
 # =============================================================================
 set -euo pipefail
 
-tag="${1:?usage: manifests.sh <tag, e.g. v0.4.1> <SHA256SUMS> <outdir>}"
+tag="${1:?usage: manifests.sh <tag, e.g. v0.4.2> <SHA256SUMS> <outdir>}"
 sums="${2:?usage: manifests.sh <tag> <SHA256SUMS> <outdir>}"
 out="${3:?usage: manifests.sh <tag> <SHA256SUMS> <outdir>}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
